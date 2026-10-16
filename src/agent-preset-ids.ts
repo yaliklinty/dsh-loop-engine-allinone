@@ -23,35 +23,17 @@
  * @module dsh-loop-engine/agent-preset-ids
  */
 
-/** The installed engine driving new Agent turns. */
-export const LOOP_ENGINE_IDS = ['in-process', 'claude-code', 'codex', 'pi', 'kimi'] as const
+// The roster itself lives in `./engine-registry.ts` — also zero-import, and the
+// one place every engine-shaped decision derives from. Re-exported here so every
+// existing import path and name keeps working: this module owns the preset-id
+// arithmetic, not the roster.
+export {
+  HOSTED_ENGINE_IDS, LOOP_ENGINE_IDS, isHostedEngine, isLoopEngineId,
+} from './engine-registry.ts'
+export type { HostedEngineId, LoopEngineId } from './engine-registry.ts'
 
-/** Installed agent loop engine id. */
-export type LoopEngineId = (typeof LOOP_ENGINE_IDS)[number]
-
-/** An engine this plugin hosts itself; `in-process` is the harness's own loop. */
-export type HostedEngineId = Exclude<LoopEngineId, 'in-process'>
-
-/** Every hosted engine id, in selection order. */
-export const HOSTED_ENGINE_IDS = LOOP_ENGINE_IDS.filter(
-  (id): id is HostedEngineId => id !== 'in-process',
-)
-
-/**
- * Whether an engine is one this plugin hosts — an external CLI some other
- * vendor runs, which owns its own model — rather than the harness's own loop.
- *
- * The judgement a surface needs to say "the model is the engine's own business"
- * without hardcoding one engine's name: every hosted engine behaves the same
- * way here, and naming one of them would make a general fact read as a property
- * of that engine. An engine nobody has answered for yet is not hosted: a surface
- * that does not know says nothing rather than claiming the wrong half.
- * @param engine - an engine id, or undefined while one is still being read.
- * @returns whether that engine is hosted by this plugin.
- */
-export function isHostedEngine(engine: LoopEngineId | undefined): engine is HostedEngineId {
-  return engine !== undefined && engine !== 'in-process'
-}
+import { HOSTED_ENGINE_IDS } from './engine-registry.ts'
+import type { HostedEngineId, LoopEngineId } from './engine-registry.ts'
 
 /**
  * The single provider route label EVERY hosted engine logs into its sessions'
@@ -129,18 +111,6 @@ export const LEGACY_HOSTED_PRESET_ID = 'loop-engine'
  */
 export function enginePresetId(engine: LoopEngineId): string {
   return engine === 'in-process' ? SOURCE_PRESET_ID : `${HOSTED_PRESET_PREFIX}${engine}`
-}
-
-/**
- * Whether an untyped value is one of {@link LOOP_ENGINE_IDS}.
- *
- * The boundary test both halves need: a value crossing the wire, the sidecar
- * file, or a projection read is only an engine when it is one of these.
- * @param value - the value to classify.
- * @returns whether `value` is an installed engine id.
- */
-export function isLoopEngineId(value: unknown): value is LoopEngineId {
-  return (LOOP_ENGINE_IDS as readonly unknown[]).includes(value)
 }
 
 /**

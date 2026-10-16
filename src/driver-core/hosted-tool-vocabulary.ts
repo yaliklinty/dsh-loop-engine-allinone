@@ -30,7 +30,8 @@
  */
 
 /** A hosted loop engine id — the settings engine union without `in-process`. */
-export type HostedEngineId = 'claude-code' | 'codex' | 'pi' | 'kimi'
+export type { HostedEngineId } from '../engine-registry.ts'
+import type { HostedEngineId } from '../engine-registry.ts'
 
 /** One tool call projected into dsh's vocabulary for the durable `tool/call` event. */
 export interface NormalizedHostedToolCall {
@@ -200,8 +201,14 @@ function claudePlan(engineName: string, args: Readonly<Record<string, unknown>>)
   return entries
 }
 
-/** Per-engine projection table; an engine absent here passes every call through. */
-const VOCABULARIES: Readonly<Record<HostedEngineId, HostedToolVocabulary>> = {
+/**
+ * Per-engine projection table. An engine absent here passes every call through
+ * unchanged — the documented degradation for an engine-side tool this build does
+ * not know, and the reason the table is partial rather than total: a newly added
+ * engine must be able to land without a vocabulary row, and its calls then
+ * render as generic rows instead of mis-rendering as a dsh tool.
+ */
+const VOCABULARIES: Partial<Readonly<Record<HostedEngineId, HostedToolVocabulary>>> = {
   'claude-code': { names: CLAUDE_NAMES, plan: claudePlan },
   codex: { names: CODEX_NAMES },
   pi: { names: {}, reshape: piReshape },
@@ -224,6 +231,10 @@ export function normalizeHostedToolCall(
   argumentsJson: string,
 ): NormalizedHostedToolCall {
   const vocabulary = VOCABULARIES[engine]
+  // An engine with no vocabulary row passes every call through unchanged: the
+  // documented degradation, so a newly added engine's tools render as generic
+  // rows rather than being mis-projected into a dsh tool they are not.
+  if (vocabulary === undefined) return { name, arguments: argumentsJson }
   const dshName = vocabulary.names[name] ?? name
   const args = recordOf(argumentsJson)
   const reshaped = args === undefined ? undefined : vocabulary.reshape?.(name, args)
@@ -246,7 +257,7 @@ export function planTodosOfHostedTool(
   name: string,
   argumentsJson: string,
 ): readonly HostedPlanTodo[] | undefined {
-  const plan = VOCABULARIES[engine].plan
+  const plan = VOCABULARIES[engine]?.plan
   if (plan === undefined) return undefined
   const args = recordOf(argumentsJson)
   return args === undefined ? undefined : plan(name, args)

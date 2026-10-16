@@ -25,4 +25,14 @@ export interface ResolvedConfig {
    * gets released.
    */
   readonly childIdleMs: number
+  /**
+   * An EXTERNAL `codex` executable to launch instead of this package's bundled
+   * `@openai/codex`, or `undefined` to keep the bundled copy.
+   *
+   * The bundled dependency is a Node script, so the driver runs it under the
+   * current node; an external path may be either — a `.js` entrypoint is run
+   * under node, anything else is spawned directly. That distinction is why the
+   * resolver returns a whole argv prefix rather than a single path.
+   */
+  readonly bin: string | undefined
 }

@@ -25,4 +25,13 @@ export interface ResolvedConfig {
   readonly thinkingLevel: string | undefined
   /** Explicit environment entries layered over the credential-scrubbed parent environment. */
   readonly env: Record<string, string>
+  /**
+   * An EXTERNAL Pi CLI entrypoint to run instead of this package's bundled
+   * `@earendil-works/pi-coding-agent`, or `undefined` to keep the bundled copy.
+   *
+   * Pi's CLI is a Node script either way, so the driver always runs the
+   * resolved entrypoint under the current node — the only thing a pinned path
+   * changes is which script that is.
+   */
+  readonly bin: string | undefined
 }

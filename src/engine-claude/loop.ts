@@ -48,6 +48,16 @@ export interface Config {
   disposeGraceMs?: number
   /** Cap on the number of conversation turns before each query stops. */
   maxTurns?: number
+  /**
+   * An EXTERNAL Claude Code executable to run instead of the SDK's bundled one.
+   *
+   * Unbinding the SDK is a supported SDK option (`pathToClaudeCodeExecutable`),
+   * not a hack: it lets a deployment run its own signed-in `claude` install —
+   * including one whose credentials the bundled copy would not see. Omitted
+   * keeps the bundled binary and its own login directory, which is the
+   * behaviour every earlier release had.
+   */
+  bin?: string
 }
 
 /** Schema of the Claude Code loop plugin configuration. */
@@ -57,6 +67,7 @@ export const Config: z<Config> = z.object({
   model: z.string(),
   disposeGraceMs: z.number().default(DEFAULT_DISPOSE_GRACE_MS),
   maxTurns: z.number().step(1).min(1),
+  bin: z.string(),
 })
 
 /** Resolve the driver configuration at the plugin config boundary. */
@@ -76,6 +87,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     model: config.model,
     disposeGraceMs,
     maxTurns: config.maxTurns,
+    bin: config.bin === undefined || config.bin === '' ? undefined : config.bin,
   }
 }
 

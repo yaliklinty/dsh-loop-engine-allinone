@@ -54,10 +54,10 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { AgentPresetsService, LlmRegistry, SettingsMutator } from './driver-core/host-servers.ts'
 import { engineOfSession } from './engine-of-session.ts'
 import { LoopEngineRemote } from './engine-remote.ts'
-import { ClaudeCodeLoop, CLAUDE_CODE_PERMISSION_MODES, type Config as ClaudeCodeConfig } from './engine-claude/loop.ts'
-import { CodexLoop, CODEX_APPROVAL_POLICIES, CODEX_SANDBOX_MODES, type Config as CodexConfig } from './engine-codex/loop.ts'
-import { PiLoop, type Config as PiConfig } from './engine-pi/loop.ts'
-import { KimiLoop, type Config as KimiConfig } from './engine-kimi/loop.ts'
+import { CLAUDE_CODE_PERMISSION_MODES } from './engine-claude/loop.ts'
+import { CODEX_APPROVAL_POLICIES, CODEX_SANDBOX_MODES } from './engine-codex/loop.ts'
+import { buildEngineDriver } from './engine-drivers.ts'
+import type { EngineDriverConfig } from './engine-drivers.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
 import {
   applyManagedBlock,
@@ -100,23 +100,17 @@ export const name = 'loop-engine'
 export const inject = []
 
 /** Composition entry for the loop engine selection and the hosted engine drivers. */
-export interface Config extends ClaudeCodeConfig {
+export interface Config extends EngineDriverConfig {
   /** Profile whose `cordis.patch.yml` carries the managed block; defaults to `web`. */
   profile?: string
   /** Patch file name inside the profile; defaults to `cordis.patch.yml`. */
   patchFilename?: string
   /** Explicit absolute path to the patch file, overriding profile + filename. */
   patchPath?: string
-  /** Pinned Codex sandbox mode; falls back to the session's dsh permission knobs. */
+  /** Pinned sandbox mode for the Codex and Pi children; falls back to the session's dsh permission knobs. */
   sandboxMode?: CodexSandboxMode
   /** Pinned Codex approval policy; falls back to the session's dsh permission knobs. */
   approvalPolicy?: CodexApprovalPolicy
-  /** LLM provider for the Pi RPC child (`--provider`). */
-  piProvider?: string
-  /** Thinking/reasoning level for the Pi RPC child, appended to its `--model`. */
-  piThinking?: string
-  /** Kimi CLI executable; `'kimi'` resolves through PATH when not pinned to an absolute path. */
-  kimiBin?: string
   /**
    * Idle window in milliseconds after which a hosted session's PERSISTENT child
    * process (Kimi's `kimi acp`, Codex's app-server) is shut down and spawned
@@ -242,7 +236,7 @@ export const Config: z<ConfigInput, Config> = z.object({
   approvalPolicy: z.union(CODEX_APPROVAL_POLICIES.map(policy => z.const(policy))),
   piProvider: z.string(),
   piThinking: z.string(),
-  kimiBin: z.string(),
+  bins: z.dict(z.string()),
   childIdleMs: z.number(),
   // A capacity of zero or a fraction is a misconfiguration that would silently
   // disable compaction (the threshold would never be crossed), so it is
@@ -405,49 +399,6 @@ function readPatchFileSync(path: string): string {
   } catch (error: unknown) {
     if (isMissing(error)) return ''
     throw error
-  }
-}
-
-/** Forward the engine-driver fields of the composition entry to the Claude Code engine. */
-function claudeCodeConfig(config: Config): ClaudeCodeConfig {
-  return {
-    ...config.permissionMode === undefined ? {} : { permissionMode: config.permissionMode },
-    ...config.env === undefined ? {} : { env: config.env },
-    ...config.model === undefined ? {} : { model: config.model },
-    ...config.disposeGraceMs === undefined ? {} : { disposeGraceMs: config.disposeGraceMs },
-    ...config.maxTurns === undefined ? {} : { maxTurns: config.maxTurns },
-  }
-}
-
-/** Forward the engine-driver fields of the composition entry to the Codex engine. */
-function codexConfig(config: Config): CodexConfig {
-  return {
-    ...config.sandboxMode === undefined ? {} : { sandboxMode: config.sandboxMode },
-    ...config.approvalPolicy === undefined ? {} : { approvalPolicy: config.approvalPolicy },
-    ...config.env === undefined ? {} : { env: config.env },
-    ...config.model === undefined ? {} : { model: config.model },
-    ...config.childIdleMs === undefined ? {} : { childIdleMs: config.childIdleMs },
-  }
-}
-
-/** Forward the engine-driver fields of the composition entry to the Pi engine. */
-function piConfig(config: Config): PiConfig {
-  return {
-    ...config.piProvider === undefined ? {} : { provider: config.piProvider },
-    ...config.model === undefined ? {} : { model: config.model },
-    ...config.piThinking === undefined ? {} : { thinkingLevel: config.piThinking },
-    ...config.env === undefined ? {} : { env: config.env },
-    ...config.sandboxMode === undefined ? {} : { sandboxMode: config.sandboxMode },
-  }
-}
-
-/** Forward the engine-driver fields of the composition entry to the Kimi engine. */
-function kimiConfig(config: Config): KimiConfig {
-  return {
-    ...config.model === undefined ? {} : { model: config.model },
-    ...config.env === undefined ? {} : { env: config.env },
-    ...config.kimiBin === undefined ? {} : { bin: config.kimiBin },
-    ...config.childIdleMs === undefined ? {} : { childIdleMs: config.childIdleMs },
   }
 }
 
@@ -809,19 +760,17 @@ export function apply(ctx: Context, config: Config): void {
    */
   const routerHolder: RouterSurfaceHolder = { current: undefined }
 
-  /** Build one hosted engine's driver runtime on the router's context. */
-  const buildEngine = (engineCtx: Context, engine: HostedEngineId): RouterEngine => {
-    switch (engine) {
-      case 'claude-code':
-        return new ClaudeCodeLoop(engineCtx, claudeCodeConfig(config))
-      case 'codex':
-        return new CodexLoop(engineCtx, codexConfig(config))
-      case 'pi':
-        return new PiLoop(engineCtx, piConfig(config))
-      case 'kimi':
-        return new KimiLoop(engineCtx, kimiConfig(config))
-    }
-  }
+  /**
+   * Build one hosted engine's driver runtime on the router's context.
+   *
+   * The dispatch itself lives in `./engine-drivers.ts`, which is the one module
+   * that imports the driver classes: the per-engine `switch` that used to sit
+   * here had to grow a `case` (and a `default`, to satisfy the compiler) for
+   * every engine, so adding one touched this file. Now it touches the registry
+   * and that table, and this line stays as it is.
+   */
+  const buildEngine = (engineCtx: Context, engine: HostedEngineId): RouterEngine =>
+    buildEngineDriver(engine, engineCtx, config)
 
   /**
    * Mount the routing factory, retrying while the base bundle's `agent-loop`

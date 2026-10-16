@@ -281,7 +281,11 @@ export class CodexAgent implements Agent {
       return this.appServer
     }
     this.appServer?.dispose()
-    this.appServer = await AppServerClient.create(modeled.argv, { ...this.config.env, ...modeled.env })
+    this.appServer = await AppServerClient.create(
+      modeled.argv,
+      { ...this.config.env, ...modeled.env },
+      this.config.bin,
+    )
     this.appServerConfig = config
     // Answer server-initiated requests (Codex approvals under an `ask` policy,
     // user-input questions, MCP elicitations) through their dsh seams; a request

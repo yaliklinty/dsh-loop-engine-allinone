@@ -1,0 +1,332 @@
+/**
+ * The engine registry: the ONE data table every engine-shaped decision derives
+ * from.
+ *
+ * Before this module the engine roster lived in five places that had to be kept
+ * in step by hand — the `LOOP_ENGINE_IDS` array, the `buildEngine` switch, the
+ * settings schema's engine union, the preset display-name map, and the browser
+ * half's option list and glyph table. Adding an engine meant finding all of
+ * them, and a miss showed up as an engine that mounts but cannot be selected, or
+ * one the settings schema rejects. Now the roster is declared ONCE here and
+ * everything else is derived:
+ *
+ *   - {@link HOSTED_ENGINE_IDS} / {@link LOOP_ENGINE_IDS} (this module)
+ *   - the settings schema's union (`./settings.ts` maps the ids to `z.const`)
+ *   - the preset id prefix arithmetic (`./agent-preset-ids.ts`)
+ *   - the browser half's option list, glyph and copy key (`./client/**`)
+ *   - the driver dispatch (`./engine-drivers.ts`, which is the one node-side
+ *     table that must import the engine modules — it cannot live here)
+ *
+ * ## Why this module imports NOTHING
+ *
+ * It is read by the browser bundle (the settings page renders the option list
+ * from it), and the client artifact must never pull a host package
+ * (`dsh-settings`, `schemastery`, `node:fs`) into the browser. So this file is
+ * plain data and pure functions — no imports at all, not even type-only ones
+ * from a host package. `tests/agent-preset-ids.spec.ts` pins that property.
+ *
+ * Anything that needs the host (probing a binary, reading an auth file, spawning
+ * a child) lives in `./engine-probe.ts` on the node side and is keyed by
+ * {@link EngineDescriptor.id}. The split is the reason a descriptor can declare
+ * `authPaths` — a fact the settings page renders — while the *probe* that reads
+ * them stays out of the browser bundle.
+ *
+ * ## Adding an engine
+ *
+ * 1. add its id to {@link HOSTED_ENGINE_IDS};
+ * 2. add its {@link EngineDescriptor} row to {@link ENGINE_REGISTRY} (TypeScript
+ *    refuses the build until the record is exhaustive again);
+ * 3. add its driver to `./engine-drivers.ts` (same exhaustiveness rule);
+ * 4. add its copy to `./client/locales.ts` under the descriptor's
+ *    {@link EngineDescriptor.localeKey}.
+ *
+ * Nothing else: the settings schema, the preset ids, the option lists and the
+ * glyph table all read this table.
+ *
+ * @module dsh-loop-engine/engine-registry
+ */
+
+/**
+ * The wire shape an engine speaks, as a coarse family.
+ *
+ * The four families are the ones the drivers' protocol skeletons implement
+ * (`./driver-cli/`): line-delimited JSON frames, JSON-RPC 2.0, the Agent Client
+ * Protocol (JSON-RPC with ACP's method names), and plain text. The value is
+ * declared rather than inferred so the settings page can say what an engine can
+ * do without importing the driver.
+ */
+export const ENGINE_PROTOCOLS = ['ndjson', 'jsonrpc', 'acp', 'text'] as const
+
+/** One engine's wire-protocol family. */
+export type EngineProtocol = (typeof ENGINE_PROTOCOLS)[number]
+
+/**
+ * What one engine can do, declared rather than discovered.
+ *
+ * Every surface that would otherwise hardcode "engine X supports Y" reads this
+ * instead: the settings page hides a control an engine cannot honour, and a
+ * driver asked for something outside its declaration fails loud rather than
+ * pretending. A capability that is genuinely unknown is declared `false` — the
+ * rule is that a surface must never claim more than the engine was verified to
+ * do (`docs/engine-registry.md` records what was verified and how).
+ */
+export interface EngineCapabilities {
+  /** Whether the engine streams partial output, rather than answering in one block at the end. */
+  readonly streaming: boolean
+  /** The wire-protocol family the driver speaks. */
+  readonly protocol: EngineProtocol
+  /** Whether a session can be continued by id across separate process launches. */
+  readonly sessionResume: boolean
+  /**
+   * The engine's own permission/approval mode names, when it has a mode switch
+   * the driver can map dsh's sandbox/approval knobs onto. Absent means the
+   * engine has no such switch — the driver then relies on the subprocess
+   * sandbox alone, and the settings page shows no mode control.
+   */
+  readonly permissionModes?: readonly string[]
+  /** Whether the engine accepts image input natively. */
+  readonly images: boolean
+  /** Whether the engine exposes a reasoning-effort/thinking level. */
+  readonly reasoningLevels: boolean
+}
+
+/**
+ * Everything the rest of the plugin needs to know about one engine, as data.
+ *
+ * The two groups are deliberately different in kind: the fields above
+ * {@link capabilities} are deployment facts (where the binary is, how to
+ * upgrade it, whether it ships with the plugin), and `capabilities` is what the
+ * engine can do. A surface that renders an engine reads the second; the settings
+ * page's engine-management area reads the first.
+ */
+export interface EngineDescriptor {
+  /** Stable engine id: the value stored in settings, records and preset ids. */
+  readonly id: string
+  /** Human-readable name, used for the authored preset's metadata and as the fallback label. */
+  readonly label: string
+  /** Where the engine comes from, shown as a link in the settings page's engine-management area. */
+  readonly repo?: string
+  /**
+   * Whether the engine ships as an npm dependency of this plugin.
+   *
+   * The distinction is load-bearing rather than cosmetic: a bundled engine's
+   * version is pinned by this package's `package.json`, so it is upgraded by
+   * changing the dependency and reinstalling — never by running the CLI's own
+   * updater at runtime. Only an external CLI gets an upgrade button.
+   */
+  readonly bundled: boolean
+  /**
+   * The composition-entry key that pins this engine's executable, when the
+   * deployment may point it at its own build. External CLIs and the bundled
+   * engines that can be unbound (`claude`'s SDK option, codex's and pi's own
+   * binaries) both carry one; an engine that can only ever run the bundled copy
+   * omits it.
+   */
+  readonly binConfigKey?: string
+  /** argv (after the executable) that prints the engine's version. */
+  readonly versionArgv?: readonly string[]
+  /**
+   * argv (after the executable) that updates an EXTERNAL CLI in place.
+   *
+   * Absent for a bundled engine on purpose: its version is this package's
+   * dependency pin, and rewriting a dependency at runtime is an anti-pattern
+   * (`docs/engine-registry.md` §4).
+   */
+  readonly updateArgv?: readonly string[]
+  /** What to tell a user whose engine is installed but not signed in. */
+  readonly loginHint?: string
+  /**
+   * Home-relative paths whose existence means "this engine has been signed in
+   * at least once", for the settings page's diagnostic.
+   *
+   * A hint, never a gate: engines own their credentials, and the plugin never
+   * reads, writes or refreshes them. The probe only reports whether the path
+   * exists (`./engine-probe.ts`).
+   */
+  readonly authPaths?: readonly string[]
+  /** The copy key naming this engine in the browser half's dictionary. */
+  readonly localeKey: string
+  /** What the engine can do. */
+  readonly capabilities: EngineCapabilities
+}
+
+/**
+ * Every engine this plugin hosts, in selection order.
+ *
+ * The order is the settings dropdown's order and the order the authored presets
+ * are written in. New engines are APPENDED: the ids are persisted in session
+ * logs, sidecar records and preset ids, so an existing id may never be removed
+ * or reordered without a migration (`docs/engine-registry.md` §5).
+ */
+export const HOSTED_ENGINE_IDS = [
+  'claude-code',
+  'codex',
+  'pi',
+  'kimi',
+] as const
+
+/** An engine this plugin hosts itself; `in-process` is the harness's own loop. */
+export type HostedEngineId = (typeof HOSTED_ENGINE_IDS)[number]
+
+/**
+ * Every selectable engine, the harness's own loop first.
+ *
+ * `in-process` is not a descriptor: it is the harness's loop, not something this
+ * plugin hosts, so it has no binary, no protocol and no capabilities to declare.
+ * Keeping it out of {@link ENGINE_REGISTRY} is what makes the record exhaustive
+ * over {@link HostedEngineId} alone.
+ */
+export const LOOP_ENGINE_IDS = ['in-process', ...HOSTED_ENGINE_IDS] as const
+
+/** Installed agent loop engine id. */
+export type LoopEngineId = (typeof LOOP_ENGINE_IDS)[number]
+
+/**
+ * The registry itself: one row per hosted engine.
+ *
+ * Typed as a total record so TypeScript refuses to build when an id in
+ * {@link HOSTED_ENGINE_IDS} has no row — the exhaustiveness check is the reason
+ * "add an engine" cannot half-land.
+ */
+export const ENGINE_REGISTRY: Readonly<Record<HostedEngineId, EngineDescriptor>> = {
+  'claude-code': {
+    id: 'claude-code',
+    label: 'Claude Code',
+    repo: 'https://github.com/anthropics/claude-code',
+    // The SDK is an npm dependency, but its `pathToClaudeCodeExecutable` option
+    // hands the work to an external binary, so the deployment may unbind it.
+    bundled: true,
+    binConfigKey: 'claudeBin',
+    versionArgv: ['--version'],
+    loginHint: 'run `claude` once and sign in, or point `claudeBin` at a signed-in install',
+    authPaths: ['.claude/.credentials.json', '.claude.json'],
+    localeKey: 'engineClaudeCode',
+    capabilities: {
+      streaming: true,
+      // The Agent SDK delivers an async message stream; the driver reads it as
+      // frames, which is the ndjson family's shape.
+      protocol: 'ndjson',
+      sessionResume: true,
+      permissionModes: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
+      images: true,
+      reasoningLevels: false,
+    },
+  },
+  codex: {
+    id: 'codex',
+    label: 'Codex',
+    repo: 'https://github.com/openai/codex',
+    bundled: true,
+    binConfigKey: 'codexBin',
+    versionArgv: ['--version'],
+    loginHint: 'run `codex login`, or set CODEX_API_KEY, or point `codexBin` at a signed-in install',
+    authPaths: ['.codex/auth.json'],
+    localeKey: 'engineCodex',
+    capabilities: {
+      streaming: true,
+      protocol: 'jsonrpc',
+      sessionResume: true,
+      // Codex declares its stance as a (sandbox mode, approval policy) PAIR at
+      // `thread/start`, so the modes are the sandbox half.
+      permissionModes: ['read-only', 'workspace-write', 'danger-full-access'],
+      images: true,
+      reasoningLevels: true,
+    },
+  },
+  pi: {
+    id: 'pi',
+    label: 'Pi',
+    repo: 'https://github.com/earendil-works/pi',
+    bundled: true,
+    binConfigKey: 'piBin',
+    versionArgv: ['--version'],
+    loginHint: 'run `pi` once and sign in, or set the provider API-key variable pi expects',
+    authPaths: ['.pi/agent/auth.json'],
+    localeKey: 'enginePi',
+    capabilities: {
+      streaming: true,
+      protocol: 'jsonrpc',
+      // Every step opens a fresh `pi --mode rpc` session, so there is no id to
+      // resume across launches.
+      sessionResume: false,
+      permissionModes: ['read-only', 'workspace-write', 'danger-full-access'],
+      images: true,
+      reasoningLevels: true,
+    },
+  },
+  kimi: {
+    id: 'kimi',
+    label: 'Kimi Code',
+    repo: 'https://github.com/MoonshotAI/kimi-cli',
+    bundled: false,
+    binConfigKey: 'kimiBin',
+    versionArgv: ['--version'],
+    updateArgv: ['update'],
+    loginHint: 'run `kimi` once and sign in (or `kimi login`)',
+    authPaths: ['.kimi-code/credentials.json', '.kimi-code/auth.json'],
+    localeKey: 'engineKimi',
+    capabilities: {
+      streaming: true,
+      protocol: 'acp',
+      sessionResume: true,
+      permissionModes: ['ask', 'allow', 'deny'],
+      images: true,
+      reasoningLevels: false,
+    },
+  },
+}
+
+/** Every hosted engine descriptor, in selection order. */
+export const ENGINE_DESCRIPTORS: readonly EngineDescriptor[] =
+  HOSTED_ENGINE_IDS.map(id => ENGINE_REGISTRY[id])
+
+/**
+ * Whether an engine is one this plugin hosts — an external CLI some other
+ * vendor runs, which owns its own model — rather than the harness's own loop.
+ *
+ * The judgement a surface needs to say "the model is the engine's own business"
+ * without hardcoding one engine's name: every hosted engine behaves the same
+ * way here, and naming one of them would make a general fact read as a property
+ * of that engine. An engine nobody has answered for yet is not hosted: a surface
+ * that does not know says nothing rather than claiming the wrong half.
+ * @param engine - an engine id, or undefined while one is still being read.
+ * @returns whether that engine is hosted by this plugin.
+ */
+export function isHostedEngine(engine: LoopEngineId | undefined): engine is HostedEngineId {
+  return engine !== undefined && engine !== 'in-process'
+}
+
+/**
+ * Whether an untyped value is one of {@link LOOP_ENGINE_IDS}.
+ *
+ * The boundary test both halves need: a value crossing the wire, the sidecar
+ * file, or a projection read is only an engine when it is one of these.
+ * @param value - the value to classify.
+ * @returns whether `value` is an installed engine id.
+ */
+export function isLoopEngineId(value: unknown): value is LoopEngineId {
+  return (LOOP_ENGINE_IDS as readonly unknown[]).includes(value)
+}
+
+/**
+ * The descriptor of one hosted engine.
+ *
+ * Total rather than partial by construction: the parameter is
+ * {@link HostedEngineId}, so there is no unknown-id case to answer for. Callers
+ * holding an untyped id narrow it with {@link isHostedEngine} first.
+ * @param engine - the hosted engine to describe.
+ * @returns that engine's descriptor.
+ */
+export function descriptorOf(engine: HostedEngineId): EngineDescriptor {
+  return ENGINE_REGISTRY[engine]
+}
+
+/**
+ * The descriptor of one engine, or undefined for `in-process` and for anything
+ * this build does not know.
+ * @param engine - an engine id from any source.
+ * @returns that engine's descriptor, or undefined when it is not hosted.
+ */
+export function descriptorOfOptional(engine: LoopEngineId | undefined): EngineDescriptor | undefined {
+  return isHostedEngine(engine) ? ENGINE_REGISTRY[engine] : undefined
+}

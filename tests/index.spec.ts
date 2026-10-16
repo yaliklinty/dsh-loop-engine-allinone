@@ -1574,7 +1574,10 @@ describe('apply router mount', () => {
       approvalPolicy: 'on-failure',
       piProvider: 'anthropic',
       piThinking: 'high',
-      kimiBin: '/fake/kimi',
+      // Executable overrides are one open map keyed by each engine's registry
+      // `binConfigKey` (`src/engine-registry.ts`), so a new engine needs no new
+      // composition-entry field.
+      bins: { kimiBin: '/fake/kimi' },
       childIdleMs: 15000,
     })
 

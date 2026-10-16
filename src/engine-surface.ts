@@ -43,8 +43,15 @@ interface EngineSurface {
  * because the Claude Code bridge discovers the user's `~/.claude/commands/*.md`
  * on every call, so a file added mid-session lands on the next session the
  * engine builds.
+ *
+ * PARTIAL on purpose: an engine with no row contributes no commands and no skill
+ * provider, which is a real answer rather than an unfinished one. Each engine
+ * owns its own slash-command menu and skill catalog natively; the plugin bridges
+ * what it can read, and an engine whose menus it cannot read simply has none
+ * bridged. A new engine therefore lands without a row here, and gains one only
+ * when someone works out how to project its surface.
  */
-const SURFACES: Readonly<Record<HostedEngineId, EngineSurface>> = {
+const SURFACES: Partial<Readonly<Record<HostedEngineId, EngineSurface>>> = {
   'claude-code': {
     commands: () => [...CLAUDE_CODE_COMMANDS, ...discoverUserSlashCommands()],
     skills: control => new ClaudeCodeSkillProvider(control),
@@ -80,6 +87,9 @@ export function registerEngineSurface(
   warn: (message: string) => void,
 ): void {
   const surface = SURFACES[engine]
+  // No row is a complete answer — the engine bridges nothing — so the whole
+  // function is a no-op for it rather than a partly-run bridge.
+  if (surface === undefined) return
   const commands = agent.ctx.get('commands') as CommandsService | undefined
   if (commands !== undefined && surface.commands !== undefined) {
     for (const command of surface.commands()) {

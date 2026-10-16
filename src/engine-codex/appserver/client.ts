@@ -42,9 +42,23 @@ export type StderrHandler = (line: string) => void
 
 const require = createRequire(import.meta.url)
 
-/** Resolve the CLI entrypoint from this package's pinned `@openai/codex` dependency. */
-function codexCliEntrypoint(): string {
-  return join(dirname(require.resolve('@openai/codex/package.json')), 'bin', 'codex.js')
+/**
+ * Resolve the argv prefix that launches the codex CLI.
+ *
+ * Two shapes, and the difference is why this returns an array rather than a
+ * path: the BUNDLED dependency is a Node script, so it must be run under the
+ * current node (`process.execPath`), while an EXTERNAL executable the
+ * deployment pinned is usually a real binary and is spawned directly. A pinned
+ * `.js`/`.mjs`/`.cjs` path is treated as a script and run under node, so
+ * pointing `bins.codexBin` at an unpacked bundled copy also works.
+ * @param bin - the deployment's pinned executable, or undefined for the bundled one.
+ * @returns the argv prefix ending in the codex entrypoint.
+ */
+function codexCliArgvPrefix(bin: string | undefined): string[] {
+  if (bin !== undefined && bin !== '') {
+    return /\.(?:c|m)?js$/i.test(bin) ? [process.execPath, bin] : [bin]
+  }
+  return [process.execPath, join(dirname(require.resolve('@openai/codex/package.json')), 'bin', 'codex.js')]
 }
 
 /** JSON-RPC client for the codex app-server. */
@@ -96,13 +110,20 @@ export class AppServerClient {
    * dsh endpoint was ever handed over.
    * @param argv - extra arguments after the `app-server` subcommand.
    * @param env - explicit environment entries layered over the ambient one.
+   * @param bin - an external codex executable to launch instead of the bundled
+   *   dependency; absent runs the bundled copy, byte-for-byte the old argv.
    * @returns the initialized client.
    */
   static async create(
     argv: readonly string[] = [],
     env: NodeJS.ProcessEnv = {},
+    bin?: string,
   ): Promise<AppServerClient> {
-    const proc = spawn(process.execPath, [codexCliEntrypoint(), 'app-server', ...argv], {
+    const [command, ...prefix] = codexCliArgvPrefix(bin)
+    /* v8 ignore start -- the prefix always has a command; the guard is a type narrowing, not a branch */
+    if (command === undefined) throw new Error('codex: could not resolve the CLI executable')
+    /* v8 ignore stop */
+    const proc = spawn(command, [...prefix, 'app-server', ...argv], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, ...env },
     })

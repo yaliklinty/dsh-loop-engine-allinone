@@ -22,4 +22,14 @@ export interface ResolvedConfig {
   readonly model: string | undefined
   readonly disposeGraceMs: number
   readonly maxTurns: number | undefined
+  /**
+   * An EXTERNAL Claude Code executable to run instead of the SDK's own bundled
+   * one, or `undefined` to keep the bundled binary.
+   *
+   * Handed to the SDK's own `pathToClaudeCodeExecutable` option, which is a
+   * public SDK surface — the SDK then launches this binary rather than the copy
+   * it ships. The bundled copy keeps its own credential semantics, so a
+   * deployment that pins a path must have signed that install in itself.
+   */
+  readonly bin: string | undefined
 }

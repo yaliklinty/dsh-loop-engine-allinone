@@ -61,6 +61,7 @@ import { dirname, join } from 'node:path'
 import { dropSeedPlaceholder, ensureTrailingNewline } from './patch-manager.ts'
 import type { HostedEngineId } from './agent-preset-ids.ts'
 import { HOSTED_ENGINE_IDS, SOURCE_PRESET_ID, enginePresetId } from './agent-preset-ids.ts'
+import { ENGINE_REGISTRY } from './engine-registry.ts'
 
 // The engine↔preset-id mapping is pure identity arithmetic, so it lives in the
 // zero-import `./agent-preset-ids.ts` (the browser half needs it; this file
@@ -300,16 +301,9 @@ export function applyEnginePresetRows(
 
 /** Display metadata one managed preset renders, as its `preset.yml` document. */
 function managedMetadata(engine: HostedEngineId): string {
-  return `name: ${ENGINE_DISPLAY_NAMES[engine]}\n`
-    + `description: ${ENGINE_DISPLAY_NAMES[engine]}, with the dsh-native commands and skills it replaces removed.\n`
-}
-
-/** Human-readable engine names for the preset picker. */
-const ENGINE_DISPLAY_NAMES: Readonly<Record<HostedEngineId, string>> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  pi: 'Pi',
-  kimi: 'Kimi Code',
+  const { label } = ENGINE_REGISTRY[engine]
+  return `name: ${label}\n`
+    + `description: ${label}, with the dsh-native commands and skills it replaces removed.\n`
 }
 
 /** A top-level entry opener (`- …` at column 0). */

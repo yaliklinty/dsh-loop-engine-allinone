@@ -690,6 +690,7 @@ export class ClaudeCodeAgent implements Agent {
         disposeGraceMs: this.config.disposeGraceMs,
         ...model === undefined ? {} : { model },
         ...this.config.maxTurns === undefined ? {} : { maxTurns: this.config.maxTurns },
+        ...this.config.bin === undefined ? {} : { bin: this.config.bin },
         spawn: this.spawn,
         onUnattended: (line) => { diagnostics.push(line) },
       }, controller)

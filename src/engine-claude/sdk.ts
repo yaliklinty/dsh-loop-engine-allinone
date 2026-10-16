@@ -42,6 +42,16 @@ export interface ClaudeCodeQuerySpec {
   /** Cap on the number of conversation turns before the query stops. */
   readonly maxTurns?: number
   /**
+   * An external Claude Code executable for the SDK to launch instead of its own
+   * bundled copy (`Options.pathToClaudeCodeExecutable`).
+   *
+   * A public SDK option rather than a workaround: the SDK spawns whatever path
+   * this names, so a deployment can run an install it signed in itself — with
+   * credentials the bundled copy's own login directory would not have. Absent
+   * keeps the bundled binary, which is what every earlier release did.
+   */
+  readonly bin?: string
+  /**
    * Decide one native permission request through the dsh approval seam.
    * When present, `canUseTool` forwards to it instead of auto-denying.
    */
@@ -101,6 +111,11 @@ export function claudeQueryOptions(
     permissionMode: spec.permissionMode,
     ...spec.model === undefined ? {} : { model: spec.model },
     ...spec.maxTurns === undefined ? {} : { maxTurns: spec.maxTurns },
+    // Hand the SDK an external Claude Code binary when the deployment pinned
+    // one. Omitted keeps the SDK's own bundled copy, byte-for-byte the earlier
+    // behaviour — this is the whole of the "unbind the bundled engine" feature,
+    // because the SDK does the rest itself.
+    ...spec.bin === undefined ? {} : { pathToClaudeCodeExecutable: spec.bin },
     ...spec.permissionMode === 'bypassPermissions'
       ? { allowDangerouslySkipPermissions: true }
       : {

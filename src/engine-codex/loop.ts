@@ -59,6 +59,12 @@ export interface Config {
    * the child for the session's whole life.
    */
   childIdleMs?: number
+  /**
+   * An EXTERNAL `codex` executable, replacing this package's bundled
+   * `@openai/codex` dependency. Omitted keeps the bundled copy, which is what
+   * every earlier release ran.
+   */
+  bin?: string
 }
 
 /** Schema of the Codex loop plugin configuration. */
@@ -68,6 +74,7 @@ export const Config: z<Config> = z.object({
   env: z.dict(z.string()).default({}),
   model: z.string(),
   childIdleMs: z.number(),
+  bin: z.string(),
 })
 
 /** Resolve the driver configuration at the plugin config boundary. */
@@ -78,6 +85,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     env: config.env ?? {},
     model: config.model,
     childIdleMs: config.childIdleMs ?? 0,
+    bin: config.bin === undefined || config.bin === '' ? undefined : config.bin,
   }
 }
 

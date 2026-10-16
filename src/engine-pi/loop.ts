@@ -51,6 +51,12 @@ export interface Config {
   thinkingLevel?: string
   /** Explicit environment entries passed to the `pi` child. */
   env?: Record<string, string>
+  /**
+   * An EXTERNAL Pi CLI entrypoint, replacing this package's bundled
+   * `@earendil-works/pi-coding-agent`. Omitted keeps the bundled copy, which is
+   * what every earlier release ran.
+   */
+  bin?: string
 }
 
 /** Schema of the Pi loop plugin configuration. */
@@ -60,6 +66,7 @@ export const Config: z<Config> = z.object({
   model: z.string(),
   thinkingLevel: z.string(),
   env: z.dict(z.string()).default({}),
+  bin: z.string(),
 })
 
 /** Resolve the driver configuration at the plugin config boundary. */
@@ -70,6 +77,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     model: config.model,
     thinkingLevel: config.thinkingLevel,
     env: config.env ?? {},
+    bin: config.bin === undefined || config.bin === '' ? undefined : config.bin,
   }
 }
 
@@ -90,11 +98,22 @@ function piCliEntrypoint(): string {
   return join(root, rel)
 }
 
-/** Project the driver's spawn request onto the dsh subprocess seam. */
+/**
+ * Project the driver's spawn request onto the dsh subprocess seam.
+ *
+ * `spec.argv[0]` is the resolved Pi entrypoint. The BUNDLED one is a Node
+ * script, so it is run under the current node; an external path the deployment
+ * pinned may be a real binary (an npm-installed `pi` shim, a packaged build),
+ * so a non-script path is spawned directly. That is the whole difference a
+ * pinned `bin` makes here.
+ */
 function piSubprocessSpec(spec: PiSpawnSpec, graceMs: number): SubprocessSpawnSpec {
+  const [entrypoint, ...rest] = spec.argv
+  /* v8 ignore start -- the driver always builds argv with an entrypoint; the guard is type narrowing */
+  if (entrypoint === undefined) throw new Error('agent-loop-pi: the spawn spec has no entrypoint')
+  /* v8 ignore stop */
   return {
-    // `spec.argv[0]` is the Pi CLI entrypoint; run it under the current node.
-    argv: [process.execPath, ...spec.argv],
+    argv: /\.(?:c|m)?js$/i.test(entrypoint) ? [process.execPath, entrypoint, ...rest] : [entrypoint, ...rest],
     cwd: spec.cwd,
     stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
     graceMs,
@@ -157,7 +176,7 @@ export class PiLoop extends HostedEngineRuntime<ResolvedConfig, PiAgent> {
     if (subprocess === undefined) {
       throw new Error('loop-engine: the pi engine needs the dsh subprocess service on this context')
     }
-    this.bin = piCliEntrypoint()
+    this.bin = this.config.bin ?? piCliEntrypoint()
     this.spawn = (spec) => fromSubprocess(subprocess.spawn(piSubprocessSpec(spec, PI_DISPOSE_GRACE_MS)))
   }
 

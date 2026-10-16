@@ -25,10 +25,20 @@ async function source(path: string): Promise<string> {
 }
 
 describe('agent-preset-ids is zero-import', () => {
-  it('imports nothing, so the browser half can carry the mapping', async () => {
-    const text = await source('../src/agent-preset-ids.ts')
-    expect(text).not.toMatch(/^\s*import\b/m)
-    expect(text).not.toMatch(/\brequire\s*\(/)
+  it('imports nothing host-side, so the browser half can carry the mapping', async () => {
+    // The property is "nothing HOST-side is reachable from the browser half",
+    // and it now spans two modules: `agent-preset-ids` owns the preset-id
+    // arithmetic and `engine-registry` owns the roster and the descriptors the
+    // settings page renders. A BARE (non-relative) import in either one is what
+    // would pull a host package (`dsh-settings`, `schemastery`, `node:fs`) into
+    // the client artifact, so that is what is forbidden — a relative import
+    // between the two is fine, and is exactly how the roster stays single-sourced.
+    for (const path of ['../src/agent-preset-ids.ts', '../src/engine-registry.ts'] as const) {
+      const text = await source(path)
+      expect(text, path).not.toMatch(/^\s*import\b[^\n]*\bfrom\s+['"][^.]/m)
+      expect(text, path).not.toMatch(/^\s*import\s+['"][^.]/m)
+      expect(text, path).not.toMatch(/\brequire\s*\(/)
+    }
   })
 
   it('keeps the id roster in one place', () => {
