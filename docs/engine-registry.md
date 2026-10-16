@@ -202,6 +202,7 @@ export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: strin
 | Claude `stream-json` 方言 | `stream-json.ts` | `system/init`·`assistant`·`user(tool_result)`·`result` → 帧 | **qoderclicn**（Claude Code 本体及同族 fork 通用） |
 | 纯文本 | `text.ts` | 整段 stdout 即回答；**退出码算答案的一部分** | **hermes**、**zcode** |
 | JSON-RPC | — （见 §6 TODO） | codex 的 app-server / zcode 的 app-server | 待补公共骨架 |
+| `event` 信封 | `engine-agy/frames.ts` | `event` + `step_update`（`step_type`/`state`）+ `result` | **agy**（行业样板：init 拿会话 id、`text_delta` 流式、`step_type:"tool"` 工具） |
 
 判定顺序：
 
@@ -260,6 +261,34 @@ node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-driver.ts myengine
 ---
 
 ## 5. 已知的坑（都是踩过的）
+
+### 5.0 stdin 每一行必须带 `event` 判别字段（agy）
+
+`{"type":"user","message":{…}}` → `error: stream input message is missing the "event" field`。
+正确形状 `{"event":"user","message":{…}}`。实测 `message` / `prompt` / `user_message`
+只是 **warning 并被忽略**，而 `user` 少了 `message` 成员是 error。
+
+**通用教训**：①别照搬别家 CLI 的字段名（Claude 方言用 `type`，agy 用 `event`）；
+②"未知判别值只 warning 不失败"是好设计——将来引擎加输入类型不会搞崩驱动。
+
+### 5.0b 协议不给 call id 时怎么合成（agy）
+
+dsh 的 pending-tool 映射按 id 索引，且**一个 id 只允许一条结果**。
+agy 只用 `step_index` 标识会话内的工具，所以合成
+`` `${conversation_id}-tool-${step_index}` ``。**前提是"每趟都开新会话"**
+（驱动不传 `--conversation`）；一旦改成复用会话，这个 id 就不再唯一，
+必须换成真正的全局计数器。
+
+### 5.0c 权限开关可能不是你猜的那个旗标（agy）
+
+agy 的 `--mode`（accept-edits/auto/plan）**不改变** `permission_mode`；
+headless 下它固定是 `request-review`，**任何需要授权的工具都被自动拒绝**
+（CLI 原话：`a tool required the "command" permission that headless mode cannot
+prompt for, so it was auto-denied`）。真正让它跑工具的是
+`--dangerously-skip-permissions`（→ `always-proceed`）。
+
+**通用教训**：接入前把"哪个旗标真的改变了权限行为"实测出来（看 init 帧里的
+`permission_mode` 之类字段），不要照名字猜。
 
 ### 5.1 可选值旗标会吃掉下一个参数（agy）
 
