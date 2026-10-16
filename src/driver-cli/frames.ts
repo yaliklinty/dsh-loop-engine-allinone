@@ -51,10 +51,16 @@ export interface ToolResultFrame {
 export type CliFrame =
   /** A new assistant segment began; deltas after this belong to it. */
   | { readonly kind: 'segment' }
-  /** Streamed answer text. */
-  | { readonly kind: 'text'; readonly text: string }
-  /** Streamed reasoning text. */
-  | { readonly kind: 'reasoning'; readonly text: string }
+  /**
+   * Streamed answer text.
+   *
+   * `index` is the protocol's own content-block index when it reports one, so a
+   * message with several text blocks keeps the model's own layout. An adapter
+   * that has no index leaves it out, and the sink assigns one.
+   */
+  | { readonly kind: 'text'; readonly text: string; readonly index?: number }
+  /** Streamed reasoning text; `index` as for the `text` member. */
+  | { readonly kind: 'reasoning'; readonly text: string; readonly index?: number }
   /** The engine announced a tool call. */
   | { readonly kind: 'tool-call'; readonly call: ToolCallFrame }
   /** The engine reported a tool result. */

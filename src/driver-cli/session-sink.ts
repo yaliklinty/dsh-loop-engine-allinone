@@ -111,6 +111,24 @@ export class SessionSink {
   private readonly startedReasoning = new Set<number>()
   /** Reasoning accumulated by content index, for engines that stream it without a final block. */
   private readonly thinkingByIndex = new Map<number, string>()
+  /**
+   * Answer text accumulated by content index.
+   *
+   * Present so a message can be built from the DELTAS when the protocol never
+   * hands over a finished message — and so a whole-message commit can replace
+   * the accumulation instead of double-counting it.
+   */
+  private readonly textByIndex = new Map<number, string>()
+  /**
+   * The content-block index each kind is currently appending to, and the next
+   * index to hand out when a kind starts a new block.
+   *
+   * Kept per kind rather than shared because text and reasoning interleave: a
+   * reasoning chunk between two text chunks must not split the text.
+   */
+  private readonly openIndex: { text: number | undefined; reasoning: number | undefined } =
+    { text: undefined, reasoning: undefined }
+  private nextIndex = 0
   /** Call ids already announced, so a protocol that repeats one announces it once. */
   private readonly announced = new Set<string>()
   /** Call ids already written a result, so a repeated report is dropped. */
@@ -143,6 +161,10 @@ export class SessionSink {
     this.startedText.clear()
     this.startedReasoning.clear()
     this.thinkingByIndex.clear()
+    this.textByIndex.clear()
+    this.openIndex.text = undefined
+    this.openIndex.reasoning = undefined
+    this.nextIndex = 0
     this.pendingToolCalls = []
     this.pendingCallLog = []
     this.callsToLog = []
@@ -197,10 +219,10 @@ export class SessionSink {
         this.openSegment(position)
         return
       case 'text':
-        this.streamChunk('text', frame.text, position)
+        this.streamChunk('text', frame.text, position, frame.index)
         return
       case 'reasoning':
-        this.streamChunk('reasoning', frame.text, position)
+        this.streamChunk('reasoning', frame.text, position, frame.index)
         return
       case 'tool-call':
         this.emitToolCall(frame.call)
@@ -233,6 +255,10 @@ export class SessionSink {
   private openSegment(position: SinkPosition): void {
     if (this.segmentOpen) return
     this.segmentOpen = true
+    // A new assistant segment means the engine moved on from whatever it last
+    // reported: this is what lets an engine that retries and then succeeds be
+    // reported as a success rather than as its first failed attempt.
+    this.failure = undefined
     if (this.settledTools === 0 || !this.stepTools.balanced) return
     this.closeOpenStep(position)
     position.step += 1
@@ -251,6 +277,12 @@ export class SessionSink {
    * @param position - the open position.
    */
   closeStep(position: SinkPosition): void {
+    // A call the engine announced but whose owning message was never committed
+    // still has to own one, or `closeStep` would leave it out of the log
+    // entirely: `stepTools` only knows ANNOUNCED calls, and announcing happens at
+    // commit. Committing here also carries any text streamed alongside it, so
+    // nothing the engine said is lost when a step ends early.
+    if (this.pendingToolCalls.length > 0) this.flushHeld(position)
     this.closeOpenStep(position)
     this.stepTools.clear()
     this.settledTools = 0
@@ -262,31 +294,46 @@ export class SessionSink {
   }
 
   /**
-   * Stream one chunk, opening its block and its live attempt as needed.
+   * Stream one chunk: publish its live frame AND accumulate it into the durable
+   * message being built.
+   *
+   * The two halves are both required and neither implies the other. The live
+   * frames are what the UI paints while the answer arrives; the accumulated
+   * blocks are what the session log stores. Accumulating only the frames (or
+   * only the blocks) produces a session whose durable message is missing the
+   * text the user watched being written — which is why this is one function.
+   *
+   * Blocks are keyed by content index, so a protocol that reports its own index
+   * keeps the model's own block layout, and one that does not gets a fresh block
+   * per switch between text and reasoning. Either way the durable message folds
+   * reasoning before text, matching the ordering the in-process loop produces.
    * @param kind - whether this is answer text or reasoning.
    * @param text - the delta.
    * @param position - the open position, for the live attempt's framing.
+   * @param explicitIndex - the protocol's own content index, when it reports one.
    */
-  private streamChunk(kind: 'text' | 'reasoning', text: string, position: SinkPosition): void {
+  private streamChunk(kind: 'text' | 'reasoning', text: string, position: SinkPosition, explicitIndex?: number): void {
     // A chunk with no open segment means the protocol does not mark segment
     // starts (or marks them differently): open one implicitly, so the step
     // rotation above still happens at the right boundary.
     this.openSegment(position)
-    const index = kind === 'text' ? this.startedText.size : this.startedReasoning.size
-    if (kind === 'text') {
-      if (!this.startedText.has(index)) {
-        this.startedText.add(index)
-        this.currentStream(position).push({ type: 'block-start', index, blockType: 'text' })
-      }
-      this.currentStream(position).push({ type: 'text-delta', index, text })
-      return
+    // Without a protocol index, deltas of one kind accumulate into ONE block:
+    // a counter per delta would give every token its own text block, so a
+    // two-chunk answer would commit as two blocks instead of one string. A
+    // protocol that reports its own index keeps the model's own layout.
+    const index = explicitIndex ?? this.openIndex[kind] ?? (this.openIndex[kind] = this.nextIndex++)
+    const buffer = kind === 'text' ? this.textByIndex : this.thinkingByIndex
+    buffer.set(index, (buffer.get(index) ?? '') + text)
+    const started = kind === 'text' ? this.startedText : this.startedReasoning
+    if (!started.has(index)) {
+      started.add(index)
+      this.currentStream(position).push({ type: 'block-start', index, blockType: kind === 'text' ? 'text' : 'reasoning' })
     }
-    if (!this.startedReasoning.has(index)) {
-      this.startedReasoning.add(index)
-      this.currentStream(position).push({ type: 'block-start', index, blockType: 'reasoning' })
-    }
-    this.currentStream(position).push({ type: 'reasoning-delta', index, text })
-    this.thinkingByIndex.set(index, (this.thinkingByIndex.get(index) ?? '') + text)
+    this.currentStream(position).push(
+      kind === 'text'
+        ? { type: 'text-delta', index, text }
+        : { type: 'reasoning-delta', index, text },
+    )
   }
 
   /**
@@ -376,12 +423,10 @@ export class SessionSink {
    * @param position - the open position.
    */
   private ensureToolCallOwner(position: SinkPosition): void {
-    if (this.pendingToolCalls.length === 0) return
-    this.flushHeld(position)
-    this.held = { content: [...this.pendingToolCalls] }
-    this.pendingToolCalls = []
-    this.callsToLog = this.pendingCallLog
-    this.pendingCallLog = []
+    // One commit, not two: text the engine streamed and the tool call it then
+    // announced belong to the SAME assistant turn, so they belong in the same
+    // durable message. Committing them separately would split one model turn
+    // into two messages, and a replay would show the model answering twice.
     this.flushHeld(position)
   }
 
@@ -391,9 +436,16 @@ export class SessionSink {
    * @param usage - usage to attach, when this message closes the run.
    */
   private flushHeld(position: SinkPosition, usage?: TokenUsage): void {
-    if (this.held === undefined) return
+    // A streaming protocol never holds a message explicitly: its content IS the
+    // accumulation, so a run that streamed text and then ended still commits it.
+    // Without this the durable message would be missing the whole answer while
+    // the UI had shown it arriving.
+    if (this.held === undefined) {
+      if (this.textByIndex.size === 0 && this.thinkingByIndex.size === 0 && this.pendingToolCalls.length === 0) return
+      this.held = { content: [] }
+    }
     const attempt = this.live
-    const content = this.foldPendingCalls(this.held.content)
+    const content = this.foldPendingCalls([...this.held.content, ...this.accumulatedBlocks()])
     const data = {
       turn: position.turn,
       step: position.step,
@@ -411,6 +463,17 @@ export class SessionSink {
       this.live = undefined
     }
     this.held = undefined
+    // A committed message IS the answer: `finish` uses this to tell "the engine
+    // answered" from "the engine settled without saying anything".
+    this.assistantFlushed = true
+    // The committed message owns what was accumulated; the next segment starts
+    // from an empty buffer rather than re-committing the same text.
+    this.textByIndex.clear()
+    this.thinkingByIndex.clear()
+    this.startedText.clear()
+    this.startedReasoning.clear()
+    this.openIndex.text = undefined
+    this.openIndex.reasoning = undefined
     // The message just committed owns these calls; log them AFTER it, so the
     // durable log reads assistant/message → tool/call → tool/result.
     for (const call of this.callsToLog) {
@@ -424,6 +487,42 @@ export class SessionSink {
       })
     }
     this.callsToLog = []
+  }
+
+  /**
+   * Drop the deltas accumulated for the segment being replaced.
+   *
+   * A protocol that streams partials AND hands over a finished message has said
+   * the same thing twice; the finished message is authoritative, so the partials
+   * are discarded rather than committed as a second message.
+   */
+  private clearAccumulation(): void {
+    this.textByIndex.clear()
+    this.thinkingByIndex.clear()
+    this.startedText.clear()
+    this.startedReasoning.clear()
+    this.openIndex.text = undefined
+    this.openIndex.reasoning = undefined
+  }
+
+  /**
+   * Build the content blocks the streamed deltas accumulated.
+   *
+   * Reasoning first, then text: that is the ordering the in-process loop's own
+   * messages use, and a durable message that put the answer before the model's
+   * reasoning would read wrong on replay.
+   * @returns the accumulated blocks, in durable order.
+   */
+  private accumulatedBlocks(): ContentBlock[] {
+    const reasoning: ContentBlock[] = [...this.thinkingByIndex.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .filter(([, text]) => text !== '')
+      .map(([, text]) => ({ type: 'reasoning', text }))
+    const text: ContentBlock[] = [...this.textByIndex.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .filter(([, value]) => value !== '')
+      .map(([, value]) => ({ type: 'text', text: value }))
+    return [...reasoning, ...text]
   }
 
   /** Fold any not-yet-flushed tool-call blocks into the message being committed. */
@@ -450,12 +549,12 @@ export class SessionSink {
    */
   commitWholeMessage(text: string, reasoning: string | undefined, position: SinkPosition): void {
     this.openSegment(position)
-    this.flushHeld(position)
     const content: ContentBlock[] = []
     if (reasoning !== undefined && reasoning !== '') content.push({ type: 'reasoning', text: reasoning })
     if (text !== '') content.push({ type: 'text', text })
+    // The finished answer replaces any partial the protocol also streamed.
+    this.clearAccumulation()
     this.held = { content }
-    this.assistantFlushed = true
     this.flushHeld(position, this.lastUsage)
   }
 
@@ -479,9 +578,10 @@ export class SessionSink {
         .map(([, text]) => ({ type: 'reasoning', text }))
       blocks = [...folded, ...blocks]
     }
-    this.flushHeld(position)
+    // The protocol's own message replaces the deltas it streamed for the same
+    // segment, so the durable log carries one message, not two.
+    this.clearAccumulation()
     this.held = { content: blocks }
-    this.assistantFlushed = true
     this.flushHeld(position, usage ?? this.lastUsage)
   }
 
