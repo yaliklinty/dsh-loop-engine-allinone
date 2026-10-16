@@ -1580,6 +1580,8 @@ describe('apply router mount', () => {
       bins: { kimiBin: '/fake/kimi' },
       childIdleMs: 15000,
     })
+    // (the legacy top-level `kimiBin` alias is exercised in the next test, so
+    // this one covers the registry form)
 
     await createHostedSessions(ctx)
     const env = { ENGINE_ENV: '1' }

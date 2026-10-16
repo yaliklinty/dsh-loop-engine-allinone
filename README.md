@@ -2,7 +2,40 @@
 
 [![npm version](https://img.shields.io/npm/v/dsh-loop-engine?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine)
 
-Pick **dsh web**'s agent loop engine **per session** — the built-in `in-process` loop (the default), or one of the hosted engines `claude-code` / `codex` / `pi` / `kimi`. Sessions are independent: one chat can run Codex while another runs Kimi. Any open, idle session can move engines — between two hosted engines the handover is **in place**, and a move involving `in-process` **reloads the page** (the `dsh web` process never restarts). Nothing in the main repository changes.
+Pick **dsh web**'s agent loop engine **per session** — the built-in `in-process` loop (the default), or one of the hosted engines `claude-code` / `codex` / `pi` / `kimi` / `agy` / `zcode` / `qoderclicn` / `hermes`. Sessions are independent: one chat can run Codex while another runs Kimi. Any open, idle session can move engines — between two hosted engines the handover is **in place**, and a move involving `in-process` **reloads the page** (the `dsh web` process never restarts). Nothing in the main repository changes.
+
+> **This is a fork.** It adds a data-driven engine registry and a pluggable CLI
+> driver layer, so that adding an engine is a registry row plus a driver instead
+> of edits in five places. The four original engines are untouched. See
+> [docs/engine-registry.md](docs/engine-registry.md) for the "add an engine"
+> recipe, and the fork's `output/` reports for the protocol probes each new
+> engine was written against.
+
+## Engine registry
+
+Every engine-shaped decision derives from ONE table,
+[`src/engine-registry.ts`](src/engine-registry.ts): the id roster, the settings
+schema's union, the authored preset ids and display names, the browser half's
+option list and copy keys, and the driver dispatch
+([`src/engine-drivers.ts`](src/engine-drivers.ts)). Both tables are total over
+the hosted ids, so a half-added engine fails the build rather than shipping an
+engine that mounts but cannot be selected.
+
+Each row declares what the surfaces need to know: human-readable label, source
+repo, whether the engine is an npm-bundled dependency or an external CLI, the key
+its executable override reads, its version/update argv, its login hint, its
+credential paths, and its **capabilities** (`streaming`, wire `protocol`,
+`sessionResume`, `permissionModes`, `images`, `reasoningLevels`). Capabilities are
+declarations, not discoveries: a surface never promises more than the engine was
+verified to do, and a driver asked for something outside its declaration refuses
+with the user's next action rather than degrading silently.
+
+New engines implement one method. `src/driver-cli/` supplies the rest: the
+turn/step lifecycle (`cli-agent.ts`), the durable-log writer
+(`session-sink.ts` — where the session format's "refuse to load" rules are
+enforced in one place), the subprocess transport, and four protocol skeletons
+(`ndjson`, `stream-json` for the Claude-Code dialect, `text`, plus the existing
+engines' ACP and JSON-RPC drivers as their templates).
 
 ## Install
 
@@ -30,10 +63,14 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
 
 | Engine | Needs, on the host |
 |---|---|
-| Claude Code | the Claude Code CLI installed and logged in |
+| Claude Code | the Claude Code CLI installed and logged in (or none: the SDK ships a bundled binary) |
 | Codex | `codex login`, or a `CODEX_API_KEY` environment entry |
 | Pi | whatever `pi` expects (its own `~/.pi/agent/auth.json`, or the provider's API-key variable) |
-| Kimi Code | the `kimi` CLI installed and logged in, on `PATH` (or pinned via `kimiBin`) |
+| Kimi Code | the `kimi` CLI installed and logged in, on `PATH` (or pinned via `bins.kimiBin`) |
+| Antigravity | the `agy` CLI installed and signed in to Google |
+| ZCode | the ZCode CLI and a live GLM Coding Plan subscription |
+| Qoder CN | the `qoderclicn` CLI installed and signed in |
+| Hermes Agent | the `hermes` CLI installed and signed in; it reads its own `HERMES_HOME`, which the child inherits |
 
 ## Usage
 
@@ -45,6 +82,15 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
   - A mid-turn session is refused, and a subagent's session cannot be moved.
 - **The header chip** beside the preset label names the engine the session on screen actually runs; *Show the engine badge in the conversation header* turns it off (and the header keeps no trace of the plugin).
 - **Models** — all hosted engines share one `external` group whose single entry, `default`, means "the engine decides". Picking a **real dsh model** hands it to the engine together with its endpoint and credential; whether the engine can serve it is the engine's business, and a refusal is reported rather than swallowed. `in-process` sessions use dsh's models normally.
+- **`bins`** (composition entry, optional) — per-engine executable overrides, keyed by each engine's registry `binConfigKey`. Pointing a **bundled** engine at an external CLI is how it is unbound: `claudeBin` reaches the SDK's own `pathToClaudeCodeExecutable`, while `codexBin` / `piBin` replace the entrypoint those drivers launch. Not setting one keeps the bundled copy and its argv byte for byte:
+  ```yaml
+  - id: loop-engine
+    config:
+      bins:
+        claudeBin: 'D:/tools/claude.exe'
+        kimiBin: 'D:/tools/kimi.exe'
+        qoderclicnBin: 'D:/tools/qoderclicn.exe'
+  ```
 - **`childIdleMs`** (composition entry, milliseconds, default `0` = off) — Kimi and Codex keep **one child process per session** across steps; this closes it after that much idle time and respawns it on the next step. Only the child is closed, so nothing reloads. Pi and Claude Code spawn per step and are unaffected.
 - **`engineContextWindow`** (composition entry, tokens, default `262144`) — the context window dsh assumes for the shared hosted route. It is what dsh's auto-compaction measures a hosted session against (it fires at 80% of this by default), because a hosted engine reports no capacity of its own. Set it to the **smallest** window among the engines you run.
 - **`summarizerProvider` / `summarizerModel`** (composition entry, **set together or not at all**) — the real dsh model a hosted session's **compaction** summarizes through, e.g. `deepseek-official` / `deepseek-flash`. Compaction is dsh's own (its preset keeps the `compaction` group), but the summarizing *call* is an ordinary llm request, and a hosted session's routed model is the plugin's placeholder route — so without this pair a hosted session can never be folded down: every attempt logs a warning and the turn continues. The pair only serves that call; the engine still answers every user turn itself. Composing just one of the two (or an empty string) is refused at boot, not silently ignored.

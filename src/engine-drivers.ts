@@ -81,6 +81,19 @@ export interface EngineDriverConfig {
   /** Hermes: pinned reasoning level (`--reasoning`). */
   hermesReasoning?: string
   /**
+   * The Kimi engine's executable, as every release before the registry exposed
+   * it.
+   *
+   * Kept as a working alias rather than removed: it is a published composition
+   * field, so a deployment that set it must keep working unchanged, and silently
+   * ignoring a configured path would point the engine at a different binary than
+   * the operator chose. {@link EngineDriverConfig.bins} WINS when both are set —
+   * the newer, engine-agnostic form is the one to prefer.
+   *
+   * @deprecated use `bins.kimiBin`.
+   */
+  kimiBin?: string
+  /**
    * Per-engine executable overrides, keyed by each descriptor's
    * {@link EngineDescriptor.binConfigKey}.
    *
@@ -105,10 +118,12 @@ export type EngineDriverFactory = (ctx: Context, config: EngineDriverConfig) => 
 function pinnedBin(
   config: EngineDriverConfig,
   binConfigKey: string | undefined,
+  legacy: string | undefined = undefined,
 ): string | undefined {
   if (binConfigKey === undefined) return undefined
   const value = config.bins?.[binConfigKey]
-  return value === undefined || value === '' ? undefined : value
+  if (value !== undefined && value !== '') return value
+  return legacy === undefined || legacy === '' ? undefined : legacy
 }
 
 /**
@@ -160,7 +175,8 @@ export const ENGINE_DRIVER_FACTORIES: Readonly<Record<HostedEngineId, EngineDriv
   },
 
   kimi: (ctx, config) => {
-    const bin = pinnedBin(config, 'kimiBin')
+    // `config.kimiBin` is the pre-registry spelling of `bins.kimiBin`.
+    const bin = pinnedBin(config, 'kimiBin', config.kimiBin)
     return new KimiLoop(ctx, {
       ...config.model === undefined ? {} : { model: config.model },
       ...config.env === undefined ? {} : { env: config.env },

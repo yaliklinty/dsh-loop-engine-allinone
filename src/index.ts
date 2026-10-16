@@ -54,8 +54,8 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { AgentPresetsService, LlmRegistry, SettingsMutator } from './driver-core/host-servers.ts'
 import { engineOfSession } from './engine-of-session.ts'
 import { LoopEngineRemote } from './engine-remote.ts'
-import { CLAUDE_CODE_PERMISSION_MODES } from './engine-claude/loop.ts'
-import { CODEX_APPROVAL_POLICIES, CODEX_SANDBOX_MODES } from './engine-codex/loop.ts'
+import { CODEX_APPROVAL_POLICIES } from './engine-codex/loop.ts'
+import { ENGINE_REGISTRY } from './engine-registry.ts'
 import { buildEngineDriver } from './engine-drivers.ts'
 import type { EngineDriverConfig } from './engine-drivers.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
@@ -227,16 +227,23 @@ export const Config: z<ConfigInput, Config> = z.object({
   profile: z.string(),
   patchFilename: z.string(),
   patchPath: z.string(),
-  permissionMode: z.union(CLAUDE_CODE_PERMISSION_MODES.map(mode => z.const(mode))),
+  // Derived from the registry's own capability declaration rather than restated:
+  // a permission mode an engine declares is a mode the entry accepts, so the two
+  // cannot drift.
+  permissionMode: z.union((ENGINE_REGISTRY['claude-code'].capabilities.permissionModes ?? []).map(mode => z.const(mode))),
   env: z.dict(z.string()),
   model: z.string(),
   disposeGraceMs: z.number(),
   maxTurns: z.number(),
-  sandboxMode: z.union(CODEX_SANDBOX_MODES.map(mode => z.const(mode))),
+  sandboxMode: z.union((ENGINE_REGISTRY.codex.capabilities.permissionModes ?? []).map(mode => z.const(mode))),
   approvalPolicy: z.union(CODEX_APPROVAL_POLICIES.map(policy => z.const(policy))),
   piProvider: z.string(),
   piThinking: z.string(),
   bins: z.dict(z.string()),
+  // The pre-registry spelling of `bins.kimiBin`, kept in the schema so an
+  // existing deployment's `kimiBin:` still validates and still selects its
+  // binary (see `EngineDriverConfig.kimiBin`).
+  kimiBin: z.string(),
   childIdleMs: z.number(),
   // A capacity of zero or a fraction is a misconfiguration that would silently
   // disable compaction (the threshold would never be crossed), so it is
