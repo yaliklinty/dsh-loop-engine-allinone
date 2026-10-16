@@ -81,7 +81,7 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LoopEngineStore, LoopEngineState } from './store.ts'
 import type { LoopEngineId } from '../agent-preset-ids.ts'
-import { isHostedEngine } from '../agent-preset-ids.ts'
+import { isHostedEngine, LOOP_ENGINE_IDS } from '../agent-preset-ids.ts'
 import { useEngineOfSession } from './use-session-engine.ts'
 import {
   engineSwitchReady, switchNeedsReload,
@@ -134,13 +134,9 @@ const IconChevronDown = ((
   primitives as Record<string, unknown>
 ).IconChevronDownOutline14) as ChevronGlyph
 
-const ENGINE_OPTIONS: readonly { value: LoopEngineId; key: keyof typeof en }[] = [
-  { value: 'in-process', key: 'engineInProcess' },
-  { value: 'claude-code', key: 'engineClaudeCode' },
-  { value: 'codex', key: 'engineCodex' },
-  { value: 'pi', key: 'enginePi' },
-  { value: 'kimi', key: 'engineKimi' },
-]
+/** The engine menu's rows, derived from the engine registry. */
+const ENGINE_OPTIONS: readonly { value: LoopEngineId; key: keyof typeof en }[] =
+  LOOP_ENGINE_IDS.map(value => ({ value, key: engineLabelKey(value) }))
 
 /**
  * What the trigger shows for one resolved status: the copy key, the engine whose

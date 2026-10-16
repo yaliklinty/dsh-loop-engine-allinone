@@ -24,8 +24,9 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LoopEngineStore, LoopEngineState } from './store.ts'
 import type { LoopEngineId } from '../agent-preset-ids.ts'
-import { isHostedEngine } from '../agent-preset-ids.ts'
+import { isHostedEngine, LOOP_ENGINE_IDS } from '../agent-preset-ids.ts'
 import type { en } from './locales.ts'
+import { engineLabelKey } from './locales.ts'
 
 /** Injected dependencies of {@link LoopEngineSection} (slot `inject`). */
 export interface LoopEngineSectionInjected {
@@ -59,24 +60,9 @@ const IconChevronDown = ((
 
 type SectionFace = InjectFace<LoopEngineSectionInjected>
 
-const ENGINE_OPTIONS: readonly { value: LoopEngineId; key: keyof typeof en }[] = [
-  { value: 'in-process', key: 'engineInProcess' },
-  { value: 'claude-code', key: 'engineClaudeCode' },
-  { value: 'codex', key: 'engineCodex' },
-  { value: 'pi', key: 'enginePi' },
-  { value: 'kimi', key: 'engineKimi' },
-]
-
-/** Locale key of one engine's option label. */
-function engineLabelKey(engine: LoopEngineId): keyof typeof en {
-  switch (engine) {
-    case 'claude-code': return 'engineClaudeCode'
-    case 'codex': return 'engineCodex'
-    case 'pi': return 'enginePi'
-    case 'kimi': return 'engineKimi'
-    default: return 'engineInProcess'
-  }
-}
+/** The settings dropdown's rows, derived from the engine registry. */
+const ENGINE_OPTIONS: readonly { value: LoopEngineId; key: keyof typeof en }[] =
+  LOOP_ENGINE_IDS.map(value => ({ value, key: engineLabelKey(value) }))
 
 /** Token-colored section shell (settings modal: column, 720px, label-primary). */
 const shell: CSSProperties = {

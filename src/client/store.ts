@@ -10,6 +10,7 @@
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { LoopEngineId } from '../agent-preset-ids.ts'
+import { isLoopEngineId } from '../agent-preset-ids.ts'
 import type { LoopEngineSettings } from '../settings.ts'
 
 /** State rendered by the loop engine section. */
@@ -69,9 +70,10 @@ export function decodeLoopEngine(
     showInComposer?: unknown
     showEngineBadge?: unknown
   }
-  if (engine !== 'in-process' && engine !== 'claude-code' && engine !== 'codex' && engine !== 'pi' && engine !== 'kimi') {
-    return undefined
-  }
+  // The roster is read from the registry rather than restated here: an engine
+  // added to the table is decodable at once, and a value this build does not
+  // know is refused rather than silently becoming the default.
+  if (!isLoopEngineId(engine)) return undefined
   // Absent or non-boolean reads true: each surface stays visible unless the
   // setting explicitly clears it.
   return {

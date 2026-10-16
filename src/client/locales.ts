@@ -4,23 +4,16 @@
  */
 
 import { type LoopEngineId, type LoopEngineRefusalCode, type SessionEngine } from '../agent-preset-ids.ts'
+import { ENGINE_REGISTRY, type EngineLocaleKey } from '../engine-registry.ts'
 
-/** Copy keys of the loop engine settings page. */
-export interface LoopEngineKey {
+/** The fixed copy keys of the loop engine settings page. */
+interface LoopEngineFixedKey {
   /** Settings navigation label. */
   nav: string
   /** Panel description under the title. */
   description: string
   /** Option label: the default in-process loop driver. */
   engineInProcess: string
-  /** Option label: the Claude Code CLI driver. */
-  engineClaudeCode: string
-  /** Option label: the Codex CLI driver. */
-  engineCodex: string
-  /** Option label: the Pi CLI driver. */
-  enginePi: string
-  /** Option label: the Kimi Code CLI driver. */
-  engineKimi: string
   /** Option label: a session on the pre-routing single preset id. */
   engineLegacy: string
   /** Option label: a session this plugin holds no engine record for. */
@@ -92,6 +85,19 @@ export interface LoopEngineKey {
   /** Notice shown while a hosted engine drives the session: the model seat is the engine's own business. */
   hostedEngineModelNotice: string
 }
+
+/**
+ * Every copy key of the loop engine settings page.
+ *
+ * The engine labels are DERIVED from the registry's `localeKey` values rather
+ * than listed, so adding an engine makes its label a required entry of both
+ * dictionaries below — the compiler refuses a registry row whose copy nobody
+ * wrote, and a typo in the registry row is a compile error rather than a blank
+ * label at runtime. The fixed keys cover everything that is not one engine's own
+ * name: the two non-engine session states, the panel chrome, and the switch
+ * notices.
+ */
+export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: string }
 
 /** Simplified Chinese copy. */
 export const zh: Record<keyof LoopEngineKey, string> = {
@@ -193,13 +199,11 @@ export const en: Record<keyof LoopEngineKey, string> = {
  * @returns the key of that engine's own label.
  */
 export function engineLabelKey(engine: LoopEngineId): keyof LoopEngineKey {
-  switch (engine) {
-    case 'claude-code': return 'engineClaudeCode'
-    case 'codex': return 'engineCodex'
-    case 'pi': return 'enginePi'
-    case 'kimi': return 'engineKimi'
-    default: return 'engineInProcess'
-  }
+  // Derived: the registry row already names the copy key, so this cannot drift
+  // from the roster. `in-process` is not a registry row — it is the harness's
+  // own loop, not something this plugin hosts — so it is the one literal here.
+  if (engine === 'in-process') return 'engineInProcess'
+  return ENGINE_REGISTRY[engine].localeKey
 }
 
 /**

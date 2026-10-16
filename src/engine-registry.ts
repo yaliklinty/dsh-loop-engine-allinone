@@ -184,11 +184,15 @@ export type LoopEngineId = (typeof LOOP_ENGINE_IDS)[number]
 /**
  * The registry itself: one row per hosted engine.
  *
- * Typed as a total record so TypeScript refuses to build when an id in
- * {@link HOSTED_ENGINE_IDS} has no row — the exhaustiveness check is the reason
- * "add an engine" cannot half-land.
+ * `satisfies` rather than a plain annotation, for two reasons at once. The
+ * `Record` half is the exhaustiveness check: TypeScript refuses to build when an
+ * id in {@link HOSTED_ENGINE_IDS} has no row, so "add an engine" cannot
+ * half-land. The `as const` half keeps every field's LITERAL type, which is what
+ * lets the browser half derive its copy keys from this table
+ * (`EngineLocaleKey` in `./client/locales.ts`) instead of restating the roster —
+ * an annotation would widen `localeKey` to `string` and destroy that.
  */
-export const ENGINE_REGISTRY: Readonly<Record<HostedEngineId, EngineDescriptor>> = {
+export const ENGINE_REGISTRY = {
   'claude-code': {
     id: 'claude-code',
     label: 'Claude Code',
@@ -274,7 +278,7 @@ export const ENGINE_REGISTRY: Readonly<Record<HostedEngineId, EngineDescriptor>>
       reasoningLevels: false,
     },
   },
-}
+} as const satisfies Readonly<Record<HostedEngineId, EngineDescriptor>>
 
 /** Every hosted engine descriptor, in selection order. */
 export const ENGINE_DESCRIPTORS: readonly EngineDescriptor[] =
@@ -320,6 +324,16 @@ export function isLoopEngineId(value: unknown): value is LoopEngineId {
 export function descriptorOf(engine: HostedEngineId): EngineDescriptor {
   return ENGINE_REGISTRY[engine]
 }
+
+/**
+ * The copy key naming one engine in the browser half's dictionary.
+ *
+ * Derived from the table rather than declared, so the union of valid keys grows
+ * with the registry: adding an engine makes its `localeKey` a required entry in
+ * both dictionaries (`./client/locales.ts`), and a typo in a registry row is a
+ * compile error rather than a blank label at runtime.
+ */
+export type EngineLocaleKey = (typeof ENGINE_REGISTRY)[HostedEngineId]['localeKey']
 
 /**
  * The descriptor of one engine, or undefined for `in-process` and for anything
