@@ -1,0 +1,283 @@
+/**
+ * Serialization of the durable session history into the prompt text of one
+ * hosted-engine query. Every hosted driver builds its
+ * per-step input from the durable session log: the transcript is the log's
+ * exact projection, so a later replay of the same log derives the identical
+ * prompt (Model-visible ⟺ logged bridge).
+ *
+ * A step whose live request is an engine slash command is the one exception to
+ * the transcript framing: {@link engineSlashPrompt} sends that command line
+ * verbatim, because the engines only recognize their own commands at the head
+ * of the prompt. It is still derived from the log alone, so the guarantee
+ * holds.
+ *
+ * An image block has no bytes in this output — the transcript is text — so it
+ * renders as placeholder text naming the image and the read-only path
+ * {@link createImageAccessResolver} resolves for it. The reference is the
+ * log's own, so the placeholder keeps the replay guarantee too, and it stays
+ * the invariant every engine keeps even when the engine's own protocol also
+ * receives the bytes ({@link stepImages}).
+ *
+ * @module dsh-loop-engine/driver-core/prompt
+ */
+
+import type {
+  ContentBlock,
+  ImageAttachmentAccessResolver,
+  Message,
+  ToolResultMessage,
+  UserMessage,
+} from '@deepseek-ai/dsh-llm'
+
+/** The one fact every omitted image placeholder states: a hosted engine takes text, never image bytes. */
+export const OMITTED_IMAGE_TEXT = 'this engine receives text, not image bytes'
+
+/**
+ * The durable reference an image block carries, derived from the block union so
+ * this module needs no dependency on the attachment package that owns it.
+ */
+type ImageBlockRef = Extract<ContentBlock, { type: 'image' }>['attachment']
+
+/**
+ * Frame a serialized message body with its visible role label.
+ * @param tag - the role marker used in the transcript.
+ * @param body - the rendered content of the message.
+ * @returns the framed transcript section.
+ */
+function frame(tag: string, body: string): string {
+  return `<${tag}>\n${body}\n</${tag}>`
+}
+
+/**
+ * Render one image block of the transcript. The placeholder names the image the
+ * log carries — its display name, media type, dimensions, and byte size — and
+ * how its bytes can be recovered: the read-only path when the attachment
+ * service resolved one, otherwise the fact that there is no readable path and
+ * the user can be asked to attach it again.
+ *
+ * The text and the path both come from the block's own durable reference, so
+ * the placeholder stays a pure function of the log.
+ * @param ref - the durable reference the image block carries.
+ * @param imageAccess - resolves the attachment service's read-only path, when the host composes one.
+ * @returns the bracketed placeholder text.
+ */
+function omittedImageText(
+  ref: ImageBlockRef,
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  const identity = `image ${JSON.stringify(ref.name ?? 'image')} (${ref.mediaType}, ${ref.width}x${ref.height}px, ${ref.bytes} bytes) omitted: ${OMITTED_IMAGE_TEXT}`
+  const access = imageAccess?.(ref)
+  return access === undefined
+    ? `[${identity}; no readable path is available — ask the user to attach the image again if it is needed]`
+    : `[${identity}; read ${JSON.stringify(access.readonlyPath)} to view it]`
+}
+
+/**
+ * Render one assistant message's content blocks to transcript text. Text
+ * blocks render verbatim; tool-call blocks render as a compact invocation
+ * line; reasoning content is not transcribed (each engine re-derives its own
+ * thinking in every fresh query).
+ * @param blocks - the assistant message's content blocks.
+ * @param imageAccess - resolves an image block's read-only path, when the host composes the attachment service.
+ * @returns the transcript text of the message body.
+ */
+function renderAssistantBlocks(
+  blocks: readonly ContentBlock[],
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  const sections: unknown[] = []
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'text':
+        sections.push(block.text)
+        break
+      case 'tool-call':
+        sections.push(`[tool call: ${block.name}(${block.arguments})]`)
+        break
+      case 'image':
+        sections.push(omittedImageText(block.attachment, imageAccess))
+        break
+      default:
+        // reasoning and unknown blocks stay out of the transcript.
+        break
+    }
+  }
+  return sections.join('\n\n')
+}
+
+/**
+ * Render a block list as transcript text: text verbatim, images as the omitted
+ * notice, everything else dropped. User and tool-result content share it.
+ * @param blocks - the blocks to render.
+ * @param imageAccess - resolves an image block's read-only path, when the host composes the attachment service.
+ * @returns the joined transcript text, empty when no block renders.
+ */
+function renderTextBlocks(
+  blocks: readonly ContentBlock[],
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  return blocks.map((block) => {
+    switch (block.type) {
+      case 'text':
+        return block.text
+      case 'image':
+        return omittedImageText(block.attachment, imageAccess)
+      default:
+        return ''
+    }
+  }).filter(section => section !== '').join('\n\n')
+}
+
+/**
+ * Render a tool result's own blocks and outcome to transcript text. Both
+ * generations share this tail: the 0.1.7 message and the 0.1.5 nested block
+ * differ only in WHERE the blocks and the error flag live.
+ * @param blocks - the result's content blocks.
+ * @param isError - whether the tool invocation failed.
+ * @param imageAccess - resolves an image block's read-only path, when the host composes the attachment service.
+ * @returns the framed transcript text of the tool result.
+ */
+function renderToolResult(
+  blocks: readonly ContentBlock[],
+  isError: boolean | undefined,
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  const body = renderTextBlocks(blocks, imageAccess)
+  const tag = isError === true ? 'tool-result-error' : 'tool-result'
+  return frame(tag, body || '(no content)')
+}
+
+/**
+ * Render one 0.1.7 tool-result message to transcript text. A tool result is a
+ * first-class `tool`-role message there, so its blocks are the message's own
+ * `content` and the failure flag lives on the message. To stay generation-free
+ * the introspector reads the shape structurally, so this is only the
+ * convenience the `tool` arm of {@link serializeHistory} calls.
+ * @param message - the durable tool-result message.
+ * @param imageAccess - resolves an image block's read-only path, when the host composes the attachment service.
+ * @returns the transcript text of the tool result.
+ */
+function renderModernToolResult(
+  message: ToolResultMessage,
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  return renderToolResult(message.content, message.isError, imageAccess)
+}
+
+/**
+ * Render one 0.1.5 tool result, which rides a `user`-role message whose single
+ * `tool-result` block carries the nested blocks and the error flag. Read
+ * structurally so the same source compiles and runs against either generation's
+ * message union.
+ * @param message - the `user`-role tool-result message.
+ * @param imageAccess - resolves an image block's read-only path, when the host composes the attachment service.
+ * @returns the transcript text of the tool result.
+ */
+function renderLegacyToolResult(
+  message: Message,
+  imageAccess: ImageAttachmentAccessResolver | undefined,
+): string {
+  const block = message.content[0] as
+    | { content?: readonly ContentBlock[]; isError?: boolean }
+    | undefined
+  return renderToolResult(block?.content ?? [], block?.isError, imageAccess)
+}
+
+/**
+ * An engine slash-command line: `/name` with an optional single-line argument
+ * tail. The name may hold neither whitespace nor `/`, so a path-like lead
+ * (`/etc/hosts`, `//server/share`) is never mistaken for a command.
+ */
+const ENGINE_SLASH_LINE = /^\/[^\s/]+(?:[ \t]+.*)?$/
+
+/**
+ * The engine's own slash-command line to send as this step's entire prompt, or
+ * `undefined` when the step is an ordinary conversational step.
+ *
+ * Every hosted engine expands a slash command only when the text handed to it
+ * *starts* with `/` — Kimi's ACP adapter parses the first prompt block, Claude
+ * Code's local-command dispatch and Pi's input expansion both test the leading
+ * character of the message string. The serialized transcript never satisfies
+ * that (it opens with `<user>`), so a forwarded `/status` reaches the model as
+ * prose instead of the engine's own command surface. This helper lets a driver
+ * recognize the case and send the command line verbatim, with no transcript
+ * framing and no replay history: a slash command is a control line for the
+ * engine, not conversation for the model.
+ *
+ * The live request is the last derived message, so a step whose trailing
+ * message is a bare command line is a command step. A trailing skill-injection
+ * message (the `/name` skill gesture the drivers materialize as its own user
+ * message) displaces it and keeps the step on the transcript path.
+ *
+ * The returned line is a pure function of the log prefix, so the step stays
+ * replayable: the same log derives the same prompt.
+ * @param messages - derived history, oldest first, as returned by
+ *   `Session.deriveMessages()` at step time.
+ * @returns the raw command line, or `undefined` for an ordinary step.
+ */
+export function engineSlashPrompt(messages: readonly Message[]): string | undefined {
+  const last = messages.at(-1)
+  if (last === undefined || last.role !== 'user') return undefined
+  const user = last as UserMessage
+  // Only a direct user message is a command line: a tool result or an injected
+  // skill body is driver material, never something the user typed.
+  if (user.source.kind !== 'user') return undefined
+  // A command line is the whole message; a multi-block message carries
+  // attachments (or is a multi-part prompt) and stays on the transcript path.
+  if (user.content.length !== 1) return undefined
+  const block = user.content[0]
+  if (block?.type !== 'text') return undefined
+  const text = block.text
+  // The engines parse a single line: a newline makes the tail an argument of
+  // nothing, and multi-line prose that merely opens with `/` is a user message.
+  if (text.includes('\n')) return undefined
+  return ENGINE_SLASH_LINE.test(text) ? text : undefined
+}
+
+/**
+ * Serialize a derived conversation history into the prompt text of one hosted
+ * query. The last message is the live user request that triggered the step;
+ * every earlier message is durable replay context. The output is a pure
+ * function of the log prefix.
+ * @param messages - derived history, oldest first, as returned by
+ *   `Session.deriveMessages()` at step time.
+ * @param imageAccess - resolves the read-only path of an image block's
+ *   attachment; without one, an image renders as the no-path placeholder.
+ * @returns the prompt text to pass to the engine.
+ */
+export function serializeHistory(
+  messages: readonly Message[],
+  imageAccess?: ImageAttachmentAccessResolver,
+): string {
+  const sections: string[] = []
+  for (const message of messages) {
+    switch (message.role) {
+      case 'assistant': {
+        const body = renderAssistantBlocks(message.content, imageAccess)
+        if (body !== '') sections.push(frame('assistant', body))
+        break
+      }
+      case 'user': {
+        // A 0.1.5 tool result rides a user-role message tagged `source.kind
+        // === 'tool'`; a 0.1.7 tool result is a first-class `tool`-role message
+        // handled below. Discriminating structurally keeps one transcript for
+        // both generations.
+        if (message.source.kind === 'tool') {
+          sections.push(renderLegacyToolResult(message, imageAccess))
+        } else {
+          const body = renderTextBlocks(message.content, imageAccess)
+          sections.push(frame('user', body || '(no content)'))
+        }
+        break
+      }
+      case 'tool': {
+        sections.push(renderModernToolResult(message, imageAccess))
+        break
+      }
+      default:
+        // system- and developer-role messages never reach the derived conversation surface.
+        break
+    }
+  }
+  return sections.join('\n\n')
+}

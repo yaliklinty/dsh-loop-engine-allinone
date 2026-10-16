@@ -1,0 +1,1126 @@
+/**
+ * Pi loop Agent: drives one session through turn and step boundaries by
+ * spawning a `pi --mode rpc` child process and speaking strict-LF JSONL over
+ * stdio. The dsh session log is the sole source of truth and each step runs one
+ * stateless Pi session (a fresh `new_session` + a single `prompt`), so the
+ * prompt is a pure serialization of the durable history plus the assembled dsh
+ * system prompt. Pi owns its tools natively but has no permission system, so
+ * the whole child is sandboxed by the dsh subprocess seam and its `--tools`
+ * are pruned to the resolved stance.
+ *
+ * @module dsh-loop-engine/engine-pi/agent
+ */
+
+import type {
+  Agent,
+  AgentCancelCause,
+  AgentEventDispatch,
+  AgentOptions,
+  AgentStatus,
+  CancelOptions,
+  InboxTarget,
+  PreStepDecision,
+} from '@deepseek-ai/dsh-agent'
+import { agentEvents } from '@deepseek-ai/dsh-agent'
+import type { ContentBlock, ImageAttachmentAccessResolver, Message, TokenUsage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, LlmError, createAssistantMessage, createUserMessage, errorChain } from '@deepseek-ai/dsh-llm'
+import type { Scope } from '@deepseek-ai/dsh-scope'
+import { createScope } from '@deepseek-ai/dsh-scope'
+import type { Session, SessionId, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
+import { canonicalHeader } from '@deepseek-ai/dsh-session'
+import type { Context } from '@deepseek-ai/cordis'
+import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL } from '../agent-preset-ids.ts'
+import type { ResolvedConfig } from './types.ts'
+import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
+import { createImageAccessResolver } from '../driver-core/image-access.ts'
+import { DriverInbox } from '../driver-core/inbox.ts'
+import { createStepTools } from '../driver-core/step-tools.ts'
+import { closeStep, settleResult } from '../driver-core/step-close.ts'
+import { appendSystemHeadIfMissing } from '../driver-core/system-head.ts'
+import { sessionModelOverrideOf } from '../driver-core/session-model.ts'
+import { resolveModelHandover, type DshModelHandover } from '../driver-core/model-handover.ts'
+import { piAgentDir, resolvePiApi, type PiSupportedHandover } from './model-handover.ts'
+import { DriverAssistantStream } from '../driver-core/assistant-stream.ts'
+import { stepImages } from '../driver-core/step-images.ts'
+import { normalizeHostedToolCall } from '../driver-core/hosted-tool-vocabulary.ts'
+import { resolveSessionPermission, toolsForSandbox, type PiPermission } from './permission.ts'
+import {
+  PiRpcClient,
+  type PiSpawnCapability,
+  type PiSpawnSpec,
+} from './rpc/client.ts'
+import { mapToolResult, mapUsage } from './rpc/mapping.ts'
+import type { PiImage, PiMessage, PiToolResult } from './rpc/types.ts'
+import {
+  invokedSkillNames,
+  isSkillName,
+  renderSkillContent,
+  type SkillDefinition,
+  type SkillsService,
+} from '../driver-core/skill-inject.ts'
+
+/**
+ * Provider route label this driver logs into request/header snapshots and
+ * message provenance — the ONE route every hosted engine shares
+ * ({@link HOSTED_ROUTE_LABEL}), so all four engines select `external/default`
+ * and the model menu carries a single group instead of one per engine.
+ */
+export const PROVIDER = HOSTED_ROUTE_LABEL
+/**
+ * Model label logged when the deployment pins no model: Pi owns its model
+ * natively, so the web session's model selection is deliberately not mirrored
+ * into the header — it reaches the child separately, as the `--model` the driver
+ * resolves each step (`sessionModelOverrideOf`). It is
+ * {@link HOSTED_DEFAULT_MODEL} — the one entry this engine's provider route
+ * advertises (`provider-route.ts`) — so the session's `(provider, model)`
+ * resolves to that entry and the model seat renders "default" instead of a
+ * composite string naming a model no adapter serves.
+ */
+
+/** CLI flag for the tool allowlist, derived from the resolved sandbox stance. */
+const TOOLS_FLAG = '--tools'
+
+/* jscpd:ignore-start -- mirrors the Codex driver; the two engines share the default agent-loop driver's phase machine. */
+type Phase =
+  | { kind: 'idle'; lastTurn: number }
+  | {
+    kind: 'maintenance'
+    abort: AbortController
+    lastTurn: number
+    wakeRequested: boolean
+  }
+  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean }
+
+/**
+ * The running phase. Its `turn`/`step` are the position of the step currently
+ * open: rotating a step mutates them in place, so every holder of the phase
+ * (the turn loop's fail-safe close, `agent/error` reporting) sees the step that
+ * is actually open rather than the one the prompt was started under.
+ */
+type RunningPhase = Extract<Phase, { kind: 'running' }>
+
+type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
+
+type PreparedStep =
+  | { kind: 'reject' }
+  | { kind: 'enter'; messages: UserMessage[] }
+
+/** An assistant message held until the step knows whether turn usage attaches to it. */
+interface HeldMessage {
+  readonly content: ContentBlock[]
+}
+
+/** Drives one session through turn and step boundaries on Pi. */
+export class PiAgent implements Agent {
+  readonly inbox: DriverInbox
+  private phase: Phase
+  private activityDone: Promise<void> = Promise.resolve()
+
+  /** The agent-scoped registration boundary; the lifecycle owner unwinds it after the driver exits. */
+  readonly scope: Scope
+  readonly ctx: Context
+
+  /** Fused dispatcher, built once in the constructor so hot-path dispatches never allocate. */
+  private readonly dispatch: AgentEventDispatch
+
+  /** Whether this loop instance has appended its initial/resume request anchor. */
+  private requestHeaderLogged = false
+
+  /** Agent-lifecycle-local counter naming each streamed attempt. */
+  private streamAttempts = 0
+
+  /** This step's RPC child; released by the step teardown and the scope teardown. */
+  private rpc: PiRpcClient | undefined
+
+  /**
+   * Resolves the read-only path behind each image block of the prompt. The
+   * attachment service is read lazily on every call, so a host that composes it
+   * after this agent still reaches the transcript.
+   */
+  private readonly imageAccess: ImageAttachmentAccessResolver
+
+  /**
+   * Tool results logged into the currently open step. A result means the
+   * segment that requested the call is finished, so the next assistant content
+   * opens the next step (see {@link beginSegment}).
+   */
+  private stepSettledTools = 0
+
+  /**
+   * The current step's calls, and which of them already carry a result.
+   *
+   * Pi announces a call from its streamed assistant message and reports the
+   * outcome from a separate execution event, so "which calls of THIS step are
+   * still open" is state the driver has to keep. Both halves of the Session V4
+   * rule read it: a call may not be given a second result in one step, and a
+   * step may not end while a call it announced has no result at all — the
+   * closing pass writes the missing outcome instead ({@link closeStep}).
+   *
+   * Reset per step (see {@link step}), never on an internal segment rotation:
+   * call ids are unique for the life of the session, so retaining the marks only
+   * widens duplicate suppression and can never hide a legitimate result.
+   */
+  private readonly stepTools = createStepTools()
+
+  /**
+   * Rotate to the next step when the segment that ran a tool has finished, so
+   * each assistant segment lands in its own step.
+   *
+   * Called as new assistant content begins. A step holding a settled tool
+   * result means the previous segment is complete, and the content about to be
+   * written belongs to the next one. Rotating at a message boundary keeps calls
+   * announced together — one model turn — in one step.
+   *
+   * A step that still OWES a result does not rotate: Pi announces several calls
+   * in one turn and reports their outcomes one at a time, and rotating on the
+   * first one would strand the rest in a step that can never resolve them
+   * (`step/end leaves unresolved tool call …`). Those calls run one model turn
+   * later instead, which is what they belong to, and a call the engine never
+   * answers is closed by {@link closeStep} rather than by moving on.
+   * @param phase - the running phase carrying the open step's position.
+   */
+  private beginSegment(phase: RunningPhase): void {
+    if (this.stepSettledTools === 0 || !this.stepTools.balanced) return
+    closeStep(this.session, this.stepTools, phase.turn, phase.step)
+    phase.step += 1
+    this.session.append('step/start', { turn: phase.turn, step: phase.step })
+    appendSystemHeadIfMissing(this.session, phase.turn, phase.step)
+    this.stepSettledTools = 0
+    this.stepTools.clear()
+  }
+
+  constructor(
+    private loopCtx: Context,
+    public readonly id: SessionId,
+    public readonly options: AgentOptions,
+    public readonly session: Session,
+    private readonly config: ResolvedConfig,
+    private readonly spawn: PiSpawnCapability,
+    private readonly bin: string,
+  ) {
+    this.dispatch = agentEvents(loopCtx, this)
+    this.inbox = new DriverInbox(session, {
+      inserted: (message) => { this.dispatch.emit('agent/inbox/inserted', { message }) },
+      discarded: (message) => { this.dispatch.emit('agent/inbox/discarded', { message }) },
+      claimed: (message, turn) => { this.dispatch.emit('agent/inbox/claimed', { message, turn }) },
+    })
+    const lastTurn = session.snapshotEvents().findLast(event => event.type === 'turn/start')?.data.turn ?? 0
+    this.phase = { kind: 'idle', lastTurn }
+    this.scope = createScope(loopCtx, this)
+    this.ctx = this.scope.ctx.extend({ agent: this })
+    this.imageAccess = createImageAccessResolver(loopCtx)
+    // Release the shared RPC client when the agent scope is unwound.
+    this.scope.ctx.effect(() => () => {
+      this.rpc?.dispose()
+      this.rpc = undefined
+    }, 'pi.rpcClient()')
+  }
+
+  /**
+   * Open this step's RPC child. The Pi RPC process is single-session, so a step
+   * never reuses one: the step teardown disposes it and the next step respawns
+   * a fresh child.
+   */
+  private rpcClient(cwd: string, handover: PiSupportedHandover | undefined): PiRpcClient {
+    const client = PiRpcClient.create(this.spawnSpec(cwd, handover), this.spawn)
+    this.rpc = client
+    return client
+  }
+
+  get status(): AgentStatus {
+    return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
+  }
+
+  /** Commit a phase and publish its externally visible status transition. */
+  private setPhase(next: Phase): void {
+    const previousStatus = this.status
+    this.phase = next
+    const status = this.status
+    if (status !== previousStatus) {
+      this.dispatch.emit('agent/status', { status })
+    }
+  }
+
+  send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
+    const resolvedTarget = wakingAfterAbort ? 'next-turn' : target
+    this.inbox.splice(resolvedTarget, Infinity, 0, [message])
+    if (wakeup) this.wakeDriver(wakingAfterAbort)
+  }
+
+  /**
+   * Queue a message for the next turn and wake the driver.
+   * @param input - the user message to deliver.
+   */
+  followup(input: UserMessage): void {
+    this.send(input, 'next-turn', true)
+  }
+
+  /**
+   * Queue a message for the running step and wake the driver.
+   * @param input - the user message to deliver.
+   */
+  steer(input: UserMessage): void {
+    this.send(input, 'next-step', true)
+  }
+
+  /**
+   * Queue a message for the running step without waking the driver.
+   * @param input - the user message to deliver.
+   */
+  inject(input: UserMessage): void {
+    this.send(input, 'next-step', false)
+  }
+
+  cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
+    if (!options.keepInbox) {
+      this.inbox.clear()
+      if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+    }
+    if (this.phase.kind !== 'idle') this.phase.abort.abort(cause)
+  }
+
+  /**
+   * Run a maintenance job while the agent is idle.
+   * @param job - the maintenance operation, receiving the phase abort signal.
+   * @returns the maintenance result.
+   */
+  runMaintenance<T>(job: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.phase.kind !== 'idle') throw new Error(`agent "${this.id}" already has active work`)
+    const done = Promise.withResolvers<void>()
+    const maintenance: Phase = {
+      kind: 'maintenance',
+      abort: new AbortController(),
+      lastTurn: this.phase.lastTurn,
+      wakeRequested: false,
+    }
+    this.setPhase(maintenance)
+    this.activityDone = done.promise
+    return (async () => {
+      try {
+        return await job(maintenance.abort.signal)
+      } finally {
+        this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
+        if (maintenance.wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        done.resolve()
+      }
+    })()
+  }
+
+  /**
+   * Start one driver, or latch its wake behind maintenance or an aborted
+   * activity. A wake sent while idle always opens its turn boundary, even
+   * when its message was cleared; only a latched replay is suppressed when
+   * the queue no longer holds the wake.
+   * @param wakeAfterAbort - the {@link send} classification, captured before
+   *   the inbox insertion so a reentrant cancel cannot reclassify it.
+   */
+  private wakeDriver(wakeAfterAbort = false): void {
+    if (this.phase.kind !== 'idle') {
+      const reason = this.phase.abort.signal.reason as AgentCancelCause | undefined
+      if (reason?.kind !== 'disposed' && (this.phase.kind === 'maintenance' || wakeAfterAbort)) {
+        this.phase.wakeRequested = true
+      }
+      return
+    }
+    const driver = Promise.withResolvers<void>()
+    this.activityDone = driver.promise
+    this.setPhase({
+      kind: 'running',
+      abort: new AbortController(),
+      turn: this.phase.lastTurn,
+      step: 0,
+      wakeRequested: false,
+    })
+    this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject)
+  }
+
+  async whenIdle(): Promise<void> {
+    let activity: Promise<void>
+    do {
+      await (activity = this.activityDone)
+    } while (activity !== this.activityDone)
+  }
+
+  /** Report one failure at its live boundary, then preserve it for driver containment. */
+  private throwError(error: unknown): never {
+    const turn = this.phase.kind === 'running' ? this.phase.turn : this.phase.lastTurn
+    const step = this.phase.kind === 'running' ? this.phase.step : 0
+    this.dispatch.emit('agent/error', { turn, step, error })
+    throw error
+  }
+
+  private async kick(): Promise<void> {
+    try {
+      while (await this.turn()) {}
+    } catch (_error) {
+      // Reported failures and cancellation are contained at the driver boundary.
+    } finally {
+      /* v8 ignore start -- kick owns a running phase until this driver boundary */
+      /* v8 ignore next -- kick owns a running phase until this driver boundary */
+      if (this.phase.kind === 'running') {
+        const { turn, wakeRequested } = this.phase
+        this.setPhase({ kind: 'idle', lastTurn: turn })
+        if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
+      }      /* v8 ignore stop */
+    }
+  }
+
+  private async preStep(target: InboxTarget, position: { turn: number; step: number }): Promise<PreparedStep> {
+    /* v8 ignore start -- private callers establish the running phase before proposing a step */
+    /* v8 ignore next -- private callers establish the running phase before proposing a step */
+    if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)    /* v8 ignore stop */
+    const signal = this.phase.abort.signal
+    const claimed = this.inbox.claim(target, position.turn)
+    const decision = await this.dispatch.waterfall(
+      'agent/pre-step', { messages: claimed, ...position, signal },
+      (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({ kind: 'enter', messages: claimed }),
+    )
+    signal.throwIfAborted()
+    if (decision.kind === 'reject') return decision
+    // Inject skill content for user-invoked skills.  The dsh-tool-skill
+    // handler that normally does this lives on the agent-preset context
+    // chain, which the Pi agent's context does not descend from, so we
+    // replicate the gesture-scan and injection here.
+    const injected = await this.injectSkills(decision.messages, signal)
+    signal.throwIfAborted()
+    return injected !== decision.messages
+      ? { kind: 'enter', messages: [...injected] }
+      : { ...decision }
+  }
+
+  /**
+   * Scan the step's user messages for `/name` skill gestures, load each
+   * matching skill, and inject the rendered skill content into the message
+   * batch.  This mirrors what dsh-tool-skill does for the in-process engine.
+   * @param messages - the current step's message batch.
+   * @param signal - cancellation signal (aborted loads are silently dropped).
+   * @returns the original batch when no skill was invoked, or an extended
+   *   batch with injected skill-content messages appended.
+   */
+  private async injectSkills(messages: readonly UserMessage[], signal: AbortSignal): Promise<readonly UserMessage[]> {
+    const names = invokedSkillNames(messages)
+    if (names.length === 0) return messages
+    const skills = this.loopCtx.get('skills') as SkillsService | undefined
+    if (skills === undefined) return messages
+    const cwd = this.session.header.cwd
+    const injections: UserMessage[] = []
+    for (const name of names) {
+      /* v8 ignore start -- SKILL_GESTURE only captures kebab-case names, so this guard never fires */
+      /* v8 ignore next -- SKILL_GESTURE only captures kebab-case names, so this guard never fires */
+      if (!isSkillName(name)) continue
+      /* v8 ignore stop */
+      let skill: SkillDefinition | undefined
+      try {
+        skill = await skills.get(name, { signal, scope: this, ...(cwd === undefined ? {} : { cwd }) })
+      } catch {
+        continue // load failure → silently skip
+      }
+      if (skill === undefined || !skill.invocation.userInvocable) continue
+      if (signal.aborted) return messages
+      injections.push(createUserMessage({
+        content: [{ type: 'text', text: renderSkillContent(skill) }],
+        source: { kind: 'skill-invocation', name, form: 'instructions' },
+      }))
+    }
+    return injections.length > 0 ? [...messages, ...injections] : messages
+  }
+
+  /**
+   * Resolve the runtime permission stance for one query. Deployment-pinned
+   * fields win; anything unpinned follows the session's durable dsh permission
+   * knobs, re-folded per query so mid-session preset switches take effect on the
+   * next step.
+   * @returns the permission fields of the query spec.
+   */
+  private queryPermission(): PiPermission {
+    const fold = resolveSessionPermission(this.session.snapshotEvents())
+    const sandboxMode = this.config.sandboxMode ?? fold.sandboxMode
+    return {
+      sandboxMode,
+      tools: this.config.sandboxMode === undefined ? fold.tools : toolsForSandbox(sandboxMode),
+    }
+  }
+
+  /** Open one turn before claiming its first proposed step. */
+  private async turn(): Promise<boolean> {
+    if (this.phase.kind !== 'running') {
+      this.throwError(new Error(`agent "${this.id}": turn without driver reservation`))
+    }
+    const phase = this.phase
+    const { signal } = phase.abort
+    signal.throwIfAborted()
+    const turn = phase.turn + 1
+    try {
+      this.session.append('turn/start', { turn })
+    } catch (error: unknown) {
+      this.throwError(error)
+    }
+    phase.turn = turn
+    let turnEnds: TurnEndReason | null = null
+    let target: InboxTarget = 'next-turn'
+    try {
+      while (true) {
+        signal.throwIfAborted()
+        const step = phase.step + 1
+        const decision = await this.preStep(target, { turn, step })
+        if (decision.kind === 'reject') {
+          turnEnds = { kind: 'blocked' }
+          return false
+        }
+        if (turnEnds && decision.messages.length === 0) break
+        if (phase.step === 0 && decision.messages.length === 0) {
+          turnEnds = { kind: 'completed' }
+          return false
+        }
+        signal.throwIfAborted()
+        this.session.append('step/start', { turn, step })
+        phase.step = step
+        try {
+          for (const message of decision.messages) {
+            this.session.append('user/message', message, { surfaceOp: 'append' })
+          }
+          const stepEnd = await this.step(decision.messages)
+          if (turnEnds === null) turnEnds = stepEnd
+        } finally {
+          // The driver rotates steps as the prompt's segments complete, so
+          // `phase.step` — not the step this iteration opened — is the one still
+          // open here, and it may still owe results the engine never reported.
+          closeStep(this.session, this.stepTools, turn, phase.step)
+          this.stepTools.clear()
+        }
+        signal.throwIfAborted()
+        /* v8 ignore start -- every step() completes, so turnEnds is always set here; the short-circuit arm is a defensive backstop */
+        /* v8 ignore next -- see above */
+        if (turnEnds && this.inbox.nextStep.length === 0) {      /* v8 ignore stop */
+          await this.dispatch.serial('agent/turn-stopping', { turn, signal })
+          signal.throwIfAborted()
+        }
+        if (turnEnds && this.inbox.nextStep.length === 0) break
+        target = 'next-step'
+      }
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        turnEnds = { kind: 'aborted', reason: signal.reason as AgentCancelCause }
+        throw error
+      }
+      turnEnds = {
+        kind: 'error',
+        error: error instanceof LlmError
+          ? error.failure
+          : { message: errorChain(error), code: 'UNKNOWN' },
+      }
+      this.throwError(error)
+    } finally {
+      try {
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
+        this.session.append('turn/end', { turn, reason: turnEnds! })
+      } catch (error: unknown) {
+        this.throwError(error)
+      }
+    }
+    if (!this.inbox.hasPending) return false
+    phase.abort = new AbortController()
+    phase.wakeRequested = false
+    phase.step = 0
+    return true
+  }
+
+  /** Model label recorded in the request header for one lifecycle. */
+  private modelLabel(): string {
+    return this.config.model ?? HOSTED_DEFAULT_MODEL
+  }
+
+  /** Append the request header snapshot once per loop instance. */
+  private assertRequestHeader(): void {
+    if (this.requestHeaderLogged) return
+    const header = canonicalHeader({
+      config: { provider: PROVIDER, model: this.modelLabel() },
+    })
+    const baseline = this.session.requestHeader()
+    this.session.append('request/header', {
+      header,
+      reason: baseline === undefined ? 'initial' : 'resume',
+    })
+    this.requestHeaderLogged = true
+  }
+
+  /**
+   * Build the `pi --mode rpc` argv/cwd/env for one step's child process.
+   *
+   * The model comes from the session's own selection when it names a real dsh
+   * model, else from the deployment's pinned configuration
+   * ({@link sessionModelOverrideOf}). Pi's `--model` flag is
+   * `"provider/id"`-qualified, so a session pick travels as the composite —
+   * which also carries the provider, leaving the deployment's `--provider` out
+   * of the argv for that step. A step with neither a selection nor a pin sends
+   * no `--model` at all and lets Pi's own configuration decide. Read every step,
+   * so a model picked mid-conversation lands on the next child.
+   *
+   * When dsh also discloses that model's ENDPOINT, the child is pointed at it:
+   * `--provider` names the provider pi's `models.json` declares, `--api-key`
+   * carries the credential, and `PI_CODING_AGENT_DIR` redirects pi's agent
+   * directory to the plugin-owned one holding that `models.json`
+   * ({@link piAgentDir}) — so the child runs on dsh's endpoint instead of its
+   * own `~/.pi` configuration, which is never touched. The handover reaching here
+   * is already judged: {@link supportedHandover} dropped one that named no
+   * protocol and refused one pi cannot speak.
+   */
+  private spawnSpec(cwd: string, handover: PiSupportedHandover | undefined): PiSpawnSpec {
+    const argv: string[] = []
+    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    const model = override === undefined ? this.config.model : `${override.provider}/${override.model}`
+    if (override === undefined && this.config.provider !== undefined) argv.push('--provider', this.config.provider)
+    if (model !== undefined && this.config.thinkingLevel !== undefined) {
+      argv.push('--model', `${model}:${this.config.thinkingLevel}`)
+    } else if (model !== undefined) {
+      argv.push('--model', model)
+    } else if (this.config.thinkingLevel !== undefined) {
+      argv.push('--model', `:${this.config.thinkingLevel}`)
+    }
+    // A handover implies an override, so `model` above is already
+    // `"<provider>/<model>"` for the same provider this names.
+    if (handover !== undefined) argv.push('--provider', handover.provider, '--api-key', handover.apiKey)
+    const permission = this.queryPermission()
+    if (permission.tools.length > 0) argv.push(TOOLS_FLAG, permission.tools.join(','))
+    return {
+      argv: [
+        this.bin,
+        '--mode', 'rpc',
+        '--no-session',
+        ...argv,
+      ],
+      cwd,
+      env: handover === undefined
+        ? this.config.env
+        : { ...this.config.env, PI_CODING_AGENT_DIR: piAgentDir(handover) },
+    }
+  }
+
+  /**
+   * The endpoint handover this step may point the child at, or `undefined` to
+   * leave pi on its own configuration.
+   *
+   * Pi is the one engine that cannot run a provider handed over without a wire
+   * protocol: its `models.json` rejects a provider without `api` (verified
+   * against pi 0.84.3 — `{"status":"invalid","reason":"invalid_state"}`), and the
+   * plugin will not write a document it knows pi refuses. So a handover that
+   * names no protocol is dropped here rather than materialized into a broken
+   * agent directory. It is unreachable for every route `SHIPPED_ROUTE_APIS`
+   * names, which today is the only way `api` goes missing.
+   *
+   * A protocol pi does not SPEAK is a different answer, and a refusal rather than
+   * a drop: dropping it would leave the user's dsh model selection in place while
+   * pi quietly ran its own default model — the exact silent degradation this
+   * driver exists not to produce, and the shape of GitHub issue #2 (a third-party
+   * provider plugin declaring `api: "anthropic"`, which pi has no implementation
+   * for). The step fails instead, naming the provider, the model, and the
+   * offending protocol — so the user can pick `external/default` or fix it.
+   *
+   * The returned handover carries the PI spelling of its protocol
+   * ({@link resolvePiApi}), so everything downstream — `models.json` above all —
+   * sees the one protocol pi will actually be configured with.
+   * @param resolved - the endpoint dsh disclosed for this step's model selection.
+   * @returns the handover to point the child at, or `undefined` for none.
+   */
+  private supportedHandover(resolved: DshModelHandover | undefined): PiSupportedHandover | undefined {
+    if (resolved === undefined) return undefined
+    const resolution = resolvePiApi(resolved.api)
+    switch (resolution.kind) {
+      case 'absent':
+        return undefined
+      case 'supported':
+        return { ...resolved, api: resolution.api }
+      case 'unsupported':
+        throw new LlmError(
+          `agent "${this.id}": the session selected the dsh model "${resolved.provider}/${resolved.model}", but its`
+          + ` wire protocol "${resolved.api}" is not one pi can speak; keep the session on the hosted`
+          + ` "external/default" model, or configure that provider with a protocol pi accepts (for example`
+          + ` "anthropic-messages" or "openai-completions")`,
+          'PI_UNSUPPORTED_API',
+        )
+    }
+  }
+
+  /**
+   * Run one Pi RPC query for the current step and map its event stream into the
+   * session log. The step opens a fresh Pi session (`new_session`) and sends the
+   * serialized session history as one prompt, then consumes events until the
+   * agent settles. Like the Codex/Claude drivers, Pi owns its own system prompt
+   * natively, so the dsh system-prompt assembly (which pulls dsh tool schemas
+   * and `agent.ctx.tools`) is deliberately not run — the durable session log is
+   * the sole source of model context.
+   * @param messages - the messages this step delivers; only their images ride
+   *   with the prompt as bytes, and only they.
+   */
+  private async step(messages: readonly UserMessage[]): Promise<StepEndReason | null> {
+    /* v8 ignore start -- private callers establish the running phase before executing a step */
+    /* v8 ignore next -- private callers establish the running phase before executing a step */
+    if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": step outside running phase`)    /* v8 ignore stop */
+    const phase = this.phase
+    const { abort: { signal } } = phase
+    signal.throwIfAborted()
+    this.stepSettledTools = 0
+    this.stepTools.clear()
+
+    const cwd = this.session.header.cwd
+    if (cwd === undefined || cwd.length === 0) {
+      throw new Error(`agent "${this.id}": no working directory — start the session with cwd metadata`)
+    }
+    const history: Message[] = this.session.deriveMessages()
+    // A live slash command is the engine's own control line: send it verbatim
+    // (Pi expands commands/templates only when the prompt opens with `/`).
+    const slash = engineSlashPrompt(history)
+    const prompt = slash ?? serializeHistory(history, this.imageAccess)
+    /* v8 ignore start -- a step only runs after claiming and durably appending at least one user message */
+    if (prompt.length === 0) {
+      throw new Error(`agent "${this.id}": cannot derive a prompt from an empty session log`)
+    }
+    /* v8 ignore stop */
+    // Pi is the first engine whose protocol takes image bytes, so the images
+    // of THIS step's own messages are sent as attachments; older images stay
+    // path-bearing placeholders in the transcript. A slash command is a bare
+    // control line, so it carries none.
+    const images: PiImage[] = slash === undefined
+      ? (await stepImages(messages, this.imageAccess)).map(image => ({ type: 'image', ...image }))
+      : []
+    this.assertRequestHeader()
+    signal.throwIfAborted()
+
+    // The session's model selection, and — when dsh discloses it — that model's
+    // endpoint and credential, resolved fresh on every step so a mid-session
+    // change reaches the next child.
+    const resolved = await resolveModelHandover(
+      this.loopCtx,
+      sessionModelOverrideOf(this.loopCtx, this.session),
+    )
+    // Pi's own judgement of that protocol: a handover it cannot speak is
+    // refused here, before any child is spawned ({@link supportedHandover}).
+    const handover = this.supportedHandover(resolved)
+
+    const controller = new AbortController()
+    const cancel = (): void => {
+      /* v8 ignore start -- a phase signal fires once; the controller cannot already be aborted when its single listener runs */
+      /* v8 ignore next -- a phase signal fires once; the controller cannot already be aborted when its single listener runs */
+      if (!controller.signal.aborted) {
+        /* v8 ignore next -- the phase signal aborts with AgentCancelCause values only, which the durable log can record */
+        controller.abort(signal.reason instanceof Error ? signal.reason : new Error(`agent "${this.id}" query aborted`))
+        // Best-effort abort: the RPC child may already be tearing down (engine
+        // switch / scope dispose), in which case the in-flight `abort` command
+        // is rejected by `PiRpcClient.dispose()`. The request is fire-and-forget,
+        // so swallow the rejection — an unhandled one would otherwise crash the
+        // process with "pi RPC client is disposed" during teardown.
+        void this.rpc?.abort().catch(() => undefined)
+      }      /* v8 ignore stop */
+    }
+    signal.addEventListener('abort', cancel, { once: true })
+    /**
+     * The live attempt for the current streamed segment. Chunks open one; the
+     * durable assistant message they built settles it and the next chunk
+     * opens a fresh attempt, so every message carries exactly its own stream.
+     */
+    let live: DriverAssistantStream | undefined
+    try {
+      const currentStream = (): DriverAssistantStream => {
+        if (live === undefined) {
+          live = new DriverAssistantStream(
+            this.id,
+            ++this.streamAttempts,
+            phase.turn,
+            phase.step,
+            frame => this.dispatch.emit('agent/assistant-stream', { frame }),
+          )
+          live.start()
+        }
+        return live
+      }
+      const client = this.rpcClient(cwd, handover)
+      signal.throwIfAborted()
+      await client.newSession()
+      client.clearEvents()
+      await client.prompt(prompt, images.length === 0 ? {} : { images })
+
+      let finished = false
+      /**
+       * Whether the agent has fully settled for this step. Unlike {@link finished}
+       * (set on any terminal-ish event, including a mid-run `turn_end`), this
+       * becomes true only on `agent_settled` (or a non-retrying `agent_end`), and
+       * it is what actually ends the event loop — because the Pi RPC child stays
+       * alive between steps, the `events()` generator never returns on its own, so
+       * the loop must break on the settle signal or `step()` hangs after the
+       * reply has already streamed.
+       */
+      let settled = false
+      /** The assistant message being assembled; its chunks stream live as items complete. */
+      let held: HeldMessage | undefined
+      /** Text blocks already block-start-ed, by message content index. */
+      const startedText = new Set<number>()
+      /** Reasoning blocks already block-start-ed, by message content index. */
+      const startedReasoning = new Set<number>()
+      /** Accumulated thinking by content index (for providers that omit thinking blocks). */
+      const thinkingByIndex = new Map<number, string>()
+      /** Tool call ids already written to the log (prevents duplicate tool/call). */
+      const emittedToolCalls = new Set<string>()
+      /**
+       * Tool call ids already written a `tool/result` this step. Pi reports each
+       * executed tool twice — once as `tool_execution_end` and again in the
+       * `turn_end.toolResults` batch that mirrors the same executions — and
+       * `turn_end.toolResults` is the fallback for the case where no
+       * `tool_execution_end` arrived. Session V4 keys its pending-tool map by
+       * call id alone, so a second result for one call is refused
+       * (`tool/result <id> has no advertised tool lifecycle`) and bricks the
+       * whole log; the contract is exactly one result per call, so whichever
+       * path reports first wins and the repeat is dropped.
+       */
+      const settledToolCalls = new Set<string>()
+      /** Tool-call blocks not yet folded into a flushed assistant message. */
+      let pendingToolCalls: ContentBlock[] = []
+      /**
+       * `tool/call` events whose owning assistant message has not been flushed
+       * yet, paired 1:1 with {@link pendingToolCalls}. They are appended only
+       * once that message lands, so the durable log reads
+       * `assistant/message` → `tool/call` → `tool/result`: logging the call at
+       * `toolcall_end` would place it before the message that requested it, and
+       * the chat view sorts a tool row by its own seq.
+       */
+      let pendingCallLog: Array<{ callId: string; name: string; arguments: string }> = []
+      /** Calls released by the flush that just folded their owner message. */
+      let callsToLog: Array<{ callId: string; name: string; arguments: string }> = []
+      /** Last usage snapshot, folded onto the message that closes a turn. */
+      let lastUsage: TokenUsage | undefined
+      /** Whether an assistant message already flushed for this turn (message_end). */
+      let assistantFlushed = false
+      /**
+       * Pi's own report of a FAILED turn, as of the last turn that stated a
+       * verdict. Pi surfaces a failure as a `turn_end`/`message_end` whose
+       * assistant message carries `stopReason: 'error'` plus `errorMessage`, and
+       * the RPC `response` envelopes say nothing about turn outcome — so without
+       * this the driver never learns why a turn produced no reply.
+       *
+       * Recorded rather than thrown on sight, because pi RETRIES by itself
+       * (`auto_retry_start`): a retrying run emits one errored turn per attempt
+       * and can still succeed, so only the verdict still standing when the loop
+       * concludes is a failure. Reading it that way also keeps a mid-run errored
+       * turn from failing a step pi was about to recover.
+       */
+      let turnError: string | undefined
+
+      /** Append the held assistant message, optionally carrying turn usage. */
+      const flushHeld = (usage?: TokenUsage): void => {
+        if (held === undefined) return
+        const attempt = live
+        const data = {
+          turn: phase.turn,
+          step: phase.step,
+          message: createAssistantMessage({
+            content: held.content,
+            source: { provider: PROVIDER, model: this.modelLabel() },
+          }),
+          ...usage === undefined ? {} : { usage },
+          // The attempt's exact timed stream travels with its message.
+          stream: attempt?.stream ?? [],
+        }
+        if (attempt === undefined) {
+          this.session.append('assistant/message', data, { surfaceOp: 'append' })
+        } else {
+          attempt.settle(() => this.session.append('assistant/message', data, { surfaceOp: 'append' }).seq)
+          live = undefined
+        }
+        held = undefined
+        // The message just committed owns these calls; log them after it.
+        // `emitToolCall` already projected them onto dsh's vocabulary, so the
+        // event and the message block carry byte-identical name and arguments.
+        for (const call of callsToLog) {
+          this.stepTools.announce(ToolCallId(call.callId))
+          this.session.append('tool/call', {
+            turn: phase.turn, step: phase.step, callId: ToolCallId(call.callId), name: call.name, arguments: call.arguments,
+          })
+        }
+        callsToLog = []
+      }
+
+      /** Ensure a text block has been block-start-ed at the given index. */
+      const ensureTextBlock = (index: number): void => {
+        if (startedText.has(index)) return
+        startedText.add(index)
+        currentStream().push({ type: 'block-start', index, blockType: 'text' })
+      }
+
+      /** Ensure a reasoning block has been block-start-ed at the given index. */
+      const ensureReasoningBlock = (index: number): void => {
+        if (startedReasoning.has(index)) return
+        startedReasoning.add(index)
+        currentStream().push({ type: 'block-start', index, blockType: 'reasoning' })
+      }
+
+      /** Record a tool call, to be logged once its owner message is flushed. */
+      const emitToolCall = (callId: string, name: string, rawArguments: unknown): void => {
+        if (emittedToolCalls.has(callId)) return
+        emittedToolCalls.add(callId)
+        const argumentsValue = typeof rawArguments === 'string' ? rawArguments : JSON.stringify(rawArguments ?? {})
+        // Normalize once: the assistant message block and the `tool/call`
+        // event must carry byte-identical projected name and arguments for
+        // the same id, or Session V4 refuses the log on load.
+        const normalized = normalizeHostedToolCall('pi', name, argumentsValue)
+        // The assistant message that requested this call must carry its
+        // tool-call block, otherwise a later resume on the in-process engine
+        // derives a `tool` result with no preceding assistant `tool_calls`.
+        pendingToolCalls.push({ type: 'tool-call', id: ToolCallId(callId), name: normalized.name, arguments: normalized.arguments })
+        pendingCallLog.push({ callId, name: normalized.name, arguments: normalized.arguments })
+      }
+
+      /**
+       * Flush a synthesized assistant message carrying any tool-call blocks that
+       * have no flushed owner yet. Called before a `tool/result` lands so the
+       * durable surface always pairs a result with a preceding assistant
+       * tool-call block, even when the engine executed a call without streaming
+       * an assistant message first.
+       */
+      const ensureToolCallOwner = (): void => {
+        if (pendingToolCalls.length === 0) return
+        flushHeld()
+        held = { content: [...pendingToolCalls] }
+        pendingToolCalls = []
+        callsToLog = pendingCallLog
+        pendingCallLog = []
+        flushHeld()
+      }
+
+      /** Build an assistant message's content blocks from the authoritative message or buffers. */
+      const contentOf = (message: PiMessage): ContentBlock[] => {
+        let blocks: ContentBlock[] = []
+        const content = Array.isArray(message.content)
+          ? message.content
+          : typeof message.content === 'string'
+            ? [{ type: 'text', text: message.content }]
+            /* v8 ignore next -- Pi message content is always a string or array, so this arm is a defensive backstop */
+            : []
+        for (const block of content) {
+          if (block.type === 'text') {
+            blocks.push({ type: 'text', text: block.text })
+          } else if (block.type === 'thinking') {
+            blocks.push({ type: 'reasoning', text: block.thinking })
+          }
+        }
+        // Some providers emit only streaming thinking deltas; fold any that the
+        // authoritative message omits so thinking never disappears from the log.
+        // Thinking is folded before the text, matching the reasoning-then-answer
+        // ordering the default loop produces.
+        if (!blocks.some(block => block.type === 'reasoning') && thinkingByIndex.size > 0) {
+          const folded: ContentBlock[] = [...thinkingByIndex.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([, text]) => ({ type: 'reasoning', text }))
+          blocks = [...folded, ...blocks]
+        }
+        // Fold any not-yet-flushed tool-call blocks into this assistant message so
+        // the durable surface keeps every tool/result paired with the assistant
+        // tool-call that requested it.
+        if (pendingToolCalls.length > 0) {
+          blocks = [...blocks, ...pendingToolCalls]
+          pendingToolCalls = []
+          callsToLog = pendingCallLog
+          pendingCallLog = []
+        }
+        return blocks
+      }
+
+      /**
+       * Record one assistant message's own verdict on its turn, if it states one.
+       * A message with no `stopReason` (pi's user/tool-result messages and its
+       * streaming events) leaves the record alone, and a turn whose verdict is
+       * anything but `'error'` clears it — that is what a successful retry looks
+       * like from here.
+       *
+       * An errored turn that carries no `errorMessage` still has to be
+       * reportable, so it records a generic line rather than leaving the record
+       * empty: "pi failed and did not say why" must not read as "the turn was
+       * fine".
+       */
+      const recordTurnVerdict = (message: PiMessage): void => {
+        if (message.stopReason === undefined) return
+        turnError = message.stopReason === 'error'
+          ? message.errorMessage ?? 'pi ended the turn with an error and reported no message'
+          : undefined
+      }
+
+      signal.throwIfAborted()
+      for await (const event of client.events()) {
+        signal.throwIfAborted()
+        switch (event.type) {
+          case 'agent_start':
+          case 'compaction_start':
+          case 'compaction_end':
+          case 'auto_retry_start':
+          case 'auto_retry_end':
+          case 'queue_update':
+          case 'bash_execution_update':
+          case 'extension_ui_request':
+            break
+          case 'message_start':
+            if (event.message.role === 'assistant') {
+              // A new assistant message after a settled tool result is the next
+              // segment, so it opens the next step.
+              this.beginSegment(phase)
+              startedText.clear()
+              startedReasoning.clear()
+              thinkingByIndex.clear()
+            }
+            break
+          case 'message_update': {
+            if (event.usage !== undefined) lastUsage = mapUsage(event.usage)
+            const delta = event.assistantMessageEvent
+            switch (delta.type) {
+              case 'text_start':
+              case 'thinking_start':
+                break
+              case 'text_delta':
+                ensureTextBlock(delta.contentIndex)
+                currentStream().push({ type: 'text-delta', index: delta.contentIndex, text: delta.delta })
+                break
+              case 'thinking_delta':
+                ensureReasoningBlock(delta.contentIndex)
+                currentStream().push({ type: 'reasoning-delta', index: delta.contentIndex, text: delta.delta })
+                thinkingByIndex.set(delta.contentIndex, (thinkingByIndex.get(delta.contentIndex) ?? '') + delta.delta)
+                break
+              case 'toolcall_start':
+                break
+              case 'toolcall_delta':
+                break
+              case 'toolcall_end':
+                emitToolCall(delta.toolCall.id, delta.toolCall.name, delta.toolCall.arguments)
+                break
+              case 'text_end':
+              case 'thinking_end':
+                break
+            }
+            break
+          }
+          case 'message_end': {
+            if (event.message.role === 'assistant') {
+              // An assistant message states its turn's verdict: the last one
+              // recorded before the run settles is what the step reports.
+              recordTurnVerdict(event.message)
+              if (event.message.usage !== undefined) lastUsage = mapUsage(event.message.usage)
+              flushHeld()
+              held = { content: contentOf(event.message) }
+              flushHeld(lastUsage)
+              assistantFlushed = true
+            }
+            break
+          }
+          case 'tool_execution_start':
+            emitToolCall(event.toolCallId, event.toolName, event.args)
+            break
+          case 'tool_execution_update':
+            break
+          case 'tool_execution_end':
+            emitToolCall(event.toolCallId, event.toolName, undefined)
+            ensureToolCallOwner()
+            if (!settledToolCalls.has(event.toolCallId)) {
+              settledToolCalls.add(event.toolCallId)
+              settleResult(this.stepTools, ToolCallId(event.toolCallId), () => {
+                this.session.append('tool/result', {
+                  turn: phase.turn,
+                  step: phase.step,
+                  message: mapToolResult({ toolCallId: event.toolCallId, result: event.result, isError: event.isError }),
+                }, { surfaceOp: 'append' })
+                this.stepSettledTools += 1
+              })
+            }
+            break
+          case 'turn_end': {
+            // `turn_end` is where pi states a failed turn; a later turn that
+            // succeeds clears the record again (see {@link recordTurnVerdict}).
+            if (event.message !== undefined) recordTurnVerdict(event.message)
+            if (!assistantFlushed && event.message !== undefined) {
+              if (event.message.usage !== undefined) lastUsage = mapUsage(event.message.usage)
+              held = { content: contentOf(event.message) }
+            }
+            // Flush the assistant message before its tool results so every
+            // tool/result follows the assistant tool-call block that requested it.
+            flushHeld(lastUsage)
+            assistantFlushed = true
+            for (const toolResult of event.toolResults ?? []) {
+              // A result already written from `tool_execution_end` is the same
+              // execution reported a second time — drop it (see settledToolCalls).
+              if (settledToolCalls.has(toolResult.toolCallId)) continue
+              settledToolCalls.add(toolResult.toolCallId)
+              ensureToolCallOwner()
+              settleResult(this.stepTools, ToolCallId(toolResult.toolCallId), () => {
+                this.appendToolResult(phase.turn, phase.step, toolResult)
+                this.stepSettledTools += 1
+              })
+            }
+            finished = true
+            break
+          }
+          case 'agent_end':
+            flushHeld(lastUsage)
+            finished = true
+            // `agent_end` carries `willRetry`; a retrying run keeps emitting (auto-retry /
+            // compaction), so only a non-retrying `agent_end` concludes the step.
+            if (!event.willRetry) settled = true
+            break
+          case 'agent_settled':
+            flushHeld(lastUsage)
+            finished = true
+            settled = true
+            break
+        }
+        // The Pi child persists across steps, so the RPC event generator never
+        // ends on its own: once the agent has settled, stop consuming and let the
+        // step return, otherwise `step()` hangs after the final reply streams.
+        if (settled) break
+      }
+      flushHeld(lastUsage)
+      // Pi's own verdict outranks the settle bookkeeping: a run can settle
+      // cleanly WITH every turn failed (issue #2's run sent no reply at all, then
+      // `agent_settled`), and reporting that as `completed` would hand the user a
+      // silent, empty turn. Checked before `finished` for the same reason: when a
+      // run both failed a turn and never settled, pi's reason is the more useful
+      // one to report.
+      if (turnError !== undefined) {
+        throw new LlmError(turnError, 'PI_TURN_ERROR')
+      }
+      if (!finished) {
+        throw new LlmError(
+          `agent "${this.id}": pi query ended without an agent settle`,
+          'PI_NO_RESULT',
+        )
+      }
+      return { kind: 'completed' }
+    } finally {
+      // A segment that streamed without committing a durable message closes its
+      // live frames, so the client stops painting an abandoned partial.
+      if (live !== undefined && !live.ended) live.abandon()
+      signal.removeEventListener('abort', cancel)
+      controller.abort()
+      // The Pi RPC process is single-session: after this step's session settles,
+      // the process no longer runs a second new_session/prompt (it hangs, then
+      // exits — "pi RPC process exited unexpectedly"). Dispose it so the next
+      // step respawns a fresh child per session.
+      this.rpc?.dispose()
+      this.rpc = undefined
+    }
+  }
+
+  /** Append one Pi tool result to the durable log as a `tool/result` message. */
+  private appendToolResult(turn: number, step: number, toolResult: PiToolResult): void {
+    const text = typeof toolResult.content === 'string'
+      ? toolResult.content
+      : toolResult.content
+        .map((block) => (block.type === 'text' ? block.text : ''))
+        .filter((segment) => segment !== '')
+        .join('\n\n')
+    this.session.append('tool/result', {
+      turn,
+      step,
+      message: mapToolResult({
+        toolCallId: toolResult.toolCallId,
+        result: { content: [{ type: 'text', text }] },
+        isError: toolResult.isError === true,
+      }),
+    }, { surfaceOp: 'append' })
+  }
+}
+/* jscpd:ignore-end */

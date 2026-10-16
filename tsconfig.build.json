@@ -1,0 +1,40 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2024", "dom"],
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    // Build emits declarations, so the dev config's noEmit must be lifted.
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "verbatimModuleSyntax": false,
+    // Emit cannot pull monorepo SOURCES into the program (rootDir would reject
+    // them), and the monorepo source graph does not compile under this
+    // package's flags, so an empty `paths` REPLACES the inherited source-plane
+    // mappings and forces every `@deepseek-ai/*` import onto the artifact
+    // plane: the installed npm packages. The plugin's peer range pins those to
+    // exactly the harness release it targets, so the published declarations are
+    // the authority (earlier releases needed a per-package escape hatch here
+    // while a published package lagged its source). tsconfig.json (dev/IDE)
+    // keeps the source plane via the inherited paths.
+    "paths": {}
+  },
+  "include": ["src"]
+}

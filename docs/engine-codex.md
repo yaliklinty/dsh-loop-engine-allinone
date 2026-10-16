@@ -1,0 +1,286 @@
+# Codex 引擎实现文档
+
+**目标读者**：要修改 `src/engine-codex/` 的工程师。本文通读 codex 引擎全部源码（含 `appserver/` 子目录、用到的 `driver-core/` 共享设施、`src/index.ts` 挂载点与全部 codex 测试），讲清机制、数据流、设计约束与坑。行号引用均为撰写时的实际位置。
+
+## 1. 引擎概述
+
+Codex 引擎让 dsh 会话由 OpenAI Codex CLI 驱动：每个 dsh step 通过 JSON-RPC over stdio 与一个常驻的 `codex app-server` 子进程通信，**每个 step 新建一个无状态 codex 线程（thread）**，模型上下文完全由 dsh 持久会话日志（session log）序列化而来，不复用 codex 侧的历史。
+
+核心设计约束（与 claude-code 引擎同源）：
+
+- **"Model-visible ⟺ logged"**：发给 codex 的 prompt 是 `Session.deriveMessages()` 的纯序列化（`src/engine-codex/agent.ts:701-702` + `src/driver-core/prompt.ts:246`），会话日志是模型上下文的唯一事实源。**codex 是四个引擎里唯一不走斜杠命令步的**（`src/driver-core/prompt.ts:216` 的 `engineSlashPrompt`，见 `docs/driver-core.md` §2）：app-server 协议没有文本斜杠面——`turn/start` 的 `UserInput` 只有 text/image/localImage/audio/localAudio/skill/mention，压缩是独立 RPC `thread/compact/start`（核自 codex 0.149.1 的 app-server 协议 schema）——把裸行原样发过去只会平白丢掉上下文，而换不来任何本地展开。要让引擎的命令面在 codex 下可用，得另找协议项（`SkillUserInput` 之类），不是 prompt 形状的事。
+- **图片以原生通道送出，但送的是路径**：`UserInput` 有 `localImage` 项，所以本步自己交付的消息里的图片块随 prompt 追加为 `{ type: 'localImage', path }` 项（见 §4.5 与 §9.2），**由 codex app-server 自己打开文件**——四个引擎里唯一"给路径不给字节"的通道（pi 给 base64、kimi 给 ACP image block）。
+- **审批请求经 dsh 审批 seam 应答**：app-server 把审批实现为 server→client 的 JSON-RPC request（`item/commandExecution|fileChange|permissions/requestApproval`），客户端注册 handler 写回应答（`src/engine-codex/appserver/client.ts`），agent 侧转 `ctx.approval`（§6.4）；线程启动参数仍按声明式折叠 `sandboxMode`/`approvalPolicy`。
+- **不走 dsh subprocess 接缝**：与 pi 引擎不同，codex 子进程由驱动自己用 `node:child_process.spawn` 拉起（`src/engine-codex/appserver/client.ts:89`），不经 `dsh-subprocess` 服务，因此没有 harness 沙箱包装——整个子进程的权限边界就是 codex CLI 自己的 sandbox。
+- **CLI 二进制来自 pinned 依赖**：入口解析自本包锁死的 `@openai/codex` 依赖（`package.json` 中 `@openai/codex: 0.149.1`），用当前 Node 解释器执行其 `bin/codex.js app-server`（`src/engine-codex/appserver/client.ts:46-48, 89-108`）。
+
+## 2. 模块组成与各文件职责
+
+```
+src/engine-codex/
+├── loop.ts              # CodexLoop：HostedEngineRuntime 子类（普通类，只给 label/resolveConfig/buildAgent）
+├── agent.ts             # CodexAgent：turn/step 状态机、流式折叠、技能注入、权限折叠
+├── permission.ts        # dsh 权限旋钮 → codex 声明式权限对的纯函数折叠
+├── skills.ts            # CodexSkillProvider：AGENTS.md 发现与合并为一个 agents-md 技能
+├── types.ts             # CodexSandboxMode / CodexApprovalPolicy / ResolvedConfig（纯类型）
+└── appserver/
+    ├── client.ts        # AppServerClient：spawn + JSON-RPC 2.0 请求/响应/通知分发
+    ├── thread.ts        # AppServerThread：一个线程的 turn 流式生成器（通知 → AppServerEvent）
+    ├── mapping.ts       # 完成的 item / turn usage → dsh SessionEvent 载荷的纯映射
+    └── types.ts         # app-server 协议类型的最小手写子集
+```
+
+- `loop.ts` 是**库而不是 cordis 插件入口**（`src/engine-codex/loop.ts:1-11`）：`CodexLoop` 是普通类，由路由器在会话选中 codex 时构造（`src/index.ts:560-561`）。
+- `appserver/types.ts` 明确是 `codex app-server generate-ts` 生成类型的**最小手写子集**（`src/engine-codex/appserver/types.ts:1-7`），只覆盖驱动用到的 initialize / thread / turn / 通知形状，多数字段用 `[key: string]: unknown` 放行。
+- 驱动复用的共享设施在 `src/driver-core/`：`prompt.ts`（历史序列化）、`permission-knobs.ts`（旋钮读取）、`skill-inject.ts`（`/name` 手势与 `<skill_content>` 渲染）、`ownership.ts`（工厂所有权与 abort race 的**原语**）、`hosted-engine-runtime.ts`（把原语编排成 create/resume 事务，§3.1/3.2）、`inbox.ts`（`DriverInbox`：driver 自有的 durable inbox 投影）、`assistant-stream.ts`（`DriverAssistantStream`：live 帧发布与 compact stream 切分）。
+- `CodexSkillProvider` 也不是自己实现的算法：它继承 `driver-core/agents-md-skill-provider.ts` 的 `AgentsMdSkillProvider`，本模块只给一份 spec（见 §7 与 `docs/driver-core.md` §7.2.1）。
+
+## 3. 引擎运行时与 Agent 生命周期
+
+### 3.1 CodexLoop（引擎运行时）
+
+`CodexLoop` 是 `HostedEngineRuntime<ResolvedConfig, CodexAgent>` 的**三行子类**（`src/engine-codex/loop.ts:90-102`）——一个**普通类**，不是 Cordis Service，不声明 `static inject`，也不自己抢 AgentFactory 槽位。ctx key 仍是 `agentLoopCodex`（`loop.ts:77`、`:79-83` 的模块声明）。构造函数只有一句 `super(ctx, 'agentLoopCodex', resolveConfig(config))`（`loop.ts:95`）；唯一重写是 `buildAgent`（`loop.ts:99-101`）。
+
+**唯一不需要 `subprocess` 服务的引擎**：codex 自己用 `node:child_process.spawn` 拉起 `codex app-server`（§1），所以四个引擎里只有它没有 `ctx.get('subprocess')` 的惰性解析与缺服务时的 loud 失败（对比 `src/engine-pi/loop.ts:164-167`、`src/engine-kimi/loop.ts:83-86`）。
+
+进程内唯一的 AgentFactory 是路由器 `RouterLoop`（`src/router-loop.ts:114`）：它按插件自己的每会话引擎记录分发（无记录时回退到会话记录的 agent preset），并在某个会话第一次选中 codex 时构造 `CodexLoop`（`src/index.ts:560-561`，实例缓存于 `RouterLoop.runtimeOf`，`src/router-loop.ts:158-164`）。基类（`src/driver-core/hosted-engine-runtime.ts`）在构造时只做两件事：
+
+1. `ctx.reflect.provide(label, this)`——把实例挂到 `ctx.agentLoopCodex`（`hosted-engine-runtime.ts:109`）。这是**内省面**（per-engine spec 与 `--dump-config` 读取器用它看进程实际构造了哪些驱动），不是 `setFactory`；
+2. `ctx.effect(() => () => this.ownership.dispose())`——fiber 卸载时停掉工厂所有权（含所有存活 agent 的反向拆解）（`hosted-engine-runtime.ts:115`）。
+
+`provider`/`model`/`cwd` 三个 systemPrompt 变量与 `agent-loop` settings section 都**不**在引擎这一层：它们由路由器继承的 harness `AgentLoop` 提供（`src/router-loop.ts:114-141`）——一个进程只被路由器占用那个槽位，所以这些进程级注册也只有一份。
+
+### 3.2 创建/恢复事务（prepare → setup → publish）
+
+> **这套事务已抽到 `src/driver-core/hosted-engine-runtime.ts`，四个引擎共用一份**（`docs/driver-core.md` §4 有完整说明）。下面条目中的行号都指该共享文件，codex 只是选它当基类的四个引擎之一；路由器对每个会话调用的就是这两个入口（`src/router-loop.ts:203-212`、`:226-235`）。
+
+`createAgent`（`hosted-engine-runtime.ts:292-329`）与 `resume`/`resumeWith`（`hosted-engine-runtime.ts:375-456`）共享同一个发布事务 `setupAndPublish`（`hosted-engine-runtime.ts:249-282`）：
+
+1. **prepare**（`hosted-engine-runtime.ts:132-246`）：通过 `this.buildAgent(...)`（`:218`）构造 `CodexAgent`，并把一个 memoized 的反向 `dispose()` **在发布前**注册到 `FactoryOwnership` 与 owner fiber——中途卸载会整体回滚。`signal` 融合三方取消源：调用方 signal、owner fiber 卸载、工厂 teardown（`hosted-engine-runtime.ts:148-156`）。
+2. **setup**：`raceAbort(setup?.(prepared.agent.ctx, prepared.agent), prepared.signal, id)` 跑调用方 setup 并取 commit（`hosted-engine-runtime.ts:272`）；失败则 `dispose()` 后重抛。
+3. **publish**（`hosted-engine-runtime.ts:225-236`）：依次 `sessions.enter` → `agents.enter` → `sessions.announce` → `agents.announce` → `emitAgentEvent(..., 'agent/session-start', { source })`，每步之间 `assertLive()` 检查融合信号。
+
+反向拆解顺序（`hosted-engine-runtime.ts:163-193`）：`machine.cancel({ kind: 'disposed' })` → `whenIdle()` → `scope.dispose()` → 注销 enter/announce → 从 ownership 摘除。resume 路径额外处理：无 `sessionPersistence` 服务时直接报错（`hosted-engine-runtime.ts:377-378`）；加载与 setup 全程用 `raceAbortCall` 竞争融合信号，被取消后晚到的 preparation 由它的 release 回调关闭（`hosted-engine-runtime.ts:408-413`）。
+
+### 3.3 CodexAgent（会话驱动）
+
+`CodexAgent implements Agent`（`src/engine-codex/agent.ts:99`）复刻了默认 agent-loop 驱动的相位机（`Phase = idle | maintenance | running`，`src/engine-codex/agent.ts:70-78`）：
+
+- **入口**：`followup`（下一轮）/`steer`（当前步、唤醒）/`inject`（当前步、不唤醒）→ `send` → `DriverInbox`（`src/engine-codex/agent.ts:194-237`）；`cancel` 默认清空 inbox 并 abort 相位（`src/engine-codex/agent.ts:239-245`）。
+- **驱动**：`wakeDriver` 在 idle 相位开新 running 相位并经 `agents.withInitiator` 起 `kick()`（`src/engine-codex/agent.ts:282-300`）；`kick` 循环 `turn()` 直到无待办，异常在驱动边界收敛（`src/engine-codex/agent.ts:317-331`）。
+- **turn**（`src/engine-codex/agent.ts:409-484`）：append `turn/start` → 循环 `preStep`（Inbox claim + `agent/pre-step` waterfall + 技能注入）→ append `user/message` → `step()` → append `step/end`；turn 结束原因覆盖 `completed`/`blocked`/`aborted`/`error`，finally 中必 append `turn/end`。
+  两个关键点：① `step()` 内部会在助手片段边界轮转 step（§4.1），所以收尾的 `step/end` 关的是 `phase.step` 而非本次迭代开头开的 step；② **轮转出来的 step 不重跑 `preStep`**——只有 turn 的第一个 step 走 inbox claim / waterfall / 技能注入，因为一个 codex turn 是原子的、中途也无法投递 steer/inject。
+- **一段一步（step 轮转）**：一次 codex turn 跑完模型的整个 agentic loop，一个 step 里会出现多条 assistant 消息（实测纯 codex 会话里 turn 1 有 6 条）与多组 tool/call。这必须拆开——chat 的助手节点按 `${turn}:${step}` 建键（`packages/client/ui-chat/src/client/conversation-nodes/assistant.ts`），同一 step 的多条消息落到**同一个**节点，而 `settleMessage` 是**整体替换** blocks，N 条只渲染最后一条。
+  所以 `beginSegment` 在新助手内容落盘前轮转：本 step 已有 settled 的 `tool/result` **且不欠任何结果**时补 `step/end` + `step/start` 并就地 `phase.step += 1`。第二个条件是 2026-09-28 补的：codex 把 `tool/call` 与 `tool/result` 背靠背写在同一分支里（本来就不会欠），但每个 `step/end` 现在都走 `closeStep`，给仍未结算的调用补一条明确的失败结果再收尾——v4 不允许 `step/end` 带着未结算的宣告（见 `docs/driver-core.md` §7.9）。触发点有三处，都幂等（轮转后 `stepSettledTools` 归零，重复调用不做事）：**推理 delta**（`reasoning-summary-delta`/`reasoning-text-delta`/`plan-delta`）、**`agentMessage` item 完成**、以及**工具 item**（`commandExecution`/`fileChange`/`mcpToolCall`）。前两者是原有的——推理在 item 完成之前就流式画出来了，只在 item 完成时轮转会让 live 帧画进已经收尾的 step、只有 durable 消息搬家；`agentMessage` 完成覆盖「本段没有推理、只有正文」的形状。工具 item 处的轮转是 2026-09-19 补的（见下）。
+  轮转判据是「本 step 已有 settled 结果」而非「有调用被公告」，这样同一模型轮次里连续发出的多个工具调用仍留在同一个 step。
+- **同一段的连续 agentMessage 合并为一条消息（2026-09-19 修）**：旧实现每个 `agentMessage` item 完成时 `flushHeld()` 刷掉上一条再设新 `held`，于是同一 turn 里连续的多个 agentMessage（无工具间隔）会在同一个 step 落多条 `assistant/message`，chat 节点按 `${turn}:${step}` 替换 blocks 只渲染最后一条——前一条的文本/思考全丢。现在 `agentMessage` 完成时改为：无 settled 工具结果（`stepSettledTools === 0`）时把 reasoning/text **追加进现有 `held`**（合并），有结果时 `beginSegment` 已轮转、`held` 已被工具项清空，于是新开一条。块 index 同步改为 `(held?.content.length ?? 0) + pendingReasoning.length`（推理 delta 与 item-started 的 text 块 index 都用它），保证合并后的 content 与 stream 的块序一致。
+- **工具调用块入消息（2026-09-19 修）**：旧实现里工具 item 先 `flushReasoning()` + `flushHeld()`（把 reasoning/text 单独落一条消息）再写 `tool/call`，于是 `assistant/message` 不含 `tool-call` 块。但 `Session.deriveMessages` 只投影 `assistant/message` 与 `tool/result`（不投影 `tool/call` 事件），而 codex 每步的 prompt 是 `deriveMessages → serializeHistory` 的无状态序列化——丢 `tool-call` 块等于模型下一步看不到自己上一步跑了什么工具。
+  现在改为：工具 item 先 `beginSegment`（连续工具各占一个 step）→ 对调用做一次 `normalizeHostedToolCall('codex', …)` → `foldToolCall`（用**归一化后的** name/arguments 把 `tool-call` 块折进 `held`，同时把未被 agent 消息认领的尾随推理先折进去）→ `flushHeld`（一条消息同时携带 reasoning/text 与 tool-call 块）→ 再用**同一组归一化值**写 `tool/call` + `tool/result`（`src/engine-codex/agent.ts`）。这样持久日志恒为 `assistant/message`（含 `tool-call` 块）→ `tool/call` → `tool/result`，且消息块与事件逐字节一致（Session V4 按 `id` 配对二者的前提），序列化出的 prompt 保留 `[tool call: name(args)]` 行（工具名取 dsh 投影，如 `bash`）。
+- **preStep 拦截链**（`src/engine-codex/agent.ts:333-354`）：`agent/pre-step` waterfall 可 reject（turn 记 `blocked`）或改写消息批次；通过后再做技能注入（见 §7）。
+
+生命周期要点：`scope`（`createScope`）是 agent 级注册边界，其上注册的 effect 在 scope 拆解时释放 app-server 客户端（`src/engine-codex/agent.ts:137-141`）。
+
+## 4. app-server RPC 客户端与线程管理
+
+### 4.1 分工
+
+- **`client.ts`（传输层）**：负责进程生命周期与 JSON-RPC 2.0 帧。`AppServerClient.create()` spawn 子进程（`src/engine-codex/appserver/client.ts:88-129`）、立即发 `initialize` 握手（`clientInfo.name = 'dsh-loop-engine'`，`capabilities.experimentalApi = true`，`src/engine-codex/appserver/client.ts:147-157`）。请求用自增 id 记入 `pending` Map，stdout 按行解析：带 `id` 和 `method` 的是入站请求（`answerRequest` 写回应答），只有 `id` 的是响应（按 id 撮合 resolve/reject），只有 `method` 的是通知（转给当前 notification handler），非 JSON 行直接忽略（`src/engine-codex/appserver/client.ts:202-239`）。
+- **`thread.ts`（会话层）**：`AppServerThread.create` 发 `thread/start` 拿 threadId（`src/engine-codex/appserver/thread.ts:49-52`）；`turn()` 是异步生成器，把 app-server 通知翻译成封闭的 `AppServerEvent` 联合类型（`src/engine-codex/appserver/thread.ts:25-35`）供 agent 消费。
+
+### 4.2 客户端生命周期
+
+- 每个 `CodexAgent` **懒建一个** `AppServerClient` 并跨 step 复用；进程已死（`closed`）时下次取用会重建（`src/engine-codex/agent.ts:241`）。agent scope 拆解时 `dispose()`：关 readline、`stdin.end()`、`kill()`（`src/engine-codex/appserver/client.ts:163-169`）。
+- **空闲关停**（`childIdleMs`）：缓存是"跨 step 复用"的意思，也是"回合结束了子进程还在"的意思——harness 不会在回合结束时释放 agent，agent 与它所在会话的 scope 同寿，所以一条没人再动的会话会一直养着那个 `app-server`。`childIdleMs` 为正时，`setPhase` 每次落到 `idle` 相位就 arm 一个倒计时、落到 `running`/`maintenance` 就 cancel（`src/engine-codex/agent.ts:331-338`），到点执行 `closeChild()`（`:227`，即 dispose + 清缓存）；下一次 step 的 `appServerClient` 照旧懒 spawn。关掉的是**子进程**，不是 agent、不是会话——不产生 `session/disposed`、页面不用刷新（对比 `docs/per-session-engine.md` §5.2 的 release 路径与 §6）。倒计时用 `unref()`，不会自己把进程吊住。默认 `0` = 不关停（与加这个旋钮之前完全一致）。另：thread 本就 **每 step 新建**（`AppServerThread.create`），所以子进程重启不会丢任何跨 step 的会话状态
+- 子进程 `exit` 时把所有 pending 请求统一 reject 为 `codex app-server process exited unexpectedly`（`src/engine-codex/appserver/client.ts:77-84`）；dispose 后的请求立即 reject `app-server client is disposed`（`src/engine-codex/appserver/client.ts:173-175`）。
+- stderr 行可通过 `onStderr` 订阅（`src/engine-codex/appserver/client.ts:125`），但 agent 没有注册 handler——目前 stderr 日志被丢弃。
+
+### 4.3 turn 流式生成的三个关键机制
+
+1. **先订阅后请求**：通知 handler 在 `turn/start` 请求**之前**挂上，因为服务端可能在 JSON-RPC 响应到达前就开始推 delta（`src/engine-codex/appserver/thread.ts:152-154`）。拿到 turnId 之前的通知先缓冲到 `earlyNotifications`，turnId 确定后重放（`src/engine-codex/appserver/thread.ts:64-79, 166-168`）。
+2. **双重过滤**：所有通知按 `threadId` 过滤（其他线程的直接丢弃），item 级通知再按 `turnId` 过滤（`src/engine-codex/appserver/thread.ts:74-141`）。由于客户端在 agent 内共享且通知 handler 是单槽（`onNotification` 覆盖式赋值），**同一时刻只能有一个活跃 turn**——这由 agent 相位机天然保证（running 相位内串行）。
+3. **队列 + 唤醒**：handler 把事件推入 `queue` 并 `resolve?.()` 唤醒生成器；生成器在 `queue` 空且未 done 时挂起等待（`src/engine-codex/appserver/thread.ts:186-197`）。`turn/completed` 与 `error` 通知都置 `done`；`error` 同时记 `turnError`，流排空后抛出（`src/engine-codex/appserver/thread.ts:119-141, 198`）。
+
+### 4.4 取消传播
+
+`turn()` 收到 abort 信号时：置 done、以 signal.reason 为 `turnError`（保留 `AgentCancelCause` 而不是泛化错误）、并发 `turn/interrupt` 尽力中断服务端 turn（错误吞掉）（`src/engine-codex/appserver/thread.ts:173-184`）。agent 侧把相位 signal 桥接到一个 per-step 的 `AbortController`（`src/engine-codex/agent.ts:632-641`），step 结束（含异常）时在 finally 里摘监听并 abort 该 controller（`src/engine-codex/agent.ts:927-930`）。
+
+### 4.5 线程模型与已知边界
+
+- **每 step 一个新线程**：`threadParams = { cwd, sandbox, approvalPolicy, model? }`（`src/engine-codex/agent.ts:739-747`），随后 `thread.turn(input, { signal, params })`，其中 `input` 是文本项在前、本步图片的 `{ type: 'localImage', path }` 项按序在后（`src/engine-codex/agent.ts:752-756`）。`model?` 由共享判据取：`sessionModelOverrideOf(ctx, session)?.model ?? config.model`（`src/driver-core/session-model.ts`）——会话选的真实 dsh 模型优先，`config.model` 只是回落；codex 收裸 model slug，不带 provider。线程每步新建，所以中途 `/model` 下一步生效。codex 侧不积累历史——全部上下文在序列化后的 prompt 文本里。
+- **每 step 解析一次 dsh 端点**：`resolveModelHandover`（`src/driver-core/model-handover.ts`，调用点 `src/engine-codex/agent.ts:667`）与模型选择同处一步解析；有结果时驱动用 `codexModelConfig`（`src/engine-codex/model-handover.ts`）把它变成 `codex app-server` 的 `-c model_provider="dsh"` + `-c model_providers.dsh={name,base_url,wire_api,env_key}`，并把凭据作为 `DSH_LOOP_ENGINE_API_KEY` 放进子进程 env。**内联表里的 `name` 是必填**：codex 0.149.1 在配置加载阶段就拒绝 `name` 为空的 provider（`provider name must not be empty in \`model_providers\``），`app-server` 直接退出、驱动只能看到 `codex app-server process exited unexpectedly`，所以 `name` 与 `model_provider` 用同一个插件自有 id（真机结论与排障手法见 `docs/optimization-backlog.md` BL-01）。**codex 现在只有 `responses` 一条 wire**：`openai-responses`→`responses`；dsh 的 `openai-completions` 与 `anthropic-messages` 都没有等价 wire——`chat` 在 codex 0.149.1 里已被**移除**，写它是致命配置错误（`` `wire_api = "chat"` is no longer supported ``，`app-server` 起不来），此时**省略 `wire_api`**、由 codex 用它自己的默认 wire（0.149.1 实测为 `responses`）去请求 dsh 端点并在请求上**报错**（插件不假装支持、也不静默回退）。handover 的 `api` 为 `undefined`（dsh 那条路由既没声明协议、也不在 shipped 表上）走同一条路：仍然把端点与凭据交给 codex，只是省略 `wire_api`。端点指纹变了就重启 app-server（`appServerClient`，`agent.ts:243-257`；`AppServerClient.create(argv, env)` 的 `env` 是**叠加在 `process.env` 之上**而不是替换，见 `src/engine-codex/appserver/client.ts:101-108`）。选 `external/default` 或没有选择、或**端点/凭据**解析不到时**不注入**（后者 warn 一次），app-server 以裸 argv/`config.env` 起。
+- 线程从不显式关闭/归档；它们随 app-server 进程在 agent 拆解时被杀而消亡。
+- `client.threadResume`（`src/engine-codex/appserver/client.ts:165-167`）在整个 `src/` 中**没有调用方**——dsh 的 resume 语义由会话日志恢复实现，不用 codex 的 thread/resume。它是当前未用的 API 表面。
+- `thread.ts` 会产出 `token-usage` 事件（`thread/tokenUsage/updated`），但 `agent.ts` 的事件 switch 不处理它（落进 default 忽略）；turn 用量只取自 `turn/completed` 的 `turn.usage`。同理 `ErrorNotification.willRetry` 被携带但无人消费。
+
+## 5. 事件映射（RPC 事件 ↔ dsh SessionEvent）
+
+映射分两层：**token 级 delta 在 `agent.ts` 的 step 循环里内联折叠**（流式即时绘制），**item 终态与 usage 在 `appserver/mapping.ts` 里纯函数映射**（`src/engine-codex/appserver/mapping.ts:1-9` 的模块注释明确了这条分工）。
+
+### 5.1 流式 delta → live 帧 + 消息内嵌 stream
+
+step 循环（`src/engine-codex/agent.ts:768-933`）维护一套折叠状态：`pendingReasoning` + `pendingReasoningStream`（待折入下一条消息的推理文本，以及它流出的 chunk）、`held`（组装中的 assistant 消息，含 `content` 与自己的 `stream`）、`reasoningBlockStarted`/`textBlockStarted`（对应块是否已开）与 `textBlockIndex`（`src/engine-codex/agent.ts:673-692`）。
+
+每个 delta 交给这次尝试的 `DriverAssistantStream`（`currentStream()`，`src/engine-codex/agent.ts:695-707`）：它把 chunk 压进 compact stream 并发一条 `agent/assistant-stream` 的 `chunk` 帧，因此 web 端可见逐 token 的实时渲染。compact stream 按**内容分段**切给 durable 消息：codex 的协议能指出内容边界，所以每个 item 终结时 `takeStream()` 把这一段 chunk 收走，`flushHeld` 只内嵌该消息自己流出的那段（§5.2）。
+
+- `agent-delta`（来自 `item/agentMessage/delta`）：首个 delta 先 push `{ type: 'block-start', index, blockType: 'text' }`，之后每个 delta push `text-delta`（`src/engine-codex/agent.ts:780-787`）。
+- `reasoning-summary-delta` / `reasoning-text-delta` / `plan-delta`：三类**都折叠为 reasoning 块**——首个 push `block-start`（`blockType: 'reasoning'`），之后 push `reasoning-delta`（`src/engine-codex/agent.ts:789-806`）。注意 plan delta 也进推理流，不单独成块；plan item 自身没有内容块，所以它终结时这段 chunk 被切下并丢弃（§5.2）。
+- `item-started`：只用于重置 text 块状态，并把 text 块 index 置为「现有 held 块数 + 已累积推理块数」（`src/engine-codex/agent.ts:769-778`）——块 index 语义是"消息内第几个内容块"。
+
+### 5.2 item 终态 → 持久消息
+
+`item-completed` 按 `item.type` 分派（`src/engine-codex/agent.ts:811-894`）：
+
+- `reasoning`：终态的两个数组 `summary` / `content` **都恒存在、也都可能为空**，所以取**第一个真的带文本**的那个（先 `summary`，再 `content`，`nonEmptyText`，`src/engine-codex/agent.ts:94-96`）；两者都空时回退到这一步流式收到的思考文本（`streamedReasoning`，按 item id 累积、**plan delta 不计入**，`agent.ts:789-806`），再没有才记空串。落盘文本因此不会比用户已经看到的流式思考更空。同时 `takeStream()` 把这段推理流出的 chunk 收进 `pendingReasoningStream`。
+- `plan`：**不落任何内容块**——只在 item 边界 `takeStream()` 切掉这段 chunk 并丢弃，同时复位 `reasoningBlockStarted`（`src/engine-codex/agent.ts:831-838`）。plan 在协议里是独立 item 类型（`type: 'plan'`，带权威 `text`），其 delta 走上面的推理流；这个切点是必需的——少了它，plan 段会被**下一条** agent 消息的 `data.stream` 吞掉，而那条消息的 `content` 里并没有对应块（`tests/engine-codex/agent.spec.ts:581-655` 验证：有 delta 的形状切段丢弃，无 delta 的形状忽略不切）。
+- **agentMessage**：先 `takeStream()` 切下正文这段 chunk，再把累积推理 + 正文合成**一条** assistant message（reasoning 块在前、text 块在后）。**同一段里连续的多个 agentMessage 合并进同一条消息**——旧实现每个 agentMessage 完成时 `flushHeld()` 刷掉上一条，一个 step 里就会出现多条 assistant message，而 chat 节点按 `${turn}:${step}` 替换 blocks 只渲染最后一条，前面的文本/思考全丢；现在改为「无 settled 工具结果时追加进现有 `held`，有结果时开新段」（`src/engine-codex/agent.ts:840-861`）。其 `stream` 是各段推理与正文 chunk 的拼接。
+- `commandExecution` / `fileChange` / `mcpToolCall`：先 `beginSegment`（连续工具各占一个 step）→ 归一化调用 → `foldToolCall`（用归一化值把 `tool-call` 块折进 `held`，同时把未被 agent 消息认领的尾随推理先折进去）→ `flushHeld`（一条消息同时携带 reasoning/text 与 `tool-call` 块）→ 再用同一归一化值生成 `tool/call` + `tool/result` 事件（`src/engine-codex/agent.ts`）。**tool/call 是惰性的**——没有 item-started 也会在终态补记（`tests/engine-codex/agent.spec.ts:965-986` 验证）。
+- 未知 item 类型（如 `webSearch`）直接忽略，不产生任何日志事件（`tests/engine-codex/agent.spec.ts:896-920` 验证）。
+
+`flushHeld`（`src/engine-codex/agent.ts:722-752`）落 `assistant/message` 时带 `surfaceOp: 'append'`，并把**这条消息自己的** chunk 序列内嵌成 `data.stream`（`held.stream`，`src/engine-codex/agent.ts:734-735`）；它开头的 `foldReasoning`（`src/engine-codex/agent.ts:710-720`）先把未被 agent 消息认领的尾随推理折进 `held`（或合成推理-only 消息），`foldToolCall`（`src/engine-codex/agent.ts:755-766`）在 flush 之前把 tool-call 块折进 `held.content`，所以消息同时携带文本/推理与工具调用头。codex 是四个引擎里唯一按内容分段切 stream 的（其余三个整段内嵌 `attempt.stream`）。提交成功后由 `DriverAssistantStream.settle` 发 `end`（`committed`）帧，而流过却没能提交 durable 消息的段会在 `finally` 里 `abandon()` 发 `end`（`abandoned`）帧（`src/engine-codex/agent.ts:933`）。消息 `source` 固定为 `{ provider: 'codex', model: modelLabel() }`。
+
+### 5.3 turn 完成与 usage
+
+`turn-completed` 时 `mapUsage` 把 `cachedInputTokens → cacheReadTokens`、`reasoningOutputTokens → reasoningTokens`（`src/engine-codex/appserver/mapping.ts:15-22`）。**usage 挂在 step 的最后一条持久消息上**：`flushHeld(usage)` 先 `foldReasoning` 把尾随推理折进 held，再把这条合并后的消息落盘并携带 usage（`src/engine-codex/agent.ts:904-912`）。若 turn 在工具 item 之后直接结束——`held` 已被工具项 `flushHeld()` 清空、`pendingReasoning` 也为空——`flushHeld` 落空，该 turn 的 usage 不挂到任何持久消息上。`turn/completed` 无 usage 字段则消息不带 usage（`tests/engine-codex/agent.spec.ts:872-894` 验证）。
+
+### 5.4 工具项映射细节（mapping.ts）
+
+- `commandExecution` → `name: 'command_execution'`，arguments 为 `{"command": ...}`，`isError = exitCode !== 0 || status === 'failed'`（`src/engine-codex/appserver/mapping.ts:25-38`）。agent 落盘前对该调用做一次 `normalizeHostedToolCall('codex', …)`，所以 durable 的 `tool-call` 块与 `tool/call` 事件都用 dsh 名 `bash`。
+- `fileChange` → `name: 'apply_patch'`，result 文本为 `patch <status>`，`isError = status === 'failed'`（`src/engine-codex/appserver/mapping.ts:41-54`）。
+- `mcpToolCall` → `name: '<server>/<tool>'`（缺任一则 `mcp_tool_call`），`isError = error != null`（`src/engine-codex/appserver/mapping.ts:57-76`）。
+- 三者的 `callId` 都是 `ToolCallId(item.id)`，跨 item 类型不做去重。
+
+### 5.5 request/header
+
+每个 loop 实例在首个 step 记一次 `request/header`：无既有 header 记 `reason: 'initial'`，有则记 `'resume'`（`src/engine-codex/agent.ts:600-611`）。`provider` 恒为四个引擎**共用**的 `'external'`（`PROVIDER = HOSTED_ROUTE_LABEL`，`src/engine-codex/agent.ts`）；未钉 `model` 时 model 标签为 `'default'`（`HOSTED_DEFAULT_MODEL`，`src/agent-preset-ids.ts`）——**header 是引擎自己的座位标签，不镜像 web 会话的模型选择**：会话选的真实模型是每步经 `thread/start` / `turn/start` 的 `model` 参数传给 codex 的（§4.5、§8），两者是两件事。这个 `'default'` 同时是本插件给共享占位 provider 路由**唯一**广告的模型条目（`src/provider-route.ts`）：菜单按 `model.id` 解析会话的 `(provider, model)`，两边同串才能让那一格显示成「default」，而不是拼出一个没有任何适配器能服务的 `external/...`。该共享标签由插件**常驻**注册为**一条**占位 provider 路由（`src/index.ts` 的 `mountProviderRoutes`、`src/provider-route.ts`；见 `docs/architecture.md` §3.6），否则宿主按 header 推导的会话模型选择会让第二轮 prompt 被 `model-unavailable` 拒绝。早期版本写下的 `'codex'` 标签不再注册，但仍被 `isHostedProviderRoute` 判为托管路由以便重置老会话。
+
+## 6. 权限模型
+
+### 6.1 折叠规则（permission.ts）
+
+Codex 的权限 = 线程启动时的 `sandboxMode` + `approvalPolicy` 对，叠加运行中 app-server 发来的**审批请求**（`item/commandExecution/requestApproval` / `item/fileChange/requestApproval` / `item/permissions/requestApproval`），这些请求由客户端经 dsh 审批 seam 应答（§6.4）。`resolveSessionPermission`（`src/engine-codex/permission.ts:41-49`）从会话日志折叠出线程启动对：
+
+| 会话旋钮状态 | codex sandboxMode | codex approvalPolicy |
+|---|---|---|
+| `sandbox/mode = danger-full-access`（无视 policy） | `danger-full-access` | `never` |
+| `approval/policy = ask`（且非 full access） | `workspace-write` | `on-request` |
+| 其他任何情况（含无任何旋钮记录） | `read-only` | `never`（`DEFAULT_CODEX_PERMISSION`，`src/engine-codex/permission.ts:28-31`） |
+
+`on-request` 的含义是**模型自己决定何时请求审批**。app-server 模式下没有 TUI，这个"请求"实现为 server→client 的 JSON-RPC **request**（带 `id` + `method`），客户端必须回一个 `{id, result}` 应答——不回就卡住整个 turn。所以 `ask` 不是"退化为拒绝"，而是真的把审批请求转给 dsh 审批 seam：`ctx.approval.request` 返回 `allowed-once` 才放行，其余一律 `decline`；没挂审批服务时 fail-closed 拒绝（§6.4）。`workspace-write` 沙箱模式本身**不**直接映射：只有配合 `ask` 才升到 workspace-write，否则 fail-closed 到 read-only。
+
+### 6.2 旋钮来源与回退优先级
+
+- 会话旋钮由 `driver-core/permission-knobs.ts` 读取：**最后一个** `sandbox/mode` / `approval/policy` 事件生效（倒序扫描，`src/driver-core/permission-knobs.ts:29-48`）；事件值不在合法枚举内按"无记录"处理。类型是内联镜像的，避免对 `dsh-sandbox-policy`/`dsh-user-approval` 的 peer 依赖（`src/driver-core/permission-knobs.ts:19-26`）。
+- 每个 step 查询时**重新折叠**（`queryPermission`，`src/engine-codex/agent.ts:400-406`），所以会话中途切换权限预设对下一个 step 立即生效（`tests/engine-codex/agent.spec.ts:1279-1313` 验证三次切换）。
+- **部署钉值逐字段优先**：`config.sandboxMode ?? fold.sandboxMode`、`config.approvalPolicy ?? fold.approvalPolicy`——钉一个不妨碍另一个跟随会话（`tests/engine-codex/agent.spec.ts:1315-1335` 验证）。
+
+### 6.3 权限落到哪两个 RPC 参数
+
+- **sandbox 只在线程级**：`thread/start` 的 `sandbox` 字段（`src/engine-codex/agent.ts:653`）；`turn/start` 的 params 只带 `approvalPolicy`（+可选 `model`），**不带 `sandboxPolicy`**（`src/engine-codex/agent.ts:662`，`tests/engine-codex/agent.spec.ts:265-266` 断言 `not.toHaveProperty('sandboxPolicy')`）。要改每步沙箱粒度，需要引入 `appserver/types.ts:52-62` 已定义但未用的 `SandboxPolicy` 联合类型。
+- `approvalPolicy` 同时出现在 `thread/start` 和 `turn/start` 两处（`src/engine-codex/agent.ts:654, 640`）。
+
+### 6.4 审批请求的应答路径（server→client request）
+
+app-server 用 `turn/start` 启动的 turn 里，模型请求审批时会从 **stdout** 发一条带 `id` + `method` 的 JSON-RPC request（不是 notification），三个审批方法及其应答：
+
+| method | 应答 result |
+|---|---|
+| `item/commandExecution/requestApproval` | `{ decision: 'accept' \| 'acceptForSession' \| 'decline' \| 'cancel' \| … }` |
+| `item/fileChange/requestApproval` | `{ decision: 'accept' \| 'acceptForSession' \| 'decline' \| 'cancel' }` |
+| `item/permissions/requestApproval` | `{ permissions: GrantedPermissionProfile, scope: 'turn' \| 'session' }` |
+| `item/tool/requestUserInput` | `{ answers: Record<questionId, { answers: string[] }> }`（seam 缺席/拒绝 → `{ answers: {} }`） |
+| `mcpServer/elicitation/request` | `{ action: 'accept' \| 'decline' \| 'cancel' }`（我们恒回 `decline`） |
+
+- 客户端 `AppServerClient.handleLine`（`src/engine-codex/appserver/client.ts`）区分三种线：`id`+`method` → 入站请求（写回 `{id,result}` / `{id,error}`）；只有 `id` → 我们请求的响应；只有 `method` → 通知。`onRequest` 注册应答 handler，未注册或未识别的 method 回 `-32601`（对齐 kimi ACP 的 fail-closed 回退）。
+- `CodexAgent.appServerClient()` 建客户端时注册 handler（`src/engine-codex/agent.ts:148-155`）；`answerRequest` 按 method 分派：
+  - **审批**（`answerApproval` → `requestApproval`，读 `ctx.approval`）→ `resolveApprovalRequest`（`src/engine-codex/permission.ts`）：
+    - command / file-change：`allowed-once → accept`，`rejected` / `cancelled` / `unavailable` / 无服务 → `decline`；
+    - permissions：`allowed-once → { permissions: 请求里要求的 permissions, scope: 'turn' }`，其余 → `{ permissions: {}, scope: 'turn' }`；
+  - **问用户**（`item/tool/requestUserInput` → `answerUserInput`）：把 `questions` 投影成 dsh 的 item（id/question 缺失的条目丢弃——应答按 question id 回键，编造 id 等于替 Codex 答题），转给 `ctx.userQuestions.ask({ questions, agent: this, signal })`（运行时信号随行，`agent.ts` 与审批 seam 同款）；返回的答案按 question id 映射成 codex 的 `{ answers: { <id>: { answers: [...] } } }`，`selected` 与自由文本 `custom` 合并进同一列表。**seam 缺席或拒绝（`NO_PROVIDER` 等）→ `{ answers: {} }`**（"问了，没人答"），既不编答案也不回协议错误，并且**记 warn 日志**而不是静默降级；`questions` 为空同理。
+  - **MCP elicitation**（`mcpServer/elicitation/request`）→ `{ action: 'decline' }`：无人值守驱动渲染不了 elicitation 表单，与 claude 驱动的 `onElicitation` 同款姿态，也从不会伪造用户没给的输入。
+  - 其它 method（`item/tool/call`、旧的 v1 `applyPatchApproval`/`execCommandApproval` 等）→ `{ error: { code: -32601, message: 'Method not found' } }`。
+- 三种应答都对着 **pinned codex CLI 自产的协议 schema** 校验过（`codex app-server generate-json-schema`，@openai/codex 0.149.1）。注意 v1 的 `applyPatchApproval`/`execCommandApproval` 在 schema 里标 DEPRECATED（只服务 legacy `SendUserTurn` 路径），本驱动走 v2，不需要应答它们。
+
+## 7. AGENTS.md 技能注入
+
+### 7.1 为什么 agent 里要重做一遍注入
+
+进程内引擎的 `/name` 技能注入由 dsh-tool-skill 的 handler 完成，但它挂在 agent-preset 上下文链上，**CodexAgent 的上下文不从那条链继承**（`src/engine-codex/agent.ts:345-348` 注释）。所以 `preStep` 在 waterfall 之后自己跑 `injectSkills`（`src/engine-codex/agent.ts:349-353`）：
+
+1. `invokedSkillNames` 扫描本步 user 消息里的 `/name` 手势（只扫 `source.kind === 'user'` 的 text 块，正则 `SKILL_GESTURE`，首次出现顺序去重）（`src/driver-core/skill-inject.ts:18, 84-96`）；
+2. 经 `loopCtx.get('skills')` 逐个 `skills.get(name, { signal, scope: this, cwd? })` 加载；加载抛错、未找到、非 userInvocable 都静默跳过（`src/engine-codex/agent.ts:377-383`）；
+3. 命中的技能渲染为 `<skill_content>` 块（`renderSkillContent`，`src/driver-core/skill-inject.ts:67-81`），包装成 `source: { kind: 'skill-invocation', name, form: 'instructions' }` 的 user message **追加**到消息批次末尾；
+4. 加载期间信号中止则整个注入作废、返回原批次（`src/engine-codex/agent.ts:384`）。
+
+注入消息随后与正常消息一起 append 为 `user/message` 事件，并经由 `serializeHistory` 进入发给 codex 的 prompt 文本。
+
+### 7.2 CodexSkillProvider：AGENTS.md 即技能
+
+`CodexSkillProvider extends AgentsMdSkillProvider`（`src/engine-codex/skills.ts:46-50`）把 codex CLI 的指令文件体系暴露为 dsh 技能。**发现算法在共享基类里**（`src/driver-core/agents-md-skill-provider.ts`，见 `docs/driver-core.md` §7.2.1），本模块只给一份 spec（`src/engine-codex/skills.ts:33-40`——没有 `skills` 段，因为 codex 没有技能目录）：
+
+- **发现**（`list`，`src/driver-core/agents-md-skill-provider.ts:93-117`）：项目侧从会话 cwd 逐级向上走到 git 根（`collectProjectContextFiles` + `CODEX_CONTEXT_POLICY = { primary: ['AGENTS.md'] }`，无 override 文件，`src/engine-codex/skills.ts:30`、`src/driver-core/context-files.ts:34-59`），任一文件非空则产出一个**合并的** `agents-md` 候选（`projectRank` 140，介于 project-dsh 100 与 custom 300 之间）；用户侧 `~/.codex/AGENTS.md` 非空则产出第二个候选（`userContext.rank` 160）。同名时项目候选 rank 更低（优先）。无 cwd 时只列用户级。
+- **加载**（`get`，`src/driver-core/agents-md-skill-provider.ts:119-151`）：`readSources` 把 locator 里的全部路径**按"最近目录优先"顺序拼接**（`\n\n` 连接），`resourceBase` 取最近的文件（`{ kind: 'file', path: first }`）。
+- 候选固定 `invocation: { modelInvocable: true, userInvocable: true }`、`source: 'custom'`、`name: 'agents-md'`（`src/driver-core/agents-md-skill-provider.ts:153-168`，描述串来自 spec 的 `agentsMdDescription`）。
+
+### 7.3 注册点
+
+`CodexSkillProvider` 由 `registerEngineSurface` 在 **agent 创建时**注册——注册走的是 **agent 自己的 ctx**，因此落进该 agent 的 scope 层，随 agent 拆解自动回收，两个并发会话互不可见（`src/engine-surface.ts:52-54` 的 codex 条目、`:93-96` 的注册逻辑；调用点 `src/router-loop.ts:171`）。旧实现里 `mountCodex` 的全局注册（`skillDisposer` + `cleanupEngineRegistrations`）已删除。codex 引擎**不注册任何 slash command**（与 claude/kimi 不同）。`skills` 服务可选，缺席时跳过注册（`agent.ctx.get` 返回 undefined）。
+
+## 8. 配置项一览
+
+组合条目（`src/index.ts` 的 `Config`）是所有引擎旋钮的超集；codex 只消费以下字段，经 `codexConfig` 转发（`src/index.ts:228-235`）：
+
+| 组合字段 | codex Config 字段 | 校验（`src/engine-codex/loop.ts:59-64`） | 默认 | 语义 |
+|---|---|---|---|---|
+| `sandboxMode` | `sandboxMode` | `'read-only' \| 'workspace-write' \| 'danger-full-access'`（`loop.ts:22-26`） | 无（跟随会话旋钮） | 钉死每个线程的沙箱模式 |
+| `approvalPolicy` | `approvalPolicy` | `'never' \| 'on-request' \| 'on-failure' \| 'untrusted'`（`loop.ts:29-34`） | 无（跟随会话旋钮） | 钉死每个线程的审批策略 |
+| `env` | `env` | `z.dict(z.string()).default({})` | `{}` | **当前未被消费**（见 §9.3 第 2 条） |
+| `model` | `model` | `z.string()` | 无 | **回落值**：每个 step 取 `sessionModelOverrideOf(ctx, session)?.model ?? config.model`（`src/driver-core/session-model.ts`），会话选的真实 dsh 模型优先，透传给 `thread/start` 与 `turn/start` 的 `model`（`src/engine-codex/agent.ts:673`、`:686`）；同时作为 header/消息 source 的模型标签，缺省时标签为 `'default'`（`HOSTED_DEFAULT_MODEL`，`src/engine-codex/agent.ts:603`），模型由 codex 原生设置决定 |
+| `env` | `env` | `z.dict(z.string()).default({})` | 无 | **不再是死旋钮**（0.1.5-rc5 起真的被消费）：`appServerClient` 把 `{ ...this.config.env, ...modeled.env }` 交给 `AppServerClient.create(argv, env)`，后者叠加在 `process.env` 之上（`src/engine-codex/agent.ts:228`、`src/engine-codex/appserver/client.ts:105-107`）。`modeled` 是本次会话选中的 dsh 端点解析出的 `-c`/env（见 §4.5 第二条），无端点时为空 |
+| `childIdleMs` | `childIdleMs` | `z.number()`（`src/engine-codex/loop.ts:70`） | `0` | 空闲关停窗口（毫秒）：> 0 时 agent 落到 `idle` 相位就起倒计时，到点 dispose 掉 `app-server` 子进程，下一次 step 懒 spawn（§4.2）。`0`/省略 = 子进程与 agent 同寿。**只影响 kimi/codex**：Pi 与 Claude Code 每步各起一次 |
+| （会话选真实 dsh 模型时）端点与凭据 | 非配置项 | 每个 step 解析一次（`resolveModelHandover`，调用点 `src/engine-codex/agent.ts:667`），经 `codexModelConfig`（`src/engine-codex/model-handover.ts`）变成 `codex app-server` 的 `-c model_provider="dsh"` + `-c model_providers.dsh={name,base_url,wire_api,env_key}` + env `DSH_LOOP_ENGINE_API_KEY`；协议映射见 §4.5（`api` 为 `undefined` 时省略 `wire_api`，端点照旧交出去），端点变了重启 app-server。选 `external/default` 或没有选择、或**端点/凭据**解析不到时**不注入**（后者 warn 一次） |
+
+`resolveConfig`（`src/engine-codex/loop.ts:67-74`）只做缺省补齐，产物为 `ResolvedConfig`（`src/engine-codex/types.ts:14-21`）。注意 schema 是"出现才校验"风格——缺省构造 `new CodexLoop(ctx, {})` 时 `env` 也会是 `{}`（`resolveConfig` 里的 `?? {}`），其余字段为 `undefined`（`tests/engine-codex/controls.spec.ts:574-581` 验证）。
+
+无关字段不报错：`disposeGraceMs`/`maxTurns`（claude 用）、`piProvider` 等与 codex 并存但不被读取；`tests/index.spec.ts:641` 专门验证 codex 的配置边界不再校验 `disposeGraceMs`。
+
+## 9. 错误处理与已知边界
+
+### 9.1 错误分类与落日志
+
+- **RPC/协议错误**：JSON-RPC error 响应 reject 为 `Error(error.message)`（`client.ts:210-211`）；`error` 通知或 turn 失败在 agent 侧抛 `LlmError(message, 'CODEX_ERROR')`（`src/engine-codex/agent.ts:908-911`）；事件流结束时没有 `turn-completed` 抛 `LlmError(..., 'CODEX_NO_RESULT')`（`src/engine-codex/agent.ts:919-922`）。
+- **turn 级归因**：`turn()` 的 catch 把 `LlmError` 的 failure 记入 `turn/end` 的 `{ kind: 'error' }`，其余错误包成 `{ message: errorChain(error), code: 'UNKNOWN' }`，并先发 `agent/error` 再抛出由驱动边界收敛（`src/engine-codex/agent.ts:459-470`、`288-293`）。**已流出的部分转录（chunk、held 消息、工具事件）在错误抛出前先 flush 落日志**——失败不丢已生成内容（`tests/engine-codex/agent.spec.ts:1044-1073` 验证已提交消息保留；只有 live chunk、没有 item 终态时整段走 `abandon()`，`:1075-1103` 验证不落消息）。
+- **子进程死亡**：所有 pending 请求 reject；下一次 `appServerClient()` 发现 `closed` 会重建客户端（`src/engine-codex/agent.ts:145-152`）——但**进行中的 step 会失败**，重建只惠及后续 step。
+- **缺 cwd**：step 直接抛 `no working directory`（`src/engine-codex/agent.ts:513-516`），turn 记 `code: 'UNKNOWN'` 的 error（`tests/engine-codex/controls.spec.ts:309-327` 验证）；技能注入发生在 preStep，先于该失败。
+
+### 9.2 结构性边界
+
+- **无沙箱包装**：子进程不经 `dsh-subprocess` 接缝，harness 的 Landlock/超时等包装对本引擎不适用；权限边界完全依赖 codex CLI 自身 sandbox。
+- **单槽通知 handler**：`AppServerClient.onNotification` 是覆盖赋值，叠加订阅会互相顶掉；当前依赖"一个 agent 同一时刻至多一个活跃 turn"成立。
+- **stderr 丢弃**：`onStderr` 无人订阅，app-server 的日志不可见，排查协议问题时只能自己临时挂 handler。
+- **图片走原生路径通道，占位文本仍是底线**：序列化把 image 块替换为指名图片身份、并按能否解析出 attachment 只读路径给出两种恢复尾部的占位文本（`src/driver-core/prompt.ts:31`、`:62-75`，见 `docs/driver-core.md` §2），所以转录里永远有身份与路径；**本步自己交付的消息**里的图片块另经 `stepImagePaths`（`src/driver-core/step-images.ts`）解析成宿主路径，作为 `localImage` 项追加在文本项之后（`src/engine-codex/agent.ts:752-754`），**文件由 codex app-server 自己打开**——路径解析用的是与转录占位同一份 `imageAccess`（`imageHostPath`）。只有本步的消息（`decision.messages`），不是整段历史，所以长会话不会每步重传所有图片；更早的图片仍只以占位出现在转录里，codex 自己的文件工具还能读到。路径解析不到时该图片**静默跳过、不报错**（`src/driver-core/step-images.ts` 的 `resolvedImages`）——一个坏掉的图片不该让整步失败。与 pi/kimi 的两点不同：① 这条通道**不读文件、不传字节**，返回的是路径，因此路径指向不存在或不可读的文件时驱动侧照样发出，由 codex 自己失败；② codex 不走斜杠命令步（§1），所以不存在"命令行步不带图"的分支。**真机状态（2026-09-29，桌面版）**：`localImage` 的形状取自**真二进制导出的 schema**（`.probe/codex-schema-1491/v2/TurnStartParams.json` 的 `definitions.UserInput`），驱动侧有单测钉住；但**端到端未跑通**——该次真机回合里 codex 子进程起来了却连不上自己配置的模型端点（`turn/end` = `{kind:'error', error:{message:'Reconnecting... 1/5', code:'CODEX_ERROR'}}`），失败发生在图片之前、属于环境/凭据问题。要真机确认这条通道，需要先让 codex 有一条可达的端点（例如把会话切到一条插件能透传的 dsh 模型）。reasoning 块不进转录（各引擎每次查询自行重新推理，`src/driver-core/prompt.ts:98-100`）。
+- **推理摘要 vs 正文**：终态优先取非空的 `summary`，其次非空的 `content`，两者都空则回退到这一步流式收到的思考文本（plan delta 不计入），三者皆无才记空串（`agent.ts:813-829`）。plan delta 会流进 reasoning 块但不算思考文本，所以它不参与这个回退。
+
+### 9.3 注释与实现不一致（撰写时发现）
+
+1. **`loop.ts:1-11` 模块注释已改对一半**：模块头现在写的是 "Codex loop engine module: drives every session it is handed through the OpenAI Codex SDK … The router routes a session here on the plugin's own engine record, else its agent preset; this module is a library, not a Cordis plugin entry. The Codex SDK spawns its own CLI binary (no spawn injection seam), so this loop deliberately does not inject the dsh subprocess service"。其中"路由器构造本引擎 / 本模块是库"已与实现一致（AgentFactory 槽位归路由器 `src/router-loop.ts:114`，本类是普通类而非占槽位的工厂），**仍然失真的是"Codex SDK"这两处**：驱动不依赖任何 Codex SDK，自己用 `node:child_process.spawn` 拉起 `codex app-server`（`appserver/client.ts:9, 89`）走手写 JSON-RPC，所以 "The Codex SDK spawns its own CLI binary" 的主语应当是驱动本身；"不经 subprocess 接缝"的结论本身仍然成立。
+2. **~~`env` 配置是死旋钮~~ 已修（0.1.5-rc5）**：`Config.env` 现在真的被消费——`appServerClient` 把 `{ ...this.config.env, ...modeled.env }` 交给 `AppServerClient.create(argv, env)`（`src/engine-codex/agent.ts:228`），后者以 `{ ...process.env, ...env }` spawn，所以是**叠加在进程环境之上**而不是替换。但注意 `Config.env` 注释（`loop.ts:52-53`）说的 "credential-scrubbed parent environment" **仍然不成立**：这条路径走的是裸 `node:child_process.spawn`、不经 dsh subprocess seam，父环境没有做凭据清理（`OPENAI_API_KEY` 之类仍会随 `process.env` 进子进程）。要真正做到 scrubbed，得让 codex 驱动走 subprocess seam，或显式用 `scrubbedParentEnv()` 铺底。
+3. **`clientInfo.version` 是硬编码字面量**：initialize 报 `'1.0.0-rc13'`（`appserver/client.ts:135`）——它没有随 `package.json`（0.1.5-rc3）一起更新，只是历史遗留字符串，改协议握手时要留意别把它当成真实包版本（kimi 的 `src/engine-kimi/acp/client.ts:193` 同样硬编码 `'1.0.0'`）。
+4. **`threadResume` 无调用方**（`appserver/client.ts:148-150`）：保留的协议面，dsh resume 不走 codex thread/resume。改 resume 语义时注意别误以为它在用。
+5. `turn()` 的 `token-usage` 事件与 `ErrorNotification.willRetry` 被产生/携带但无人消费；若将来要中途展示 token 用量或区分可重试错误，这两个钩子已经现成。
+
+另有一处仅测试侧的出入：`tests/engine-codex/agent.spec.ts:58` 与 `controls.spec.ts:50` 给 mock 的 `AppServerThread` 加了 `async dispose() {}`，真实类没有该方法——无害，但说明 mock 形状与真实类已轻微漂移。
+
+## 10. 测试覆盖要点
+
+全部 codex 测试位于 `tests/engine-codex/`（agent / controls / index / permission / skills + `appserver/` client / thread / mapping），共享同一手法：`vi.mock` 掉 `appserver/client.ts` 与 `appserver/thread.ts`，用 `mock.runStreamed` 喂 `AppServerEvent` 序列，断言**会话日志**（这是唯一事实源，也是最好的断言面）。`CodexLoop` 经 `tests/helpers/agent-harness.ts:49` 的 `loopPluginFor` 包装挂载——引擎模块是库不是插件，helper 做的是路由器在生产里做的事：构造引擎、把 AgentFactory 槽位交给它、发布三个 systemPrompt 变量。
+
+- **`agent.spec.ts`**（1916 行，核心）：turn/step/user-message/assistant-message/turn-end 全链路；**一段一步的 step 轮转（`stepStructure` 辅助函数断言 `type@step` 序列；含只在推理 delta 处轮转的形状）**；流式 chunk 序列与消息内嵌 `data.stream`（每条消息只内嵌自己那段 chunk）／live `agent/assistant-stream` 帧；推理折叠进后续 agent 消息、尾随推理独占消息并携带 usage、多消息 usage 只挂末条；两条 agent 消息之间插入 tool item（三类工具）／reasoning item／reasoning+tool item 时逐条消息的 content 与内嵌 stream 归因；plan item 出现在两条 agent 消息之间时的两种形状（有 delta：切段丢弃；无 delta：忽略不切）；多 delta 不重复 block-start；空 reasoning/空 text/无 usage 的容错；三类工具 item 的 tool/call + tool/result 与惰性 call；未知 item 忽略；`CODEX_ERROR`/`CODEX_NO_RESULT` 下部分转录保留；request/header 的 initial/resume 语义；取消（aborted turn）、`agent/pre-step` reject（blocked turn）；权限旋钮每查询重折叠与部署钉值逐字段优先；交互审批（command/file-change/permissions 的 accept / decline / grant、无审批服务 fail-closed、未知 method、running turn 信号传递）；`model` 透传 thread params 与 header；技能注入（转义、跳过不可用户调用/加载失败/未找到、无 skills 服务、非 user source 与 reasoning 块不触发、加载中取消整批作废、无 cwd 时不带 cwd 提示）；图片附件（假 attachment 服务 → 带图片块的 user 消息，既断言转录占位含路径、又断言 `turn/start` 收到的 `input` 是"一个文本项 + 一个 `localImage` 路径项"；无图片的步只有一个文本项）。
+- **`controls.spec.ts`**：steer/inject 合批、cancel 清 inbox 与 `keepInbox`、maintenance 门闩唤醒、运行中取消后接新 turn、防御性 guard（无驱动预约直接 turn、无 cwd）、turn/start 与 turn/end 的 commit veto、空 step 完成、turn-stopping 注入续 step、followup/steer 的 turn/step 链式衔接、配置 schema 常量与解析、systemPrompt 变量装配。
+- **`index.spec.ts`**：工厂注册与 HMR 卸载后 `no agent factory registered`；seed/meta 透传；创建信号预中止（Error 与字符串 reason）；setup commit、setup 抛错回滚、悬挂 setup 中止；owner fiber 中途卸载回滚（含 scope mint 竞态）；resume 全套（无持久化报错、JSONL 后端恢复、预中止、加载取消释放 abandoned preparation、晚到失败吞掉、loop 失活拒绝）。
+- **`permission.spec.ts`**：三条折叠规则与 fail-closed 默认的纯函数断言。
+- **`skills.spec.ts`**：临时目录 + mock homedir 验证项目/用户 AGENTS.md 发现、空文件忽略、cwd→git 根合并顺序、无 cwd 只列用户级、abort 返回空、get 拼接内容与文件消失返回 undefined。
+- **`appserver/client.spec.ts`**：mock `node:child_process` 的假进程验证 spawn 参数、initialize/thread/turn 请求-响应、通知分发、进程 exit reject pending、dispose 幂等与 dispose 后拒绝、error 响应、非 JSON 行忽略、stderr 行分发。
+- **`appserver/thread.spec.ts`**：纯 fake client 验证事件流转、turn/start 响应前的早期通知缓冲重放、turn/start 失败清 handler、threadId/turnId 双重过滤（含全类型）、error 通知抛出、abort 触发 `turn/interrupt` 且传播 reason、done 后通知忽略。
+- **`appserver/mapping.spec.ts`**：四个映射函数的字段级与边界（null/缺字段/失败态）断言。
+
+改引擎行为时的对应义务：本仓要求 `src/**` 行级 100% 覆盖（`pnpm run test:coverage`，client UI 除外），codex 目录里的 `v8 ignore` 注释标的是经过论证的不可达分支——**新增分支要么测试覆盖，要么给出同等论证**，否则覆盖率门禁会红。
