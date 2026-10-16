@@ -91,8 +91,11 @@ const ENGINES = {
     // The prompt travels as one NDJSON line on stdin. `--print=` carries an
     // EMPTY value on purpose: left bare, the flag eats the next argv element
     // (`--input-format`) as its prompt and the real prompt is ignored.
+    //
+    // The line needs an `event` discriminator; without it the CLI answers
+    // `error: stream input message is missing the "event" field`.
     stdin: (prompt) => `${JSON.stringify({
-      type: 'user',
+      event: 'user',
       message: { role: 'user', content: [{ type: 'text', text: prompt }] },
     })}\n`,
     versionArgv: (bin) => [bin, '--version'],

@@ -20,6 +20,7 @@ import {
   agyArgv,
   agyBinResolver,
   agyCredentialPresent,
+  agyDangerouslySkipPermissions,
   agySpawnRequest,
   agyStdinPrompt,
   type AgySpawnSpec,
@@ -46,6 +47,7 @@ function spec(overrides: Partial<AgySpawnSpec> = {}): AgySpawnSpec {
     mode: undefined,
     effort: undefined,
     sandbox: true,
+    dangerouslySkipPermissions: false,
     signal: new AbortController().signal,
     ...overrides,
   }
@@ -116,6 +118,14 @@ describe('agyArgv', () => {
     ])
   })
 
+  it('adds --dangerously-skip-permissions only when the deployment or the knob grants it', () => {
+    // The ONLY switch that makes tools run headless: without it the CLI reports
+    // `permission_mode: "request-review"` and auto-denies anything that would have
+    // prompted.
+    expect(agyArgv(spec({ dangerouslySkipPermissions: true }))).toContain('--dangerously-skip-permissions')
+    expect(agyArgv(spec({ dangerouslySkipPermissions: false }))).not.toContain('--dangerously-skip-permissions')
+  })
+
   it('adds --sandbox only when terminal restrictions are requested', () => {
     expect(agyArgv(spec({ sandbox: true }))).toContain('--sandbox')
     expect(agyArgv(spec({ sandbox: false }))).not.toContain('--sandbox')
@@ -128,13 +138,21 @@ describe('agyArgv', () => {
 })
 
 describe('agyStdinPrompt', () => {
-  it('writes one newline-terminated NDJSON user message', () => {
+  it('writes one newline-terminated NDJSON user message carrying the REQUIRED event field', () => {
+    // Verified: without `event` the CLI answers
+    // `error: stream input message is missing the "event" field`.
     const payload = agyStdinPrompt('say PONG')
     expect(payload.endsWith('\n')).toBe(true)
     expect(JSON.parse(payload)).toEqual({
-      type: 'user',
+      event: 'user',
       message: { role: 'user', content: [{ type: 'text', text: 'say PONG' }] },
     })
+  })
+
+  it('uses the exact event the CLI accepts, not a near miss', () => {
+    // Probe result: `message`, `prompt` and `user_message` are all ignored, and
+    // a bare `user` without its `message` member is an error.
+    expect(JSON.parse(agyStdinPrompt('x')).event).toBe('user')
   })
 
   it('escapes a multi-line prompt into a single line', () => {
@@ -143,6 +161,18 @@ describe('agyStdinPrompt', () => {
     const payload = agyStdinPrompt('line one\nline two')
     expect(payload.split('\n')).toHaveLength(2)
     expect(JSON.parse(payload).message.content[0].text).toBe('line one\nline two')
+  })
+})
+
+describe('agyDangerouslySkipPermissions', () => {
+  it('grants auto-approval only at full access', () => {
+    expect(agyDangerouslySkipPermissions('danger-full-access')).toBe(true)
+  })
+
+  it('fails closed for every other knob, including none at all', () => {
+    expect(agyDangerouslySkipPermissions('workspace-write')).toBe(false)
+    expect(agyDangerouslySkipPermissions('read-only')).toBe(false)
+    expect(agyDangerouslySkipPermissions(undefined)).toBe(false)
   })
 })
 

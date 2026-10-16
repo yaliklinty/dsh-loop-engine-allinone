@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process'
 import type { CliFrame } from '../../src/driver-cli/frames.ts'
 import { readLines } from '../../src/driver-cli/ndjson.ts'
 import { mapStreamJsonDocument } from '../../src/driver-cli/stream-json.ts'
-import { mapAgyDocument, type AgyRun } from '../../src/engine-agy/frames.ts'
+import { mapAgyDocument, newAgyRun } from '../../src/engine-agy/frames.ts'
 import { agyArgv, agyStdinPrompt } from '../../src/engine-agy/process.ts'
 import { hermesArgv } from '../../src/engine-hermes/process.ts'
 import { qoderclicnArgv } from '../../src/engine-qoderclicn/process.ts'
@@ -104,12 +104,17 @@ if (target === 'qoderclicn') {
       sandbox: true,
       signal: new AbortController().signal,
     }),
-    (document) => {
-      const collected: CliFrame[] = []
-      const run: AgyRun = { conversationId: undefined, answered: false }
-      mapAgyDocument(document, frame => collected.push(frame), run)
-      return collected
-    },
+    // ONE accumulator for the whole run, exactly as the driver builds it: the
+    // `answered` flag is what stops the `result` envelope from committing the
+    // answer a second time after the deltas already delivered it.
+    (() => {
+      const run = newAgyRun()
+      return (document: unknown) => {
+        const collected: CliFrame[] = []
+        mapAgyDocument(document, frame => collected.push(frame), run)
+        return collected
+      }
+    })(),
     agyStdinPrompt(PROMPT),
   ))
 } else if (target === 'hermes') {

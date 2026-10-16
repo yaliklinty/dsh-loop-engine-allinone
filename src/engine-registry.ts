@@ -294,14 +294,23 @@ export const ENGINE_REGISTRY = {
     authPaths: ['.gemini/oauth_creds.json'],
     localeKey: 'engineAgy',
     capabilities: {
+      // VERIFIED against a signed-in host: `step_update` frames carry
+      // `text_delta` increments, and the driver maps them (see
+      // `engine-agy/frames.ts`).
       streaming: true,
       protocol: 'ndjson',
-      // `--conversation <id>` continues a previous conversation, and the CLI
-      // reports the id it used on its result frame.
+      // The CLI continues a conversation with `--conversation <id>` and reports
+      // the id it used, but this driver does NOT use it: the plugin is stateless
+      // by design, replaying the durable transcript into every step, so there is
+      // nothing to carry across steps and nothing that could leak between them.
       sessionResume: true,
-      // `--mode` is the session's execution mode; `--sandbox` is the terminal
-      // restriction switch, mapped from dsh's sandbox knob separately.
+      // The CLI's EXECUTION modes. They are deliberately not treated as the
+      // permission switch: `--mode accept-edits` and `--mode plan` were both
+      // verified to leave `permission_mode` at `request-review`. What actually
+      // gates tools headless is `--dangerously-skip-permissions`, mapped from
+      // dsh's sandbox knob (`agyDangerouslySkipPermissions`).
       permissionModes: ['accept-edits', 'auto', 'plan'],
+      // Verified absent: there is no image input on this surface.
       images: false,
       reasoningLevels: true,
     },

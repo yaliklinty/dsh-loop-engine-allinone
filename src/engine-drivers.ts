@@ -76,6 +76,8 @@ export interface EngineDriverConfig {
   agyEffort?: AgyEffort
   /** Antigravity: pinned terminal-restriction flag. */
   agySandbox?: boolean
+  /** Antigravity: pinned auto-approve flag, overriding the session's sandbox knob. */
+  agyDangerouslySkipPermissions?: boolean
   /** Qoder CN: pinned permission mode, overriding the session's dsh knobs. */
   qoderPermissionMode?: string
   /** Hermes: pinned reasoning level (`--reasoning`). */
@@ -194,6 +196,9 @@ export const ENGINE_DRIVER_FACTORIES: Readonly<Record<HostedEngineId, EngineDriv
       ...config.agyMode === undefined ? {} : { mode: config.agyMode },
       ...config.agyEffort === undefined ? {} : { effort: config.agyEffort },
       ...config.agySandbox === undefined ? {} : { sandbox: config.agySandbox },
+      ...config.agyDangerouslySkipPermissions === undefined
+        ? {}
+        : { dangerouslySkipPermissions: config.agyDangerouslySkipPermissions },
     })
   },
 

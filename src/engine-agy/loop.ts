@@ -34,8 +34,16 @@ export interface Config {
   mode?: AgyMode
   /** Reasoning effort (`--effort`). */
   effort?: AgyEffort
-  /** Pinned terminal-restriction flag, overriding the session's permmission knobs. */
+  /** Pinned terminal-restriction flag, overriding the session's permission knobs. */
   sandbox?: boolean
+  /**
+   * Pinned auto-approve flag (`--dangerously-skip-permissions`), overriding the
+   * session's sandbox knob.
+   *
+   * Set this to `true` to give Antigravity the same room as
+   * `danger-full-access` without changing the session's own permission preset.
+   */
+  dangerouslySkipPermissions?: boolean
 }
 
 /** Schema of the Antigravity engine configuration. */
@@ -46,6 +54,7 @@ export const Config: z<Config> = z.object({
   mode: z.union([...AGY_MODES.map(value => z.const(value))]),
   effort: z.union([...AGY_EFFORTS.map(value => z.const(value))]),
   sandbox: z.boolean(),
+  dangerouslySkipPermissions: z.boolean(),
 })
 
 /** Resolve the driver configuration at the plugin config boundary. */
@@ -57,6 +66,7 @@ function resolveConfig(config: Config): ResolvedAgyConfig {
     mode: config.mode,
     effort: config.effort,
     sandbox: config.sandbox,
+    dangerouslySkipPermissions: config.dangerouslySkipPermissions,
   }
 }
 

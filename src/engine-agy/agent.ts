@@ -25,13 +25,15 @@ import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import type { CliFrame } from '../driver-cli/frames.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
-import { sessionApprovalPolicy, sessionSandboxMode } from '../driver-core/permission-knobs.ts'
+import { sessionSandboxMode } from '../driver-core/permission-knobs.ts'
 import type { AgyEffort, AgyMode, AgySpawnSpec } from './process.ts'
-import { agySpawnRequest, agyStdinPrompt } from './process.ts'
-import { mapAgyDocument, type AgyRun } from './frames.ts'
+import { agyDangerouslySkipPermissions, agySpawnRequest, agyStdinPrompt } from './process.ts'
+import { mapAgyDocument, newAgyRun } from './frames.ts'
 
 /** Deployment-resolved configuration for the Antigravity engine. */
 export interface ResolvedAgyConfig {
+  /** Pinned auto-approve flag, overriding the session's dsh knobs. */
+  readonly dangerouslySkipPermissions: boolean | undefined
   /** Pinned executable, when the deployment named one. */
   readonly bin: string | undefined
   /** Explicit environment entries layered over the scrubbed parent environment. */
@@ -91,10 +93,12 @@ export class AgyAgent extends CliHostedAgent {
       mode: this.config.mode,
       effort: this.config.effort,
       sandbox: this.config.sandbox ?? this.sandboxRequested(),
+      dangerouslySkipPermissions: this.config.dangerouslySkipPermissions
+        ?? agyDangerouslySkipPermissions(sessionSandboxMode(this.session.snapshotEvents())),
       signal,
     }
     const transport = this.spawn(agySpawnRequest(spec))
-    const run: AgyRun = { conversationId: undefined, answered: false }
+    const run = newAgyRun()
     const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
     const result = await runNdjson(
       {
@@ -119,17 +123,16 @@ export class AgyAgent extends CliHostedAgent {
   }
 
   /**
-   * Whether the child should run with terminal restrictions.
+   * Whether the child should run with terminal restrictions (`--sandbox`).
    *
-   * Antigravity's `--sandbox` is a terminal-restriction switch, not a full
-   * sandbox, so it is requested whenever the session is NOT at full access: the
-   * subprocess seam already bounds the child, and asking the CLI to restrict its
-   * own terminal use as well is the fail-closed direction.
+   * Antigravity's `--sandbox` restricts the CLI's own terminal use, which is not
+   * the same thing as the permission switch (see
+   * `agyDangerouslySkipPermissions`). It is requested whenever the session is NOT
+   * at full access: the subprocess seam already bounds the child, and asking the
+   * CLI to restrict itself as well is the fail-closed direction.
    * @returns whether to pass `--sandbox`.
    */
   private sandboxRequested(): boolean {
-    const events = this.session.snapshotEvents()
-    void sessionApprovalPolicy(events)
-    return sessionSandboxMode(events) !== 'danger-full-access'
+    return sessionSandboxMode(this.session.snapshotEvents()) !== 'danger-full-access'
   }
 }

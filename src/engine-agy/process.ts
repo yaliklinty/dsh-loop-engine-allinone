@@ -18,29 +18,38 @@
  * an empty value (`--print=`) pins the flag's argument and leaves the rest of the
  * command line alone.
  *
- * ## What was verified, and what is still open
+ * ## Verified against a signed-in host
  *
- * Verified on this machine against `agy` (help text, flag semantics, the
- * argument-position trap above, and the `result` envelope — captured verbatim in
- * `docs/probes/agy.md`).
+ * The first probe run could not get past
+ * `{"event":"result","result":{"status":"ERROR","error":"authentication failed or
+ * timed out"}}` — the host's Google credential had expired — so the streaming
+ * vocabulary was recorded as UNKNOWN rather than guessed. Re-probing after the
+ * host signed in produced the whole protocol (`docs/probes/agy.md`, raw captures
+ * in the fork's `output/probes/`), and this module and `./frames.ts` are written
+ * against it. The three findings that shape the code:
  *
- * NOT verified: the per-token streaming frame vocabulary. The host's Google
- * credential had expired, so every probe run ended at
- * `{"event":"result","result":{"status":"ERROR","error":"authentication failed
- * or timed out"}}` before any assistant frame was emitted. Rather than guess,
- * this driver treats the `result` envelope as AUTHORITATIVE for the answer
- * (`result.response`) and accepts `result.usage` for accounting — which is
- * correct whether or not streaming frames exist — and drops frame kinds it does
- * not recognize. The consequence is honest and documented: on a signed-in host
- * the answer is complete, but it is committed as one message rather than
- * streamed token-by-token, which is why {@link ENGINE_CAPABILITIES} declares
- * `streaming: false` for the DRIVER even though the CLI can stream.
+ * 1. **`--print` takes an OPTIONAL value**, so a bare `--print` makes the NEXT
+ *    flag the prompt and silently ignores the real one (the CLI says so on
+ *    stderr after the fact). Attaching an empty value (`--print=`) pins it.
+ * 2. **The stdin message needs an `event` field**: one NDJSON line of
+ *    `{"event":"user","message":{"role":"user","content":[…blocks…]}}`. Without
+ *    it the CLI answers
+ *    `error: stream input message is missing the "event" field`; an event it does
+ *    not know is only a warning and is ignored.
+ * 3. **Headless mode cannot prompt, so a tool that needs permission is
+ *    AUTO-DENIED** (`permission_mode: "request-review"` at `init`), and the turn
+ *    ends with the CLI's own explanation. `--dangerously-skip-permissions` is
+ *    what switches it to `permission_mode: "always-proceed"`. `--mode` does NOT
+ *    affect this — `accept-edits` and `plan` both leave `request-review` — so the
+ *    dsh sandbox knob is mapped to exactly that one flag (see
+ *    {@link agyDangerouslySkipPermissions}).
  *
  * @module dsh-loop-engine/engine-agy/process
  */
 
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import type { DshSandboxMode } from '../driver-core/permission-knobs.ts'
 import type { CliSpawnRequest } from '../driver-cli/transport.ts'
 
 /** Grace in milliseconds for Antigravity process-tree termination. */
@@ -119,6 +128,15 @@ export interface AgySpawnSpec {
   readonly effort: AgyEffort | undefined
   /** Whether to run the child with terminal restrictions (`--sandbox`). */
   readonly sandbox: boolean
+  /**
+   * Whether to auto-approve every tool (`--dangerously-skip-permissions`).
+   *
+   * The ONLY switch that makes tools run headless: without it the CLI reports
+   * `permission_mode: "request-review"` and denies anything that would have
+   * prompted. Mapped from the dsh sandbox knob by
+   * {@link agyDangerouslySkipPermissions}.
+   */
+  readonly dangerouslySkipPermissions: boolean
   /** Cancellation. */
   readonly signal: AbortSignal
 }
@@ -141,6 +159,7 @@ export function agyArgv(spec: AgySpawnSpec): string[] {
     ...spec.model === undefined ? [] : ['--model', spec.model],
     ...spec.effort === undefined ? [] : ['--effort', spec.effort],
     ...spec.sandbox ? ['--sandbox'] : [],
+    ...spec.dangerouslySkipPermissions ? ['--dangerously-skip-permissions'] : [],
     // Attached empty value: pins the optional argument so the flags above are
     // not consumed as the prompt.
     '--print=',
@@ -150,17 +169,46 @@ export function agyArgv(spec: AgySpawnSpec): string[] {
 /**
  * Project one step's prompt onto the CLI's stdin wire shape.
  *
- * One NDJSON document per line, of which the driver writes exactly one. Written
- * from `progress.md`'s verified example:
- * `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]}}`.
+ * One NDJSON document per line, of which the driver writes exactly one. The
+ * `event` member is REQUIRED — it is the discriminator the CLI reads, and its
+ * absence is answered with
+ * `error: stream input message is missing the "event" field`. An event the CLI
+ * does not know is only a warning (`warning: ignoring unsupported stream input
+ * message event "message"`) and is ignored, so a future input kind cannot break
+ * a working driver. Verified shape:
+ * `{"event":"user","message":{"role":"user","content":[{"type":"text","text":"…"}]}}`.
  * @param prompt - the prompt text.
  * @returns the stdin payload, newline-terminated.
  */
 export function agyStdinPrompt(prompt: string): string {
   return `${JSON.stringify({
-    type: 'user',
+    event: 'user',
     message: { role: 'user', content: [{ type: 'text', text: prompt }] },
   })}\n`
+}
+
+/**
+ * Map the session's dsh sandbox knob onto Antigravity's permission switch.
+ *
+ * There is exactly one switch, and it is all-or-nothing. Headless Antigravity
+ * runs at `permission_mode: "request-review"` and AUTO-DENIES any tool that would
+ * have prompted — the CLI's own words being `a tool required the "command"
+ * permission that headless mode cannot prompt for, so it was auto-denied` —
+ * while `--dangerously-skip-permissions` moves it to `always-proceed`.
+ *
+ * So full access is the only knob that earns the flag. Everything else, including
+ * "no knobs at all", fails closed and leaves the subprocess sandbox as the
+ * boundary.
+ *
+ * `--mode` is deliberately NOT consulted here: it was verified to leave
+ * `permission_mode` at `request-review` for BOTH `accept-edits` and `plan`, so it
+ * is an execution mode rather than a permission switch, and using it as one would
+ * be a guess dressed up as a mapping.
+ * @param sandbox - the session's durable sandbox mode, if any.
+ * @returns whether to pass `--dangerously-skip-permissions`.
+ */
+export function agyDangerouslySkipPermissions(sandbox: DshSandboxMode | undefined): boolean {
+  return sandbox === 'danger-full-access'
 }
 
 /**
