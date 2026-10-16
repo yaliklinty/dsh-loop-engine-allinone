@@ -30,9 +30,14 @@ import { ClaudeCodeLoop } from './engine-claude/loop.ts'
 import { CodexLoop } from './engine-codex/loop.ts'
 import { PiLoop } from './engine-pi/loop.ts'
 import { KimiLoop } from './engine-kimi/loop.ts'
+import { AgyLoop } from './engine-agy/loop.ts'
+import { ZcodeLoop } from './engine-zcode/loop.ts'
+import { QoderclicnLoop } from './engine-qoderclicn/loop.ts'
+import { HermesLoop } from './engine-hermes/loop.ts'
 import type { ClaudeCodePermissionMode } from './engine-claude/types.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
 import type { PiSandboxMode } from './engine-pi/types.ts'
+import type { AgyEffort, AgyMode } from './engine-agy/process.ts'
 import type { HostedEngineId } from './engine-registry.ts'
 import type { RouterEngine } from './router-loop.ts'
 
@@ -65,6 +70,16 @@ export interface EngineDriverConfig {
   piThinking?: string
   /** Idle window before a persistent child is shut down (Kimi, Codex). */
   childIdleMs?: number
+  /** Antigravity: pinned execution mode (`--mode`). */
+  agyMode?: AgyMode
+  /** Antigravity: pinned reasoning effort (`--effort`). */
+  agyEffort?: AgyEffort
+  /** Antigravity: pinned terminal-restriction flag. */
+  agySandbox?: boolean
+  /** Qoder CN: pinned permission mode, overriding the session's dsh knobs. */
+  qoderPermissionMode?: string
+  /** Hermes: pinned reasoning level (`--reasoning`). */
+  hermesReasoning?: string
   /**
    * Per-engine executable overrides, keyed by each descriptor's
    * {@link EngineDescriptor.binConfigKey}.
@@ -151,6 +166,47 @@ export const ENGINE_DRIVER_FACTORIES: Readonly<Record<HostedEngineId, EngineDriv
       ...config.env === undefined ? {} : { env: config.env },
       ...bin === undefined ? {} : { bin },
       ...config.childIdleMs === undefined ? {} : { childIdleMs: config.childIdleMs },
+    })
+  },
+
+  agy: (ctx, config) => {
+    const bin = pinnedBin(config, 'agyBin')
+    return new AgyLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+      ...config.agyMode === undefined ? {} : { mode: config.agyMode },
+      ...config.agyEffort === undefined ? {} : { effort: config.agyEffort },
+      ...config.agySandbox === undefined ? {} : { sandbox: config.agySandbox },
+    })
+  },
+
+  zcode: (ctx, config) => {
+    const bin = pinnedBin(config, 'zcodeBin')
+    return new ZcodeLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+    })
+  },
+
+  qoderclicn: (ctx, config) => {
+    const bin = pinnedBin(config, 'qoderclicnBin')
+    return new QoderclicnLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+      ...config.qoderPermissionMode === undefined ? {} : { permissionMode: config.qoderPermissionMode },
+    })
+  },
+
+  hermes: (ctx, config) => {
+    const bin = pinnedBin(config, 'hermesBin')
+    return new HermesLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+      ...config.hermesReasoning === undefined ? {} : { reasoning: config.hermesReasoning },
     })
   },
 

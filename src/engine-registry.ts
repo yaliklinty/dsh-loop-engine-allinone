@@ -163,6 +163,10 @@ export const HOSTED_ENGINE_IDS = [
   'codex',
   'pi',
   'kimi',
+  'agy',
+  'zcode',
+  'qoderclicn',
+  'hermes',
 ] as const
 
 /** An engine this plugin hosts itself; `in-process` is the harness's own loop. */
@@ -276,6 +280,96 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['ask', 'allow', 'deny'],
       images: true,
       reasoningLevels: false,
+    },
+  },
+  agy: {
+    id: 'agy',
+    label: 'Antigravity',
+    repo: 'https://antigravity.google',
+    bundled: false,
+    binConfigKey: 'agyBin',
+    versionArgv: ['--version'],
+    updateArgv: ['update'],
+    loginHint: 'run `agy` once and complete the Google sign-in it opens',
+    authPaths: ['.gemini/oauth_creds.json'],
+    localeKey: 'engineAgy',
+    capabilities: {
+      streaming: true,
+      protocol: 'ndjson',
+      // `--conversation <id>` continues a previous conversation, and the CLI
+      // reports the id it used on its result frame.
+      sessionResume: true,
+      // `--mode` is the session's execution mode; `--sandbox` is the terminal
+      // restriction switch, mapped from dsh's sandbox knob separately.
+      permissionModes: ['accept-edits', 'auto', 'plan'],
+      images: false,
+      reasoningLevels: true,
+    },
+  },
+  zcode: {
+    id: 'zcode',
+    label: 'ZCode',
+    repo: 'https://z.ai',
+    bundled: false,
+    binConfigKey: 'zcodeBin',
+    versionArgv: ['version'],
+    updateArgv: ['plugins', 'update'],
+    loginHint: 'run `zcode login` to sign in with Z.AI',
+    authPaths: ['.zcode/v2', '.zcode/cli'],
+    localeKey: 'engineZcode',
+    capabilities: {
+      streaming: true,
+      protocol: 'jsonrpc',
+      sessionResume: true,
+      permissionModes: ['build', 'edit', 'plan', 'yolo'],
+      images: false,
+      reasoningLevels: false,
+    },
+  },
+  qoderclicn: {
+    id: 'qoderclicn',
+    label: 'Qoder CN',
+    repo: 'https://qoder.com',
+    bundled: false,
+    binConfigKey: 'qoderclicnBin',
+    versionArgv: ['--version'],
+    updateArgv: ['update'],
+    loginHint: 'run `qoderclicn login` to sign in to Qoder CN',
+    authPaths: ['.qoder-cn/.auth/user'],
+    localeKey: 'engineQoderclicn',
+    capabilities: {
+      streaming: true,
+      // `-p --output-format stream-json` emits Claude Code's stream-json frames,
+      // one JSON document per line.
+      protocol: 'ndjson',
+      sessionResume: true,
+      permissionModes: ['default', 'accept_edits', 'bypass_permissions', 'dont_ask', 'auto'],
+      // `--attachment` takes files, but a probe could not confirm image blocks
+      // survive the round trip, so the engine does not claim the capability.
+      images: false,
+      reasoningLevels: true,
+    },
+  },
+  hermes: {
+    id: 'hermes',
+    label: 'Hermes Agent',
+    repo: 'https://github.com/NousResearch/hermes',
+    bundled: false,
+    binConfigKey: 'hermesBin',
+    versionArgv: ['--version'],
+    updateArgv: ['update'],
+    loginHint: 'run `hermes setup` (or `hermes auth`) to sign in to an inference provider',
+    authPaths: ['auth.json'],
+    localeKey: 'engineHermes',
+    capabilities: {
+      // `-z PROMPT` prints the finished answer; a probe found no structured
+      // stream, so the driver reads the whole of stdout as one reply.
+      streaming: false,
+      protocol: 'text',
+      sessionResume: true,
+      permissionModes: ['safe-mode', 'yolo'],
+      images: false,
+      reasoningLevels: true,
     },
   },
 } as const satisfies Readonly<Record<HostedEngineId, EngineDescriptor>>

@@ -33,6 +33,7 @@ import {
   type SummarizerTarget,
 } from '../src/preset.ts'
 import { applyManagedBlock, MANAGED_BLOCK_BEGIN, MANAGED_BLOCK_END } from '../src/patch-manager.ts'
+import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
 import { HOSTED_ENGINE_IDS } from '../src/settings.ts'
 import type { HostedEngineId } from '../src/settings.ts'
 
@@ -305,13 +306,18 @@ describe('engineOfPreset', () => {
 
 describe('HOSTED_PRESET_IDS', () => {
   it('lists exactly one authored preset id per hosted engine, in selection order', () => {
-    expect(HOSTED_PRESET_IDS).toEqual([
+    // Derived, so a new engine cannot be registered without an authored preset:
+    // the registry is the roster and this is its preset-id projection.
+    expect(HOSTED_PRESET_IDS).toEqual(HOSTED_ENGINE_IDS.map(engine => enginePresetId(engine)))
+    // The FIRST FOUR are pinned literally, because their order is a persisted
+    // fact rather than a presentation choice: these ids live in session logs and
+    // in the profile patch, so they may only ever be appended to.
+    expect(HOSTED_PRESET_IDS.slice(0, 4)).toEqual([
       'loop-engine-claude-code',
       'loop-engine-codex',
       'loop-engine-pi',
       'loop-engine-kimi',
     ])
-    expect(HOSTED_PRESET_IDS).toEqual(HOSTED_ENGINE_IDS.map(engine => enginePresetId(engine)))
     // The harness loop's own preset is the deployment's, not one this plugin owns.
     expect(HOSTED_PRESET_IDS).not.toContain(SOURCE_PRESET_ID)
     expect(new Set(HOSTED_PRESET_IDS).size).toBe(HOSTED_PRESET_IDS.length)
@@ -348,13 +354,14 @@ async function stamps(home: string): Promise<Record<string, number>> {
   return out
 }
 
-/** The human-readable preset name each engine's `preset.yml` must render. */
-const DISPLAY_NAMES: Readonly<Record<HostedEngineId, string>> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  pi: 'Pi',
-  kimi: 'Kimi Code',
-}
+/**
+ * The human-readable preset name each engine's `preset.yml` must render.
+ *
+ * Read from the registry rather than restated: the label is a registry field,
+ * and a test that hardcoded its own copy would pass while the authored metadata
+ * said something else.
+ */
+const displayNameOf = (engine: HostedEngineId): string => ENGINE_REGISTRY[engine].label
 
 describe('ensureEnginePresets', () => {
   it('authors one managed preset per hosted engine, and nothing else', async () => {
@@ -397,7 +404,7 @@ describe('ensureEnginePresets', () => {
     const home = await tempDir()
     await ensureEnginePresets(home, sourceOf(STANDARD))
     for (const engine of HOSTED_ENGINE_IDS) {
-      const name = DISPLAY_NAMES[engine]
+      const name = displayNameOf(engine)
       const { metadata } = await presetOf(home, enginePresetId(engine))
       const [first, second] = metadata.split('\n')
       expect(first).toBe(`name: ${name}`)
@@ -502,7 +509,11 @@ function rowOf(text: string, engine: HostedEngineId): string {
   const id = enginePresetId(engine)
   const start = text.indexOf(`    - id: preset-${id}\n`)
   const next = text.indexOf('\n- insert:', start)
-  return text.slice(start, next === -1 ? undefined : next)
+  // Keep the row's own terminating newline (`next + 1`) rather than stopping at
+  // it: rows are delimited by the NEXT block's opener, so an assertion about a
+  // row's last line would otherwise depend on whether some other engine happens
+  // to be rendered after it.
+  return text.slice(start, next === -1 ? undefined : next + 1)
 }
 
 describe('PRESET_ROWS markers', () => {
