@@ -30,7 +30,7 @@ export interface Config {
   env?: Record<string, string>
   /** The `agy` executable; the CLI's own install location (and PATH) when not pinned. */
   bin?: string
-  /** The session's execution mode (`--mode`); defaults to `auto`. */
+  /** The execution mode (`--mode`); omitted lets the CLI use its own default. */
   mode?: AgyMode
   /** Reasoning effort (`--effort`). */
   effort?: AgyEffort
@@ -43,7 +43,7 @@ export const Config: z<Config> = z.object({
   model: z.string(),
   env: z.dict(z.string()).default({}),
   bin: z.string(),
-  mode: z.union([...AGY_MODES.map(value => z.const(value))]).default('auto'),
+  mode: z.union([...AGY_MODES.map(value => z.const(value))]),
   effort: z.union([...AGY_EFFORTS.map(value => z.const(value))]),
   sandbox: z.boolean(),
 })
@@ -54,7 +54,7 @@ function resolveConfig(config: Config): ResolvedAgyConfig {
     bin: config.bin === undefined || config.bin === '' ? undefined : agyBinResolver(config.bin),
     env: config.env ?? {},
     model: config.model,
-    mode: config.mode ?? 'auto',
+    mode: config.mode,
     effort: config.effort,
     sandbox: config.sandbox,
   }

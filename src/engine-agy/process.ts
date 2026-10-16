@@ -105,8 +105,16 @@ export interface AgySpawnSpec {
   readonly env: Record<string, string>
   /** Pinned model (`--model`). */
   readonly model: string | undefined
-  /** Pinned execution mode (`--mode`). */
-  readonly mode: AgyMode
+  /**
+   * Pinned execution mode (`--mode`), when the deployment named one.
+   *
+   * Optional with no default ON PURPOSE, and that is a finding rather than a
+   * shrug: `--mode auto` was observed to be refused for the probe host's account
+   * ("not available for this account; continuing in the default mode"), so the
+   * set of modes a given account accepts is not knowable ahead of time. Omitting
+   * the flag lets the CLI use its own default instead of warning on every step.
+   */
+  readonly mode: AgyMode | undefined
   /** Pinned reasoning effort (`--effort`). */
   readonly effort: AgyEffort | undefined
   /** Whether to run the child with terminal restrictions (`--sandbox`). */
@@ -129,7 +137,7 @@ export function agyArgv(spec: AgySpawnSpec): string[] {
     spec.bin,
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
-    '--mode', spec.mode,
+    ...spec.mode === undefined ? [] : ['--mode', spec.mode],
     ...spec.model === undefined ? [] : ['--model', spec.model],
     ...spec.effort === undefined ? [] : ['--effort', spec.effort],
     ...spec.sandbox ? ['--sandbox'] : [],

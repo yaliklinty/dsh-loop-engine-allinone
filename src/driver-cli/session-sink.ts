@@ -628,35 +628,9 @@ export function mapUsage(usage: CliUsage): TokenUsage {
   }
 }
 
-/**
- * Flatten one engine tool result to the text dsh stores.
- *
- * Engines report a result as a string, as a list of content blocks, or as an
- * arbitrary JSON value; dsh's durable shape is text. Anything that is not text
- * is JSON-encoded rather than dropped, so a structured result stays inspectable
- * in the transcript instead of vanishing.
- * @param result - the engine's result payload.
- * @returns the text to store.
- */
-export function flattenToolResult(result: unknown): string {
-  if (typeof result === 'string') return result
-  if (result === undefined || result === null) return ''
-  if (Array.isArray(result)) {
-    return result
-      .map(block => {
-        if (typeof block === 'string') return block
-        const record = block as Record<string, unknown> | null
-        if (record !== null && typeof record === 'object' && typeof record.text === 'string') return record.text
-        return JSON.stringify(block)
-      })
-      .filter(segment => segment !== '')
-      .join('\n\n')
-  }
-  const record = result as Record<string, unknown>
-  if (typeof record.content === 'string') return record.content
-  if (Array.isArray(record.content)) return flattenToolResult(record.content)
-  return JSON.stringify(result)
-}
+// Re-exported for the drivers that already import it from here; its own module
+// is host-free so the protocol adapters can use it without the host plane.
+export { flattenToolResult } from './flatten.ts'
 
 /** A message from any source, for the drivers that re-read the transcript. */
 export type SinkMessage = Message

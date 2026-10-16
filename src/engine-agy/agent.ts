@@ -39,7 +39,7 @@ export interface ResolvedAgyConfig {
   /** Pinned model. */
   readonly model: string | undefined
   /** Pinned execution mode. */
-  readonly mode: AgyMode
+  readonly mode: AgyMode | undefined
   /** Pinned reasoning effort. */
   readonly effort: AgyEffort | undefined
   /** Pinned sandbox flag, overriding the session's knobs. */

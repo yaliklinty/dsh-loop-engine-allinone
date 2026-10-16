@@ -43,7 +43,7 @@ function spec(overrides: Partial<AgySpawnSpec> = {}): AgySpawnSpec {
     cwd: '/work',
     env: {},
     model: undefined,
-    mode: 'auto',
+    mode: undefined,
     effort: undefined,
     sandbox: true,
     signal: new AbortController().signal,
@@ -92,6 +92,14 @@ describe('agyArgv', () => {
     // The input-format flag must still be its own argv element: the trap is that
     // a bare --print consumes it.
     expect(argv[argv.indexOf('--input-format') + 1]).toBe('stream-json')
+  })
+
+  it('omits --mode when the deployment pinned none, so the CLI uses its own default', () => {
+    // Found by the smoke test: `--mode auto` is refused for some accounts
+    // ("not available for this account; continuing in the default mode"), so the
+    // set a given account accepts is not knowable ahead of time.
+    expect(agyArgv(spec({ mode: undefined }))).not.toContain('--mode')
+    expect(agyArgv(spec({ mode: 'plan' }))).toContain('plan')
   })
 
   it('requests both stream-json formats together', () => {

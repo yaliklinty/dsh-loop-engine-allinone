@@ -31,7 +31,7 @@
  */
 
 import type { CliFrame, CliUsage } from './frames.ts'
-import { flattenToolResult } from './session-sink.ts'
+import { flattenToolResult } from './flatten.ts'
 
 /** What one stream-json run's frames were accepted by. */
 export type FrameSink = (frame: CliFrame) => void
