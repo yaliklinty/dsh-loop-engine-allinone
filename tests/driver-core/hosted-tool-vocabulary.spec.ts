@@ -50,6 +50,29 @@ describe('normalizeHostedToolCall', () => {
       .toEqual({ name: 'Search', arguments: '{"query":"x"}' })
   })
 
+  it("keeps MiniMax Code's measured `bash` call in dsh's own shape", () => {
+    // Measured (0.6.12): the engine already names the shell tool `bash` and
+    // carries `{ command, description }`, which is dsh's own argument shape, so
+    // the projection is an identity — but it is a DECLARED identity (a row in the
+    // table) rather than an unmapped pass-through, which is the difference between
+    // "verified to agree" and "never looked at".
+    expect(normalizeHostedToolCall('minimaxcode', 'bash', '{"command":"echo hi","description":"say hi"}'))
+      .toEqual({ name: 'bash', arguments: '{"command":"echo hi","description":"say hi"}' })
+    // A tool this build has not measured keeps its own name and renders generic.
+    expect(normalizeHostedToolCall('minimaxcode', 'read_file', '{"path":"a"}'))
+      .toEqual({ name: 'read_file', arguments: '{"path":"a"}' })
+  })
+
+  it("leaves grok's tool names alone, on purpose", () => {
+    // grok's only measured tool is `run_terminal_command`, which it asks the
+    // CLIENT to execute over ACP's `terminal/create` reverse RPC — a channel this
+    // driver does not provide, so the call fails at the engine. Renaming it to
+    // dsh's `bash` would dress a failing call up as a working one; the honest
+    // projection is none at all.
+    expect(normalizeHostedToolCall('grok', 'run_terminal_command', '{"command":"echo hi"}'))
+      .toEqual({ name: 'run_terminal_command', arguments: '{"command":"echo hi"}' })
+  })
+
   it("reshapes Pi's path-keyed arguments while keeping its own tool names", () => {
     expect(normalizeHostedToolCall('pi', 'write', '{"path":"a.txt","content":"x"}'))
       .toEqual({ name: 'write', arguments: '{"file_path":"a.txt","content":"x"}' })

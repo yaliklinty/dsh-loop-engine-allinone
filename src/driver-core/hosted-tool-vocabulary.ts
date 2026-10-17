@@ -133,6 +133,26 @@ const KIMI_NAMES: Readonly<Record<string, string>> = {
 }
 
 /**
+ * MiniMax Code already names its shell tool `bash` — dsh's own spelling — and
+ * carries the arguments as `{ command, description }`, which is dsh's `bash`
+ * shape too. So this table is an IDENTITY for the one call measured, and it
+ * exists rather than being omitted for a reason worth stating: an engine with no
+ * row is passed through unchanged, which is correct but silent; a row says "this
+ * engine's vocabulary was READ, and it happens to agree". Only the measured tool
+ * is listed — a call this build has not seen keeps its own name and renders as a
+ * generic row.
+ *
+ * MEASURED (MiniMax Code 0.6.12): `tool_call` carries
+ * `{ title: 'bash', name: 'bash', kind: 'execute' }`, the input arrives on a
+ * later `tool_call_update` as `rawInput: { command, description }`, and the
+ * engine EXECUTES the command itself (`rawOutput.details.execution.exitCode`),
+ * so no client-side terminal is involved.
+ */
+const MINIMAXCODE_NAMES: Readonly<Record<string, string>> = {
+  bash: 'bash',
+}
+
+/**
  * Codex app-server items are already lower_snake internal names; the shell one
  * projects onto dsh's `bash`. `apply_patch` carries a multi-file patch with no
  * dsh single-file equivalent and deliberately keeps its own name.
@@ -213,6 +233,14 @@ const VOCABULARIES: Partial<Readonly<Record<HostedEngineId, HostedToolVocabulary
   codex: { names: CODEX_NAMES },
   pi: { names: {}, reshape: piReshape },
   kimi: { names: KIMI_NAMES },
+  // MiniMax Code: measured, and already in dsh's vocabulary (see the table).
+  minimaxcode: { names: MINIMAXCODE_NAMES },
+  // grok deliberately has NO row. Its only measured tool is
+  // `run_terminal_command`, which it asks the CLIENT to execute over ACP's
+  // `terminal/create` reverse RPC — a channel this driver does not provide — so
+  // every such call fails at the engine before a result exists. Projecting its
+  // name would dress a failing call up as dsh's `bash`; leaving it unmapped
+  // keeps the failure honest (`run_terminal_command` renders as its own row).
 }
 
 /**
