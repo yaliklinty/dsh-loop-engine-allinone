@@ -8,7 +8,7 @@
  * whose provider no registered adapter serves, so without a placeholder route
  * the SECOND prompt of every hosted session fails with `model-unavailable`.
  *
- * One label for all four engines, because the browser model catalog is built
+ * One label for every hosted engine, because the browser model catalog is built
  * per Host GENERATION and does not require (or vary by) a Session
  * (`packages/api/session-controller/src/catalog.ts`). A per-engine label would
  * therefore show one provider group per engine in every session's menu at once —

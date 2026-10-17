@@ -800,7 +800,7 @@ export class RouterLoop extends AgentLoop {
  *
  * The engines do not read it — each owns its model natively — but the two
  * answers travel together, so a hosted agent's options name the same route its
- * session's log does (`external/default`, the one label all four engines share)
+ * session's log does (`external/default`, the one label every hosted engine shares)
  * instead of the deployment default that seat replaced. In-process sessions
  * keep the caller's own options, which ARE their route (`agent-loop/src/agent.ts`
  * `prepareRequest`).

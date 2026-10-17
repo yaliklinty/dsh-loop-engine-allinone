@@ -1,19 +1,22 @@
 /**
- * Maps `kimi acp` `session/update` events to dsh session-log projections.
+ * Maps ACP `session/update` events to dsh session-log projections.
  *
- * Kimi streams incremental assistant text (`agent_message_chunk`), incremental
- * thinking (`agent_thought_chunk`), a tool-call announcement (`tool_call`) and its
- * progress/result updates (`tool_call_update`). Assistant text and thinking are
- * Deltas; a tool update's content is a whole Snapshot that replaces the previous
- * one. A tool call's identity arrives on the announcement but its input
- * (`rawInput`) does not — only a later update carries it. This module is pure: it
- * classifies an update, extracts chunk deltas, and projects the tool-call
- * identity/input/content/result so the agent can fold them into the durable log.
- * Content blocks use the observed kimi
- * `{ type: 'content', content: { type: 'text', text } }` nesting; unknown block
- * types are ignored.
+ * Every ACP engine streams the same event vocabulary: incremental assistant text
+ * (`agent_message_chunk`), incremental thinking (`agent_thought_chunk`), a
+ * tool-call announcement (`tool_call`) and its progress/result updates
+ * (`tool_call_update`). Assistant text and thinking are Deltas; a tool update's
+ * content is a whole Snapshot that replaces the previous one. A tool call's
+ * identity arrives on the announcement but its input (`rawInput`) does not —
+ * only a later update carries it.
  *
- * @module dsh-loop-engine/engine-kimi/acp/mapping
+ * This module is pure and engine-neutral: it classifies an update, extracts chunk
+ * deltas, and projects the tool-call identity/input/content/result so the agent
+ * can fold them into the durable log. The one shape it reads is the content-block
+ * nesting measured on the wire — `{ type: 'content', content: { type: 'text',
+ * text } }` for a tool card, `{ type: 'text', text }` for a message chunk — and a
+ * block type this build does not know is ignored rather than guessed at.
+ *
+ * @module dsh-loop-engine/driver-acp/mapping
  */
 
 import type { ToolResultMessage } from '@deepseek-ai/dsh-llm'

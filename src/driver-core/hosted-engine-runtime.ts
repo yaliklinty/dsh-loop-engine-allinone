@@ -1,7 +1,7 @@
 /**
  * Shared AgentFactory transaction machinery for the hosted loop engines.
  *
- * All four engines (Claude Code, Codex, Pi, Kimi Code) implement the harness's
+ * Every hosted engine (Claude Code, Codex, Pi, Kimi Code, Antigravity, ZCode, Qoder CN, Hermes, Grok Build, MiniMax Code) implements the harness's
  * AgentFactory contract the same way: prepare a driver, scope, and one memoized
  * reverse teardown for a session; run the caller's setup under a fused abort
  * signal; publish through both registries and announce; and on resume, own a

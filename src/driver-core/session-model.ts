@@ -10,7 +10,7 @@
  * handed a real dsh model when the session selected one — that is what this
  * module answers.
  *
- * Three cases, decided once here and consumed by all four drivers:
+ * Three cases, decided once here and consumed by every hosted driver:
  *
  *  - NO selection, or one whose provider is a hosted engine route label
  *    ({@link isHostedProviderRoute}: today's shared `external`, or a label an

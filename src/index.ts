@@ -240,6 +240,12 @@ export const Config: z<ConfigInput, Config> = z.object({
   piProvider: z.string(),
   piThinking: z.string(),
   bins: z.dict(z.string()),
+  // Per-engine account regions, keyed by each registry row's `region.configKey`
+  // (today only `mcodeRegion`, for MiniMax Code). The same open map as `bins`, so
+  // an engine that scopes accounts by region needs no schema field of its own;
+  // the values themselves are validated where the engine resolves them, against
+  // the values its CLI actually accepts.
+  regions: z.dict(z.string()),
   // The pre-registry spelling of `bins.kimiBin`, kept in the schema so an
   // existing deployment's `kimiBin:` still validates and still selects its
   // binary (see `EngineDriverConfig.kimiBin`).
@@ -514,7 +520,7 @@ export function apply(ctx: Context, config: Config): void {
    * (`HOSTED_ROUTE_LABEL`), and the web host refuses a turn whose session
    * selection names a provider no adapter serves — without this placeholder the
    * second prompt of every hosted session fails with `model-unavailable`. One
-   * label for all four engines means one adapter: the browser model catalog is
+   * label for every hosted engine means one adapter: the browser model catalog is
    * per Host generation rather than per session, so a route per engine would put
    * four identical `default` groups in every session's menu at once
    * (`provider-route.ts`). The placeholder advertises exactly one model entry —

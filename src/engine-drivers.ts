@@ -34,6 +34,8 @@ import { AgyLoop } from './engine-agy/loop.ts'
 import { ZcodeLoop } from './engine-zcode/loop.ts'
 import { QoderclicnLoop } from './engine-qoderclicn/loop.ts'
 import { HermesLoop } from './engine-hermes/loop.ts'
+import { GrokLoop } from './engine-grok/loop.ts'
+import { MinimaxcodeLoop } from './engine-minimaxcode/loop.ts'
 import type { ClaudeCodePermissionMode } from './engine-claude/types.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
 import type { PiSandboxMode } from './engine-pi/types.ts'
@@ -104,6 +106,17 @@ export interface EngineDriverConfig {
    * projection branch — it reads `config.bins?.[descriptor.binConfigKey]`.
    */
   bins?: Readonly<Record<string, string>>
+  /**
+   * Per-engine account REGION overrides, keyed by each descriptor's own
+   * {@link EngineRegion.configKey}.
+   *
+   * The same open-map shape as {@link EngineDriverConfig.bins}, for the same
+   * reason: an engine whose CLI scopes accounts by region declares the knob in the
+   * registry, and a deployment overrides it here without a per-engine schema
+   * field. Today only MiniMax Code declares one (`regions.mcodeRegion`, default
+   * `cn`).
+   */
+  regions?: Readonly<Record<string, string>>
 }
 
 /** Builds one engine's driver runtime. */
@@ -126,6 +139,19 @@ function pinnedBin(
   const value = config.bins?.[binConfigKey]
   if (value !== undefined && value !== '') return value
   return legacy === undefined || legacy === '' ? undefined : legacy
+}
+
+/**
+ * Resolve the account region a deployment pinned for one engine, or `undefined`
+ * to let the engine's own descriptor default apply.
+ * @param config - the composition entry's knobs.
+ * @param regionConfigKey - the descriptor's {@link EngineRegion.configKey}.
+ * @returns the pinned region, or undefined when the deployment pinned none.
+ */
+function pinnedRegion(config: EngineDriverConfig, regionConfigKey: string | undefined): string | undefined {
+  if (regionConfigKey === undefined) return undefined
+  const value = config.regions?.[regionConfigKey]
+  return value === undefined || value === '' ? undefined : value
 }
 
 /**
@@ -231,9 +257,27 @@ export const ENGINE_DRIVER_FACTORIES: Readonly<Record<HostedEngineId, EngineDriv
     })
   },
 
+  grok: (ctx, config) => {
+    const bin = pinnedBin(config, 'grokBin')
+    return new GrokLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+      ...config.childIdleMs === undefined ? {} : { childIdleMs: config.childIdleMs },
+    })
+  },
 
-
-
+  minimaxcode: (ctx, config) => {
+    const bin = pinnedBin(config, 'minimaxcodeBin')
+    const region = pinnedRegion(config, 'mcodeRegion')
+    return new MinimaxcodeLoop(ctx, {
+      ...config.model === undefined ? {} : { model: config.model },
+      ...config.env === undefined ? {} : { env: config.env },
+      ...bin === undefined ? {} : { bin },
+      ...region === undefined ? {} : { region },
+      ...config.childIdleMs === undefined ? {} : { childIdleMs: config.childIdleMs },
+    })
+  },
 }
 
 /**

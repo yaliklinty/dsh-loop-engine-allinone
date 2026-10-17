@@ -1,7 +1,7 @@
 /**
  * Unit tests for the `kimi acp` event mapping: update kind predicates, chunk
  * delta extraction, tool identity/stream helpers, and the tool-result projection.
- * @module tests/engine-kimi/acp/mapping
+ * @module tests/driver-acp/mapping
  */
 
 import { describe, expect, it } from 'vitest'
@@ -18,9 +18,9 @@ import {
   toolContentText,
   toolRawInput,
   toolResult,
-} from '../../../src/engine-kimi/acp/mapping.ts'
-import type { AcpToolCallStreamExt, AcpUpdate } from '../../../src/engine-kimi/acp/types.ts'
-import { toolResultRole, toolResultView } from '../../helpers/harness-generation.ts'
+} from '../../src/driver-acp/mapping.ts'
+import type { AcpToolCallStreamExt, AcpUpdate } from '../../src/driver-acp/types.ts'
+import { toolResultRole, toolResultView } from '../helpers/harness-generation.ts'
 
 const msg = (text: string): AcpUpdate => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } })
 const thought = (text: string): AcpUpdate => ({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } })

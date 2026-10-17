@@ -1,11 +1,15 @@
 /**
- * Kimi CLI process projection. The driver locates the `kimi` executable, builds
- * the `-p --output-format stream-json` argv for one step, and projects the dsh
- * subprocess seam handle onto a minimal transport the agent can read to
- * completion. Kimi has no host permission callback and no `--tools` pruning
- * flag in `-p` mode, so the whole child is spawned through the seam — the only
- * available privilege boundary (the seam's OS sandbox, default read-only) — and
- * every step is a fresh one-shot child because `-p` is inherently stateless.
+ * Kimi CLI process projection: where the executable is, and the argv that
+ * launches its ACP server.
+ *
+ * The transport itself is shared (`driver-acp/transport.ts`); what is kimi's own
+ * is the RESOLUTION — kimi ships as a plain executable installed under its own
+ * home (`<KIMI_CODE_HOME>/bin/kimi[.exe]`), with PATH as the fallback — and the
+ * single `acp` subcommand that starts its Agent Client Protocol server on stdio.
+ *
+ * The `Kimi*` type names are this engine's published spelling of the shared
+ * transport types, kept as aliases rather than restated: a change to the seam
+ * cannot then reach one engine and miss another.
  *
  * @module dsh-loop-engine/engine-kimi/process
  */
@@ -13,35 +17,18 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Readable, Writable } from 'node:stream'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import type { AcpProcess, AcpSpawnCapability, AcpSpawnSpec } from '../driver-acp/transport.ts'
+import { acpSubprocessSpec, fromSubprocess as fromAcpSubprocess } from '../driver-acp/subprocess.ts'
 
-/** The exact argv/cwd/env the driver requests for one `kimi -p` child. */
-export interface KimiSpawnSpec {
-  /** The program plus its flags; `argv[0]` is the Kimi CLI executable. */
-  readonly argv: readonly string[]
-  readonly cwd: string
-  readonly env: Record<string, string>
-  /** Cancellation: the seam escalates process-tree termination when it fires. */
-  readonly signal?: AbortSignal
-}
+/** The exact argv/cwd/env the driver requests for one `kimi acp` child. */
+export type KimiSpawnSpec = AcpSpawnSpec
 
 /** A spawned Kimi process as the agent's transport needs it. */
-export interface KimiProcess {
-  /** Child stdin (JSON-RPC request frames). */
-  readonly stdin: Writable
-  /** Child stdout (the `session/update` notification frames). */
-  readonly stdout: Readable
-  /** Child stderr (diagnostics; drained and dropped). */
-  readonly stderr: Readable
-  /** Resolves when the child closes. */
-  readonly done: Promise<unknown>
-  /** Request process-tree termination. */
-  terminate(): void
-}
+export type KimiProcess = AcpProcess
 
 /** Spawns one Kimi child over the given spec (the driver's spawn capability). */
-export type KimiSpawnCapability = (spec: KimiSpawnSpec) => KimiProcess
+export type KimiSpawnCapability = AcpSpawnCapability
 
 /** Resolve the Kimi home directory from `KIMI_CODE_HOME` or the current user's home. */
 export function kimiHomeDir(): string {
@@ -77,30 +64,10 @@ export function kimiAcpArgv(bin: string): string[] {
 
 /** Project the driver's spawn request onto the dsh subprocess seam. */
 export function kimiSubprocessSpec(spec: KimiSpawnSpec, graceMs: number): SubprocessSpawnSpec {
-  return {
-    argv: [...spec.argv],
-    cwd: spec.cwd,
-    stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
-    graceMs,
-    env: spec.env,
-    ...spec.signal === undefined ? {} : { signal: spec.signal },
-  }
+  return acpSubprocessSpec(spec, graceMs)
 }
 
 /** Project a dsh subprocess handle onto the Kimi process transport. */
 export function fromSubprocess(handle: SubprocessHandle): KimiProcess {
-  const { stdin, stdout, stderr } = handle
-  /* v8 ignore start -- the Kimi spawn spec always requests piped stdio, so a missing stream is a wiring hole */
-  /* v8 ignore next -- see above */
-  if (stdin === undefined || stdout === undefined || stderr === undefined) {
-    throw new Error('agent-loop-kimi: spawned child must pipe stdin/stdout/stderr')
-  }
-  /* v8 ignore stop */
-  return {
-    stdin,
-    stdout,
-    stderr,
-    done: handle.done,
-    terminate: () => handle.terminate(),
-  }
+  return fromAcpSubprocess(handle)
 }

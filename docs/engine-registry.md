@@ -17,7 +17,19 @@ TypeScript 会在每个漏掉的地方报错，不会半落地。
 |---|---|---|---|
 | **数据层**（两侧共用） | `engine-registry.ts`、`agent-preset-ids.ts` | **零 import** | 浏览器半要读它（设置页渲染下拉、渲染能力），所以**任何 host 包**（`dsh-settings`/`schemastery`/`node:fs`）跟进去都会污染 client 产物。`tests/agent-preset-ids.spec.ts` 用源码文本钉住这条 |
 | **分派层**（仅 node） | `engine-drivers.ts` | 驱动类 | 唯一 import 各引擎驱动的模块。`./client/**` 绝不许碰它 |
+| **共享协议层**（仅 node） | `driver-acp/**` | 宿主服务、子进程 seam | **ACP 三家共用的骨架**：JSON-RPC 客户端、`session/update` 映射、turn/step 机器、子进程投影。加一家 ACP 引擎**不碰这里**，只写 profile |
 | **驱动层**（仅 node） | `engine-<id>/**` | 宿主服务、子进程 seam | 协议、argv、权限、agent |
+
+> **ACP 引擎的 profile 必须是「纯」的。** `engine-<id>/profile.ts` 只许 import
+> 零 import 的数据层（`engine-registry.ts`）、`driver-acp/` 里的纯模块
+> （`profile.ts`/`client.ts`/`subprocess.ts`/`executable.ts`）和本目录自己的
+> `process.ts`/`permission.ts`；**不许** import `driver-acp/agent.ts` 或
+> `driver-acp/runtime.ts`（它们拉 `driver-core/host-servers.ts` → `dsh-settings`
+> → `yaml`，插件自己的 node_modules 里没有）。
+> 为什么这么讲究：`scripts/probe/smoke-acp.ts` 直接 import profile 去跑真 CLI，
+> 它跑在**没有 dsh 组合**的进程里；profile 一旦不纯，冒烟脚本就起不来。
+> `tests/driver-acp/protocol-version.spec.ts` 与 `tests/engine-minimaxcode/profile.spec.ts`
+> 会 import 它们，等于每次测试都在钉这条。
 
 **红线**：不要在 `engine-registry.ts` 里 `import` 任何东西，也不要让它 `import` 任何东西。
 凡是需要 host 的（探二进制、读登录文件、spawn 子进程）一律放 node 侧，
@@ -33,6 +45,7 @@ TypeScript 会在每个漏掉的地方报错，不会半落地。
 export const HOSTED_ENGINE_IDS = [
   'claude-code', 'codex', 'pi', 'kimi',
   'agy', 'zcode', 'qoderclicn', 'hermes',
+  'grok', 'minimaxcode',
   'myengine',            // ← 追加在最后
 ] as const
 ```
@@ -40,7 +53,8 @@ export const HOSTED_ENGINE_IDS = [
 > ⚠️ **只能追加，不能删、不能换位置。** 这些 id 被写进会话日志、侧车记录
 > （`$DSH_HOME/.loop-engine/engines.json`）和 preset id（`loop-engine-<id>`），
 > 是**持久化事实**，不是展示顺序。要下线一家，保留 id、把能力声明改掉，
-> 而不是从数组里拿掉。`tests/engine-registry.spec.ts` 把前四家的字面顺序钉死了。
+> 而不是从数组里拿掉。`tests/engine-registry.spec.ts` 钉住了「注册表顺序 =
+> `HOSTED_ENGINE_IDS` 顺序」这条不变量（前四家的字面顺序另有测试钉）。
 
 ### 第 2 步：加注册表行（同一文件）
 
@@ -58,6 +72,8 @@ export const HOSTED_ENGINE_IDS = [
 | `updateArgv` | 外部 CLI 自更新 argv（如 `['update']`） | **捆绑型必须省略**（见下） |
 | `loginHint` | 没登录时给用户的一句话 | 用户看到裸报错 |
 | `authPaths` | home 相对路径数组，用于"是否登录过"诊断 | 诊断说不了登录态 |
+| `region` | **CLI 按区域分账号时必须填**：`{ configKey, envVar, default, values }`。`configKey` 是组合项 `regions` 映射里的键（如 `'mcodeRegion'`），`envVar` 是**实测**该 CLI 真正读的那个变量名，`values` 是它真正接受的值域 | 区域只能靠用户自己 `env:` 拼，且默认值无处声明 |
+| `capabilities.acpProtocolVersion` | ACP 引擎填 `initialize` 要宣告的协议版本（不填 = `DEFAULT_ACP_PROTOCOL_VERSION` = 1） | 走共享 ACP 客户端时宣告的是默认值，引擎真想换版本时会被静默冻住 |
 | `localeKey` | 词典键，形如 `engineMyEngine` | 下拉里显示空白 |
 | `capabilities` | 见 §2.1 | UI 会承诺引擎做不到的事 |
 | `models` | **可选**：这家引擎自己订阅里的型号清单 `{id, label}[]` | 不填 = 模型菜单里只有一个 `default`（见 §2.2） |
@@ -208,6 +224,36 @@ export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: strin
 
 ---
 
+### 第 6 步（**仅 ACP 引擎**）：复用共享骨架，只写 profile
+
+三家 ACP 引擎（`kimi` / `grok` / `minimaxcode`）跑在**同一个** driver 上：
+`driver-acp/agent.ts`（turn/step 机器 + 会话日志投影）+
+`driver-acp/client.ts`（JSON-RPC 与反向 RPC）+
+`driver-acp/runtime.ts`（子进程 seam 与 AgentFactory 事务）。
+加第 N 家 ACP 引擎 = **一个 profile 对象 + 四个文件**，一行共享代码都不用改：
+
+| 文件 | 写什么 | 例子 |
+|---|---|---|
+| `engine-<id>/process.ts` | 可执行文件解析 + argv 构造（**唯一**能出现 CLI 名字的地方） | `grokBinResolver` / `grokAcpArgv` → `[grok, 'agent', 'stdio']`；`mcodeBinResolver` / `mcodeAcpArgv` → `[node, cli.js, 'acp']` |
+| `engine-<id>/profile.ts` | `AcpEngineProfile`：`engine`/`label`/`errorCode`/`protocolVersion`(取注册表)/`argv`/`images`，以及**只在必要时**填四个钩子 | 见下 |
+| `engine-<id>/agent.ts` | `class <X>Agent extends AcpEngineAgent` 的五行壳（保留引擎自己的类名，也是将来引擎专属行为的落点） | `super(..., <x>Profile(bin))` |
+| `engine-<id>/loop.ts` | `class <X>Loop extends AcpEngineRuntime<XAgent>`：配 `Config`/schema/`resolveConfig` + `buildAgent` | 与 KimiLoop 同形 |
+
+四个钩子（**没差异就别填**）：
+
+| 钩子 | 什么时候必须填 | 实测例子 |
+|---|---|---|
+| `selectModel(client, sessionId, model)` | 引擎选模型的方式不是 `session/set_model` | kimi = `session/set_model`；grok/minimaxcode = `session/set_config_option`，且**参数形状不同**：minimaxcode 只收**裸值** `value:'…'`（`{value}` 包一层会被 `-32602` 拒），grok 的文档写的是包一层形式 —— 所以 grok 先按文档试、被 `-32602` 拒了再退裸值（`selectGrokModel`） |
+| `openSession(client, cwd, session, initializeResult)` | `session/new` 之前/之后还有话说 | grok：未登录时 `session/new` 报 `-32000 Authentication required`，必须先 `authenticate {methodId}`（methodId 取自 `initialize` 的 `authMethods`）再重试一次，两段都失败就抛「按注册表 loginHint 去登录」；minimaxcode：`session/new` 之后立刻 `set_config_option permissionMode=<由 dsh 审批旋钮决定>` |
+| `handoverEnv(handover)` | 引擎能把自己的 dsh 端点写进环境变量 | 只有 kimi（`KIMI_MODEL_*`） |
+| `approve(session)` | 审批折叠与共享默认不同 | 三家都用共享默认（`acpDefaultApproval`：`ask` → 拒，其余 → 准） |
+
+**凡是「引擎自己决定」的东西都别写进共享层**：`label` 用于诊断（错引擎名字的报错是最容易出的洋相）、
+`errorCode` 用于 `LlmError`、`images` 决定要不要把图片块塞进 prompt
+（grok 实测 `promptCapabilities.image: false`，塞了会被整条 prompt 拒掉）。
+
+---
+
 ## 3. 协议适配器：先看能不能复用
 
 `src/driver-cli/` 已有四种骨架。**先判断你这家属于哪一种，能复用就别新写映射**：
@@ -267,7 +313,14 @@ grep -o 'require("[^"]*")' lib/client.js | sort -u
 # 3) 协议探测（先探再写；报告进 output/probes/）
 node scripts/probe/probe.mjs myengine --out ../../output/probes
 
-# 4) 驱动侧端到端（真 CLI + 你自己的 argv 构造器 + 帧映射器）
+# 4a) ACP 引擎的驱动侧端到端（真 CLI，跑的是**驱动自己的** profile）
+node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-acp.ts minimaxcode
+#   → SMOKE OK 表示：真 AcpClient + 真 profile 走通了 initialize → openSession
+#     → selectModel → prompt，并且答案里真有 PONG
+node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-acp.ts grok --bin ~/.grok/bin/grok.exe
+#   → 未登录时预期停在 session/new 的 Authentication required（这段要单独看）
+
+# 4b) 其它引擎的驱动侧端到端（真 CLI + 你自己的 argv 构造器 + 帧映射器）
 node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-driver.ts myengine
 ```
 
@@ -339,6 +392,50 @@ prompt for, so it was auto-denied`）。真正让它跑工具的是
 
 开了就是一个子进程永远不读的管道。`stdin: 'ignore'` 与 `'pipe'` 的选择
 由 `cliSpawner(spawn, graceMs, pipeStdin)` 的第三个参数决定。
+
+---
+
+### 5.7 npm 装出来的 CLI 在 Windows 上是个 `.cmd`（grok / minimaxcode）
+
+实测四连（`mcode` 为例）：`spawn('mcode')` → `ENOENT`；
+`spawn('mcode.cmd')` → **同步抛 EINVAL**（node 拒绝直接跑 `.cmd`/`.bat`）；
+`spawn('mcode', { shell: true })` 与 `cmd.exe /d /s /c mcode.cmd` 都能跑通。
+`mcode --version` 在 shell 里正常，所以这个坑只在「驱动去 spawn」时才炸。
+
+规矩（`driver-acp/executable.ts`）：解析结果按**文件类型**决定怎么起 ——
+`.js/.cjs/.mjs` 用 `process.execPath` 跑（npm 包的 `cli.js` 就是这条路），
+`.cmd/.bat` 过 `cmd.exe /c`，其余直接起；`resolveOnPath` 自己按 `PATHEXT` 找，
+**不要**用裸名字去 spawn。
+
+### 5.8 区域旋钮的名字和值域都可能不是你猜的那个（minimaxcode）
+
+同一台机器上实测：`MCODE_REGION=en` 跑 `mcode acp` **毫无影响**（还是 cn 账号），
+而 `MAVIS_REGION=en` 立刻变成 "Authentication required" ⇒ **这个 surface 读的是
+`MAVIS_REGION`**。`MCODE_*` 那一族属于 Electron/mcode-tools 那条路，不是 ACP。
+
+而且**两套词表**：登录旗标说 `--region cn|global`，而运行时读的那个变量只认
+`cn|en`（源码里就写着 `i!=="cn"&&i!=="en"` 就报 "host environment is incomplete"）。
+所以注册表里 `region.envVar='MAVIS_REGION'`、`region.values=['cn','en']`，
+`loginHint` 里才写 `mcode login --region cn|global` —— 混用会得到一个「看着对、
+实际把账号指到别处」的配置。
+
+### 5.9 「引擎自己的默认」可能是上一次运行留下的（minimaxcode）
+
+`mcode` 的 `permissionMode` 是 process 作用域**且会持久化进 `~/.minimax/config.yaml`**。
+实测踩到：一次探针把 `permissionMode=bypassPermissions` 写了进去，下一次
+`session/new` 的 `configOptions.currentValue` 就变成 Full access。
+所以驱动**每次都显式设**（`never → bypassPermissions`、`ask → default`、未设 → `auto`），
+绝不「没旋钮就不动它」—— 那不叫尊重默认，叫继承一个没人选过的全权。
+副作用是驱动会改用户的 `~/.minimax/config.yaml`，已记在 `输出/已知坑与TODO.md`。
+
+### 5.10 ACP 的「先认证」是协议流程，不是引擎扩展（grok）
+
+grok 未登录时 `session/new` 回 `-32000 Authentication required / "no auth method id
+provided"`，而 `initialize` 里 `authMethods:[{id:'grok.com'}]` 已经给了答案。
+用**非法** methodId 试一次就能确认方法存在且真的校验参数
+（`-32602 unsupported auth method: …`），**不必**真的登录 —— 这条探法值得先做，
+否则你会以为 `authenticate` 是个可能不存在的假设。失败时抛注册表里的 `loginHint`，
+不要给用户看裸 JSON-RPC 错误。
 
 ---
 

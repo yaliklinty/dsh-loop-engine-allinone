@@ -2,14 +2,17 @@
 
 [![npm version](https://img.shields.io/npm/v/dsh-loop-engine?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine)
 
-Pick **dsh web**'s agent loop engine **per session** — the built-in `in-process` loop (the default), or one of the hosted engines `claude-code` / `codex` / `pi` / `kimi` / `agy` / `zcode` / `qoderclicn` / `hermes`. Sessions are independent: one chat can run Codex while another runs Kimi. Any open, idle session can move engines — between two hosted engines the handover is **in place**, and a move involving `in-process` **reloads the page** (the `dsh web` process never restarts). Nothing in the main repository changes.
+Pick **dsh web**'s agent loop engine **per session** — the built-in `in-process` loop (the default), or one of the hosted engines `claude-code` / `codex` / `pi` / `kimi` / `agy` / `zcode` / `qoderclicn` / `hermes` / `grok` / `minimaxcode`. Sessions are independent: one chat can run Codex while another runs Kimi. Any open, idle session can move engines — between two hosted engines the handover is **in place**, and a move involving `in-process` **reloads the page** (the `dsh web` process never restarts). Nothing in the main repository changes.
 
 > **This is a fork.** It adds a data-driven engine registry and a pluggable CLI
 > driver layer, so that adding an engine is a registry row plus a driver instead
-> of edits in five places. The four original engines are untouched. See
-> [docs/engine-registry.md](docs/engine-registry.md) for the "add an engine"
-> recipe, and the fork's `output/` reports for the protocol probes each new
-> engine was written against.
+> of edits in five places. The four original engines' protocol code is untouched.
+> See [docs/engine-registry.md](docs/engine-registry.md) for the "add an engine"
+> recipe — including §2 step 6, which is the **entire** recipe for an ACP engine
+> now that three of them share one skeleton (`driver-acp/`: the JSON-RPC client,
+> the `session/update` mapping and the turn/step machine). An ACP engine is a
+> profile plus four small files; `kimi` was migrated onto that skeleton without a
+> behavior change, and its suite is the regression pin.
 
 ## Engine marks
 
@@ -26,6 +29,14 @@ way.
 
 Hermes is the exception worth knowing about: that vendor's mark is a detailed
 character portrait rather than a glyph, so its mark is the portrait's own line art.
+
+The two ACP engines this fork added are traced from the artwork the user supplied:
+**Grok Build**'s black ring-and-slash (its slash tips are ~1px diagonals, which is
+why that trace is 8-connected — a 4-connected contour lops the tips off), and
+**MiniMax Code**'s white blob on the brand's blue tile, whose gradient is why its
+mask rule is "the darkest channel is still high" rather than a luminance
+threshold. Grok's vendor-published ACP icon is the same mark drawn about one pixel
+bolder; the comparison is recorded in the fork's probe report.
 Marks live in [`src/client/engine-marks.ts`](src/client/engine-marks.ts) as data
 rather than JSX, so a test can assert that every registered engine has one.
 
@@ -94,6 +105,8 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
 | ZCode | the ZCode CLI and a live GLM Coding Plan subscription |
 | Qoder CN | the `qoderclicn` CLI installed and signed in |
 | Hermes Agent | the `hermes` CLI installed and signed in; it reads its own `HERMES_HOME`, which the child inherits |
+| Grok Build | the `grok` CLI installed (`~/.grok/bin/grok.exe`, or `npx @xai-official/grok@<pinned> agent stdio`) and signed in once through `grok` / `grok login` — its ACP server refuses `session/new` until it has an account |
+| MiniMax Code | `npm i -g @minimax-ai/code`, then `mcode login --region cn\|global` and `mcode provider use token-plan` to spend the M Plan allowance instead of an API key |
 
 ## Usage
 
@@ -105,7 +118,7 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
   - A mid-turn session is refused, and a subagent's session cannot be moved.
 - **The header chip** beside the preset label names the engine the session on screen actually runs; *Show the engine badge in the conversation header* turns it off (and the header keeps no trace of the plugin).
 - **Models** — two kinds of group, on purpose.
-  - **An engine that declares its own catalog gets a group of its own**, named by the engine (today: `Antigravity`), holding `default` plus the models that engine's own subscription includes. Picking one hands that id to the engine (`agy --model gemini-3.8-flash-low`), so you choose among the models you actually pay for instead of accepting "the engine decides". `default` still means exactly that.
+  - **An engine that declares its own catalog gets a group of its own**, named by the engine (today: `Antigravity`, `Grok Build`, `MiniMax Code`), holding `default` plus the models that engine's own subscription includes. Picking one hands that id to the engine — `agy --model gemini-3.8-flash-low`, or a `session/set_config_option` for the ACP engines — so you choose among the models you actually pay for instead of accepting "the engine decides". `default` still means exactly that.
   - **Every other engine shares the `external` group** with its single `default`. That is not a leftover: the model catalog is built per Host *generation*, not per session, so a group per engine would put eight identical `default` rows in every session's menu. A group only earns its place by carrying models the others do not.
   - Picking a **real dsh model** still hands it to the engine together with its endpoint and credential; whether the engine can serve it is the engine's business, and a refusal is reported rather than swallowed. A pick belonging to a *different* engine's group is refused with the mismatch named, never silently ignored.
   - The catalog is **declared in the engine registry**, not probed at boot — this plugin starts no external process when the harness boots. A deployment whose subscription changed updates [`src/engine-registry.ts`](src/engine-registry.ts)'s `models` row; a stale id then fails loudly at the engine, which is the honest outcome.
@@ -118,7 +131,27 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
         claudeBin: 'D:/tools/claude.exe'
         kimiBin: 'D:/tools/kimi.exe'
         qoderclicnBin: 'D:/tools/qoderclicn.exe'
+        grokBin: 'C:/Users/me/.grok/bin/grok.exe'
+        minimaxcodeBin: 'D:/Programs/npm-global/node_modules/@minimax-ai/code/cli.js'
   ```
+  An npm-installed CLI needs no pin (the resolver finds the package entrypoint, and
+  a Windows `.cmd` shim is launched through `cmd.exe` — node refuses a `.cmd`
+  directly), but a pin is the way to choose among several installs.
+- **`regions`** (composition entry, optional) — per-engine account **region**
+  overrides, keyed by each registry row's `region.configKey`. Today only MiniMax
+  Code declares one (`regions.mcodeRegion`, default `cn`), because its login
+  endpoint AND its stored credentials are region-scoped:
+  ```yaml
+  - id: loop-engine
+    config:
+      regions:
+        mcodeRegion: 'en'   # this engine's spelling of the non-China account
+  ```
+  The value is spelled into the child's environment as the variable that engine's
+  CLI actually reads (`MAVIS_REGION` — measured, and NOT `MCODE_REGION`, which is
+  inert on the `mcode acp` path). An unknown value, or a `region` that contradicts
+  the same variable in `env`, fails the engine's construction loud rather than
+  pointing the child at an account nobody chose.
 - **`childIdleMs`** (composition entry, milliseconds, default `0` = off) — Kimi and Codex keep **one child process per session** across steps; this closes it after that much idle time and respawns it on the next step. Only the child is closed, so nothing reloads. Pi and Claude Code spawn per step and are unaffected.
 - **`engineContextWindow`** (composition entry, tokens, default `262144`) — the context window dsh assumes for the shared hosted route. It is what dsh's auto-compaction measures a hosted session against (it fires at 80% of this by default), because a hosted engine reports no capacity of its own. Set it to the **smallest** window among the engines you run.
 - **`summarizerProvider` / `summarizerModel`** (composition entry, **set together or not at all**) — the real dsh model a hosted session's **compaction** summarizes through, e.g. `deepseek-official` / `deepseek-flash`. Compaction is dsh's own (its preset keeps the `compaction` group), but the summarizing *call* is an ordinary llm request, and a hosted session's routed model is the plugin's placeholder route — so without this pair a hosted session can never be folded down: every attempt logs a warning and the turn continues. The pair only serves that call; the engine still answers every user turn itself. Composing just one of the two (or an empty string) is refused at boot, not silently ignored.
@@ -157,7 +190,8 @@ Read the version as `<harness line>-rcN`, where **`rcN` is this plugin's own rel
 - [docs/architecture.md](docs/architecture.md) — plugin core: the single factory slot, the managed block, routing, the provider route.
 - [docs/compatibility.md](docs/compatibility.md) — **start here when the harness upgrades**: every generation-dependent code site and the checklist for the next generation.
 - [docs/driver-core.md](docs/driver-core.md) — the shared driver infrastructure.
-- [docs/engine-claude.md](docs/engine-claude.md) · [engine-codex](docs/engine-codex.md) · [engine-kimi](docs/engine-kimi.md) · [engine-pi](docs/engine-pi.md) — per-engine internals.
+- [docs/engine-claude.md](docs/engine-claude.md) · [engine-codex](docs/engine-codex.md) · [engine-kimi](docs/engine-kimi.md) · [engine-pi](docs/engine-pi.md) — per-engine internals. The ACP engines (`kimi` / `grok` / `minimaxcode`) share `driver-acp/`, whose per-engine surface is documented in [docs/engine-registry.md](docs/engine-registry.md) §2 step 6.
+- `scripts/probe/acp-handshake.mjs` · `scripts/probe/smoke-acp.ts` — dump a real ACP engine's frames, or drive one through the plugin's OWN profile (`node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-acp.ts minimaxcode`).
 - [docs/source-checkout.md](docs/source-checkout.md) — the `file:` shims a source-launched harness needs.
 - [docs/optimization-backlog.md](docs/optimization-backlog.md) — known issues and the optimization list.
 - [docs/proposals/](docs/proposals/) — main-repo proposals.

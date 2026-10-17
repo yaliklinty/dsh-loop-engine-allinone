@@ -173,7 +173,7 @@ const PLUGIN_ID = 'dsh-loop-engine'
  * standing, so on that line the mark is removed and the glyph takes its place.
  *
  * Gated on the engine attribute's presence rather than per engine, because the
- * rule is the same for all four: `reflectTurnStatusEngine` only ever writes
+ * rule is the same for every engine: `reflectTurnStatusEngine` only ever writes
  * that attribute for a hosted engine and deletes it for everything else, so
  * "absent" is exactly an in-process session, which keeps the stock indicator.
  * In-process sessions are not this module's row to repaint.
@@ -259,7 +259,7 @@ export interface EnginePaint {
  * same on every generation — a base colour and the lighter tint its sweep
  * travels in — and only the custom properties it is written to change, so a
  * sheet is this table emitted through that generation's selectors and variables
- * rather than a second copy of the four engines.
+ * rather than a second copy of the engine roster.
  */
 export const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]> = [
   ['claude-code', {
@@ -308,6 +308,19 @@ export const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]>
     // still. Amber keeps it clear of Claude's terracotta and Kimi's red.
     colour: '#d97706', tint: '#f3cd94', glyph: 'Ψ', extras: ['font-weight: 700'],
     animation: 'le-drift 2.2s ease-in-out infinite',
+  }],
+  ['grok', {
+    // Grok Build: a monochrome black mark on a white page, so the row is
+    // deliberately colourless-ish — the neutral near-black xAI leads with — and
+    // the flicker reads as the charged edge of the mark's own diagonal.
+    colour: '#1f2328', tint: '#c9ced6', glyph: 'G', extras: ['font-weight: 700'],
+    animation: 'le-flicker 2.1s steps(1, end) infinite',
+  }],
+  ['minimaxcode', {
+    // MiniMax Code: a white mark on the brand's blue tile, so the row is that
+    // blue. The pulse is the tile's own breathing rhythm.
+    colour: '#0f7bf0', tint: '#a9d4ff', glyph: 'M', extras: ['font-weight: 700'],
+    animation: 'le-pulse 1.7s ease-in-out infinite',
   }],
 ]
 

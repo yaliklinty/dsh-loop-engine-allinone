@@ -40,7 +40,7 @@ import type { HostedEngineId, LoopEngineId } from './engine-registry.ts'
  * `request/header`, and the one placeholder route this plugin registers in the
  * llm registry.
  *
- * One label for all four engines, because the browser model catalog is built
+ * One label for every hosted engine, because the browser model catalog is built
  * for the whole Host GENERATION and is not scoped to a session
  * (`packages/api/session-controller/src/catalog.ts` — "Build the browser model
  * catalog without requiring a Session"; it walks `ctx.llm.listProviders()`

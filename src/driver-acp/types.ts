@@ -1,18 +1,27 @@
 /**
- * Agent Client Protocol (ACP) wire types for the `kimi acp` driver.
+ * Agent Client Protocol (ACP) wire types shared by every ACP engine driver.
  *
- * Kimi exposes the ACP adapter over stdio (JSON-RPC 2.0). The driver speaks a
- * minimal, stable subset that a normal agent flow needs: initialize, session/new,
- * session/prompt, session/cancel, plus the `session/update` notifications carrying
- * incremental assistant text (`agent_message_chunk`), thinking
- * (`agent_thought_chunk`), and tool calls (`tool_call` / `tool_call_update`).
- * Tool-approval arrives as the reverse-RPC `session/request_permission`, which the
- * client must answer. Shapes below are the live-record deltas observed against the
- * 0.28.1 CLI; content blocks re-use a `{ type, text }` text shape (and tolerate
- * other block types by ignoring them). The image block is modelled for the
- * OUTGOING side — the bytes a dsh step delivers as an ACP image block.
+ * Three engines speak ACP over stdio (JSON-RPC 2.0): Kimi Code (`kimi acp`),
+ * Grok Build (`grok agent stdio`) and MiniMax Code (`mcode acp`). The driver
+ * speaks the minimal, stable subset a normal agent flow needs: initialize,
+ * session/new, session/prompt, session/cancel, plus the `session/update`
+ * notifications carrying incremental assistant text (`agent_message_chunk`),
+ * thinking (`agent_thought_chunk`), and tool calls (`tool_call` /
+ * `tool_call_update`). Tool-approval arrives as the reverse-RPC
+ * `session/request_permission`, which the client must answer.
  *
- * @module dsh-loop-engine/engine-kimi/acp/types
+ * The shapes below were READ from live frames, not from the specification, and
+ * each engine's own deltas are recorded where they matter
+ * (`docs/engine-registry.md`, `output/协议探测报告.md`): kimi nests tool content
+ * as `{ type: 'content', content: { type: 'text' } }`, all three carry text
+ * chunks as `content: { type: 'text', text }`, and a model is selected through
+ * a DIFFERENT method per engine (`session/set_model` on kimi,
+ * `session/set_config_option` on grok and MiniMax Code). Content blocks tolerate
+ * block types this build does not know by ignoring them. The image block is
+ * modelled for the OUTGOING side — the bytes a dsh step delivers as an ACP
+ * image block.
+ *
+ * @module dsh-loop-engine/driver-acp/types
  */
 
 /** A text content block in an ACP update (the observed kimi shape). */

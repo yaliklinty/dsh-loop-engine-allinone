@@ -4,14 +4,14 @@
  * child-exit handling. The transport is a fake {@link KimiProcess}; no real
  * `kimi` subprocess is spawned. Responses are pushed only after the request's
  * pending entry is registered (the Pi RPC client pattern).
- * @module tests/engine-kimi/acp/client
+ * @module tests/driver-acp/client
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import { Readable, Writable } from 'node:stream'
 import { EventEmitter } from 'node:events'
-import { AcpClient } from '../../../src/engine-kimi/acp/client.ts'
-import type { KimiProcess } from '../../../src/engine-kimi/process.ts'
+import { AcpClient } from '../../src/driver-acp/client.ts'
+import type { KimiProcess } from '../../src/driver-acp/transport.ts'
 
 /** Hoisted native-spawn mock for the default `AcpClient.create` path. */
 const childMock = vi.hoisted(() => ({ spawn: vi.fn() }))

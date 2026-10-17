@@ -49,7 +49,7 @@ const mock = vi.hoisted(() => {
   }
 })
 
-vi.mock('../../src/engine-kimi/acp/client.ts', () => ({
+vi.mock('../../src/driver-acp/client.ts', () => ({
   AcpClient: {
     create: vi.fn((spec: Record<string, unknown>, spawn: unknown) => {
       mock.created.push({ spec, spawn })

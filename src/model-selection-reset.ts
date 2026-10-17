@@ -267,7 +267,7 @@ export class ModelSelectionReset {
   /**
    * The selection the host will use for this session, by the host's own read —
    * the shared read in `driver-core/session-model.ts` (`currentSelection`),
-   * which the four hosted drivers also use to resolve the model they hand over.
+   * which the hosted drivers also use to resolve the model they hand over.
    * @param session - the session whose selection is being read.
    * @returns the current selection, or undefined when the log records none.
    */
