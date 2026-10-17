@@ -197,3 +197,49 @@ describe('HostedEngineRouteAdapter', () => {
     }
   })
 })
+
+
+describe('HostedEngineRouteAdapter group identity', () => {
+  /** The engine that declares a model catalog, for the per-engine cases. */
+  const owner = HOSTED_ENGINE_IDS.find(engine => ENGINE_REGISTRY[engine].models !== undefined)!
+
+  it('keeps the shared route’s fixed name', () => {
+    const adapter = new HostedEngineRouteAdapter()
+    expect(adapter.providerInfo(HOSTED_ROUTE_LABEL)).toEqual({ id: HOSTED_ROUTE_LABEL, name: HOSTED_ROUTE_NAME })
+  })
+
+  it('names an engine’s own group by its DISPLAY label, not its wire id', () => {
+    // The wire id is what the registry compares against the registration; the
+    // menu must show `Antigravity`, not `agy`.
+    const adapter = new HostedEngineRouteAdapter(undefined, owner, ENGINE_REGISTRY[owner].models, ENGINE_REGISTRY[owner].label)
+    expect(adapter.providerInfo(owner)).toEqual({ id: owner, name: ENGINE_REGISTRY[owner].label })
+    expect(ENGINE_REGISTRY[owner].label).not.toBe(owner)
+  })
+
+  it('advertises `default` first, then the catalog with its display labels', async () => {
+    const models = ENGINE_REGISTRY[owner].models!
+    const adapter = new HostedEngineRouteAdapter(undefined, owner, models, ENGINE_REGISTRY[owner].label)
+    const advertised = await adapter.listModels(owner)
+    expect(advertised[0]).toEqual({
+      provider: owner, id: HOSTED_DEFAULT_MODEL, name: HOSTED_DEFAULT_MODEL, inputModalities: ['text', 'image'],
+    })
+    expect(advertised.slice(1)).toEqual(models.map(model => ({
+      provider: owner, id: model.id, name: model.label, inputModalities: ['text', 'image'],
+    })))
+  })
+
+  it('resolves a native id with the declared context window', async () => {
+    const models = ENGINE_REGISTRY[owner].models!
+    const adapter = new HostedEngineRouteAdapter(8192, owner, models, ENGINE_REGISTRY[owner].label)
+    const resolved = await adapter.resolveModel(owner, models[0]!.id)
+    expect(resolved.id).toBe(models[0]!.id)
+    expect(resolved.context).toEqual({ contextWindow: 8192 })
+  })
+
+  it('fails loud on any of its routes, naming that route', () => {
+    // A real model call reaching an engine's group means a session the harness
+    // loop drives was handed an engine label — a wiring bug, not a request.
+    const adapter = new HostedEngineRouteAdapter(undefined, owner, ENGINE_REGISTRY[owner].models, ENGINE_REGISTRY[owner].label)
+    expect(() => adapter.stream({} as never)).toThrow(new RegExp(`provider "${owner}" is a hosted loop engine route`))
+  })
+})

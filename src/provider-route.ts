@@ -206,17 +206,34 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
   private readonly models: readonly EngineModel[]
 
   /**
-   * @param contextWindow - declared context capacity in tokens.
-   * @param label - the provider label this adapter serves.
-   * @param models - the engine-native models to advertise beside `default`.
+   * The name this route's group shows in the model menu.
+   *
+   * A separate field from {@link label}: the label is the WIRE value (the engine
+   * id, which the registry compares against the registration), while this is what
+   * a human reads. Conflating them would put `agy` in the menu instead of
+   * `Antigravity`.
    */
-  constructor(contextWindow?: number, label: string = HOSTED_ROUTE_LABEL, models: readonly EngineModel[] = []) {
+  private readonly displayName: string
+
+  /**
+   * @param contextWindow - declared context capacity in tokens.
+   * @param label - the provider label this adapter serves (a wire value).
+   * @param models - the engine-native models to advertise beside `default`.
+   * @param displayName - the group name shown in the model menu.
+   */
+  constructor(
+    contextWindow?: number,
+    label: string = HOSTED_ROUTE_LABEL,
+    models: readonly EngineModel[] = [],
+    displayName: string = HOSTED_ROUTE_NAME,
+  ) {
     super()
     this.contextWindow = contextWindow !== undefined && Number.isInteger(contextWindow) && contextWindow > 0
       ? contextWindow
       : DEFAULT_ENGINE_CONTEXT_WINDOW
     this.label = label
     this.models = models
+    this.displayName = displayName
   }
 
   /**
@@ -234,7 +251,7 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
     // bare id.
     return {
       id: provider,
-      name: provider === HOSTED_ROUTE_LABEL ? HOSTED_ROUTE_NAME : this.label,
+      name: provider === HOSTED_ROUTE_LABEL ? HOSTED_ROUTE_NAME : this.displayName,
     }
   }
 

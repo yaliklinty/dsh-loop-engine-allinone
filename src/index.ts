@@ -67,7 +67,7 @@ import {
 } from './patch-manager.ts'
 import { enginePresetId, ensureEnginePresetRows, ensureEnginePresets } from './preset.ts'
 import type { SummarizerTarget } from './preset.ts'
-import { HOSTED_ROUTE_LABEL } from './agent-preset-ids.ts'
+import { HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
 import { DEFAULT_ENGINE_CONTEXT_WINDOW, HostedEngineRouteAdapter } from './provider-route.ts'
 import { ROUTER_SERVICES, RouterLoop, type RouterEngine } from './router-loop.ts'
 import {
@@ -551,22 +551,23 @@ export function apply(ctx: Context, config: Config): void {
      * message arm stays for a registry that throws an uncoded one. That is a
      * warning, not a failure: the rest of the routes still register.
      */
-    const routes: Array<{ label: string; models: readonly EngineModel[] }> = [{
+    const routes: Array<{ label: string; models: readonly EngineModel[]; displayName: string }> = [{
       label: HOSTED_ROUTE_LABEL,
       models: [],
+      displayName: HOSTED_ROUTE_NAME,
     }]
     for (const engine of HOSTED_ENGINE_IDS) {
       // Read through the interface: `ENGINE_REGISTRY` is `as const satisfies`, so
       // a row with no `models` does not carry the key at all.
       const descriptor: EngineDescriptor = ENGINE_REGISTRY[engine]
       if (descriptor.models === undefined) continue
-      routes.push({ label: engine, models: descriptor.models })
+      routes.push({ label: engine, models: descriptor.models, displayName: descriptor.label })
     }
     for (const route of routes) {
       try {
         registered.push(llm.registerAdapter(
           [route.label],
-          new HostedEngineRouteAdapter(config.engineContextWindow, route.label, route.models),
+          new HostedEngineRouteAdapter(config.engineContextWindow, route.label, route.models, route.displayName),
         ))
       } catch (error: unknown) {
         const duplicateAdapter = (error as { code?: unknown } | null)?.code === 'DUPLICATE_ADAPTER'
