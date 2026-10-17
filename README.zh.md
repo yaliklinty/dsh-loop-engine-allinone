@@ -23,7 +23,7 @@
 | **接入新引擎** | 需修改 5 个文件 | **1 行注册表 + 1 个驱动实现** |
 | **ACP 协议支持** | 仅 1 款（Kimi） | **3 款**（Kimi / Grok / MiniMax）共享一套标准化 ACP 驱动骨架 |
 | **外部 CLI 适配** | 零散处理 | 标准化 `driver-cli/` 与 `driver-acp/` 运行时 |
-| **订阅模型选择** | 仅全局 default | **支持各引擎专属订阅模型列表**（Antigravity、Codex、Kimi、Grok、MiniMax） |
+| **订阅模型选择** | 仅全局 default | **按引擎独立的订阅型号表，运行时自动发现**（厂家发新模型无需插件发版） |
 | **UI 视觉与标识** | 基础显示 | **10 款引擎均具备专属图标与状态栏色彩字形** |
 
 ---
@@ -69,18 +69,20 @@ dsh web
 
 ## 支持引擎一览
 
-| 引擎名称 | 运行模式 / 协议 | 本机依赖与环境准备 | 专属模型 / 区域支持 |
-|---|---|---|---|
-| **Claude Code** | 捆绑 SDK / `ndjson` | 安装 Claude Code CLI 并登录（或使用 SDK 内置二进制） | 共享 `external` |
-| **Codex** | 捆绑二进制 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` | GPT-5.x Codex 系列 |
-| **Pi** | 捆绑二进制 / `jsonrpc` | 配置 `~/.pi/agent/auth.json` 或对应 API Key | 共享 `external` |
-| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | K3 / K2.8 / K2.7 系列 |
-| **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 | 支持 Gemini / Claude 深度思考模型 |
-| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI 并开通 GLM Coding Plan 订阅 | 共享 `external` |
-| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 | 共享 `external` |
-| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并配置认证 (`hermes setup`) | 共享 `external` |
-| **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并完成登录（ACP 需有效账号授权） | Grok 4.7 |
-| **MiniMax Code** | 外部 CLI / `acp` | 全局安装 `@minimax-ai/code`，登录并切换至 Token Plan | MiniMax M3/M2.7 系列（支持 `cn`/`en` 区域） |
+| 引擎名称 | 运行模式 / 协议 | 本机依赖与环境准备 |
+|---|---|---|
+| **Claude Code** | 捆绑 SDK / `ndjson` | 默认什么都不用装（SDK 自带二进制）；要跑自己的那份就设 `bins.claudeBin` |
+| **Codex** | 捆绑 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` |
+| **Pi** | 捆绑 / `jsonrpc` | `~/.pi/agent/auth.json`，或提供方的 API-key 环境变量 |
+| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（`kimi login`） |
+| **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 |
+| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI，且 GLM Coding Plan 套餐有效 |
+| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 |
+| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并完成配置（`hermes setup`） |
+| **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并登录过一次（`grok login`） |
+| **MiniMax Code** | 外部 CLI / `acp` | `npm i -g @minimax-ai/code`，然后 `mcode login --region cn\|global`，再 `mcode provider use token-plan` |
+
+> **型号表是运行时发现的，不在这里列举。** 每家引擎的型号都来自引擎自己——Kimi Code 在启动时读它自己的配置文件，ACP 引擎在开会话时从 `session/new` 的响应里拿——所以厂家发新模型**不需要插件发版**。本版本读不到目录的引擎回落到声明表，两者都没有的显示共享 `external` 分组。设置页会标明当前是哪一种。
 
 > **提示**：外部 CLI 引擎（`bundled: false`）直接调度本机已安装的工具，插件本身不捆绑、不替用户安装或登录外部 CLI。请确保对应命令行已在系统中安装就绪。
 

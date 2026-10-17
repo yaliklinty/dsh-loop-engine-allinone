@@ -65,6 +65,7 @@ import {
   hasManagedBlock,
   legacyBlockEngineOf,
 } from './patch-manager.ts'
+import { bootCatalog, liveCatalog } from './model-registry.ts'
 import { enginePresetId, ensureEnginePresetRows, ensureEnginePresets } from './preset.ts'
 import type { SummarizerTarget } from './preset.ts'
 import { HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
@@ -557,7 +558,7 @@ export function apply(ctx: Context, config: Config): void {
      * message arm stays for a registry that throws an uncoded one. That is a
      * warning, not a failure: the rest of the routes still register.
      */
-    const routes: Array<{ label: string; models: readonly EngineModel[]; displayName: string }> = [{
+    const routes: Array<{ label: string; models: readonly EngineModel[] | (() => readonly EngineModel[]); displayName: string }> = [{
       label: HOSTED_ROUTE_LABEL,
       models: [],
       displayName: HOSTED_ROUTE_NAME,
@@ -566,8 +567,13 @@ export function apply(ctx: Context, config: Config): void {
       // Read through the interface: `ENGINE_REGISTRY` is `as const satisfies`, so
       // a row with no `models` does not carry the key at all.
       const descriptor: EngineDescriptor = ENGINE_REGISTRY[engine]
-      if (descriptor.models === undefined) continue
-      routes.push({ label: engine, models: descriptor.models, displayName: descriptor.label })
+      // `bootCatalog` runs only the FREE discoveries (a config file read), never a
+      // child process: boot must not spawn an engine to build a menu.
+      const boot = bootCatalog(engine)
+      if (boot.models.length === 0) continue
+      // The list is passed as a THUNK so a catalog discovered later (an ACP engine's
+      // `session/new`) reaches the menu without re-registering the route.
+      routes.push({ label: engine, models: () => liveCatalog(engine), displayName: descriptor.label })
     }
     for (const route of routes) {
       try {

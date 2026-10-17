@@ -200,10 +200,14 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
   /**
    * The engine-native models this route advertises, beyond `default`.
    *
-   * Empty for the shared `external` route: an engine with no declared catalog
-   * has nothing to add to "the engine decides".
+   * A THUNK rather than a fixed list, because the catalog can change after the
+   * route is registered: an ACP engine publishes its models in `session/new`, and a
+   * config file can gain a model when the vendor ships one. Reading it per catalog
+   * build is what makes a discovered model appear without a plugin restart (see
+   * `model-registry.ts`). A route with nothing to add returns an empty list, which
+   * is the shared `external` route's state.
    */
-  private readonly models: readonly EngineModel[]
+  private readonly modelsOf: () => readonly EngineModel[]
 
   /**
    * The name this route's group shows in the model menu.
@@ -224,7 +228,7 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
   constructor(
     contextWindow?: number,
     label: string = HOSTED_ROUTE_LABEL,
-    models: readonly EngineModel[] = [],
+    models: readonly EngineModel[] | (() => readonly EngineModel[]) = [],
     displayName: string = HOSTED_ROUTE_NAME,
   ) {
     super()
@@ -232,7 +236,8 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
       ? contextWindow
       : DEFAULT_ENGINE_CONTEXT_WINDOW
     this.label = label
-    this.models = models
+    // A fixed array is accepted and wrapped, so every existing caller keeps working.
+    this.modelsOf = typeof models === 'function' ? models : () => models
     this.displayName = displayName
   }
 
@@ -287,7 +292,7 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
       },
       // The engine's own models, from its own subscription. Selecting one hands
       // its id to the engine; the plugin still serves no model on this route.
-      ...this.models.map(model => ({
+      ...this.modelsOf().map(model => ({
         provider,
         id: model.id,
         name: model.label,

@@ -31,6 +31,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { AcpProcess, AcpSpawnCapability, AcpSpawnSpec } from './transport.ts'
+import { modelsFromAcpConfigOptions } from '../model-discovery.ts'
 import {
   NO_CLIENT_CAPABILITIES,
   isCapabilityMethod,
@@ -172,6 +173,15 @@ export class AcpClient {
   private readonly handlers: AcpReverseHandlers
   /** Every terminal this client owns, so a disposed client cannot leak a process. */
   private readonly terminals = new Map<string, AcpTerminal>()
+  /**
+   * The model catalog the agent published on its last `session/new`.
+   *
+   * Free discovery: the frame was already paid for by a session the user opened, so
+   * keeping it costs nothing and spares the maintainer from re-declaring the list
+   * every time the vendor ships a model. `undefined` means the agent published no
+   * model option (every engine except the ACP ones that do).
+   */
+  private lastCatalog: readonly { readonly id: string, readonly label: string }[] | undefined
   /** Monotonic id source for the terminals the agent creates. */
   private nextTerminalId = 1
 
@@ -302,12 +312,30 @@ export class AcpClient {
    * @returns the new session id.
    */
   async newSession(cwd: string, extra: Record<string, unknown> = {}): Promise<string> {
-    const result = (await this.request('session/new', { cwd, mcpServers: [], ...extra })) as { sessionId?: string }
+    const result = (await this.request('session/new', { cwd, mcpServers: [], ...extra })) as {
+      sessionId?: string
+      configOptions?: unknown
+    }
     const sessionId = result?.sessionId
     if (typeof sessionId !== 'string' || sessionId.length === 0) {
       throw new Error(`${this.label} acp session/new returned no session id`)
     }
+    // Kept for the model menu: this frame already carried the catalog, so reading it
+    // here costs nothing (see `model-discovery.ts` for why that distinction matters).
+    const discovered = modelsFromAcpConfigOptions(result.configOptions)
+    if (discovered !== undefined) this.lastCatalog = discovered
     return sessionId
+  }
+
+  /**
+   * The model catalog this agent published on its last `session/new`, if any.
+   *
+   * Empty until the first session is opened, which is the honest state: the plugin
+   * does not know the catalog before an engine has been asked.
+   * @returns the discovered models, or undefined when the agent published none.
+   */
+  discoveredModels(): readonly { readonly id: string, readonly label: string }[] | undefined {
+    return this.lastCatalog
   }
 
   /**

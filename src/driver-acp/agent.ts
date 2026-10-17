@@ -44,6 +44,7 @@ import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL } from '../agent-preset-ids.ts
 import type { AcpEngineProfile, AcpResolvedConfig } from './profile.ts'
 import type { AcpReverseHandlers } from './capabilities.ts'
 import { createTerminalBridge } from './terminal.ts'
+import { recordDiscoveredCatalog } from '../model-registry.ts'
 import { acpDefaultApproval } from './approval.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { createImageAccessResolver } from '../driver-core/image-access.ts'
@@ -720,6 +721,11 @@ export class AcpEngineAgent implements Agent {
     // Answer ACP tool-approval requests from the session's dsh approval knobs.
     client.onPermission(() => (this.profile.approve ?? acpDefaultApproval)(this.session))
     const acpSessionId = await this.openSession(client, cwd)
+    // Free discovery: `session/new` already carried the agent's model catalog, so
+    // publishing it to the route registry costs nothing and spares a release every
+    // time the vendor ships a model (see `model-registry.ts`).
+    const discovered = client.discoveredModels()
+    if (discovered !== undefined) recordDiscoveredCatalog(this.profile.engine, discovered)
     signal.throwIfAborted()
 
     // The session's own pick wins over the deployment's pin, read every step so

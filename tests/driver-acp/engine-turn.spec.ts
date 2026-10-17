@@ -29,6 +29,9 @@ const mock = vi.hoisted(() => {
     setConfigOption: vi.fn(async () => ({})),
     setConfigOptionValue: vi.fn(async () => ({})),
     setMode: vi.fn(async () => ({})),
+    // The real client exposes whatever `session/new` published; the mock publishes
+    // nothing, which is the state before an engine has been asked.
+    discoveredModels: vi.fn(() => undefined),
     authenticate: vi.fn(async () => ({})),
     prompt: vi.fn(async () => {
       for (const update of mock.updates()) mock.updateHandler?.(update)

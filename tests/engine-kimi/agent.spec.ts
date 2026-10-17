@@ -27,6 +27,9 @@ const mock = vi.hoisted(() => {
     initialize: vi.fn(async () => ({})),
     newSession: vi.fn(async () => 'sess_1'),
     setModel: vi.fn(async () => ({})),
+    // The real client exposes what `session/new` published; this mock publishes
+    // nothing, which is the state before an engine has been asked.
+    discoveredModels: vi.fn(() => undefined),
     // Deliver every scripted update to the registered onUpdate handler before
     // the prompt response settles (mirrors the real prompt-result-after-updates
     // ordering).
