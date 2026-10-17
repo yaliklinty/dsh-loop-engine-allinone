@@ -38,7 +38,8 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "license": "MIT",
   "engines": {

@@ -85,4 +85,5 @@ dsh plugin --profile web add dsh-loop-engine-allinone
 
 ## License
 
-MIT
+MIT —— 全文见 [LICENSE](LICENSE)。上游作者的版权声明与本 fork 的声明并列保留在其中；
+本 fork 做了什么、刻意没动什么，见 [NOTICE](NOTICE)。

@@ -217,4 +217,6 @@ Read the version as `<harness line>-rcN`, where **`rcN` is this plugin's own rel
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for the full text. The upstream author's copyright
+notice is preserved there beside this fork's own; [NOTICE](NOTICE) records what the
+fork adds and what it deliberately leaves untouched.

@@ -1,0 +1,45 @@
+dsh-loop-engine-allinone
+========================
+
+This project is a fork of **dsh-loop-engine** by kuun993:
+
+    https://github.com/kuun993/dsh-loop-engine
+
+The original work is MIT-licensed. Its copyright notice is preserved in the
+`LICENSE` file, alongside this fork's own.
+
+## What the fork adds
+
+The upstream plugin already switches the agent loop engine per session. This fork
+contributes an ARCHITECTURE and the engines it made cheap to add:
+
+- **A single data-driven engine registry** (`src/engine-registry.ts`). The engine
+  roster, its capability declarations, its model catalogs and its display copy are
+  declared once; the settings schema, the preset ids, the driver dispatch and the
+  browser half all derive from that table. Upstream restated the roster in five
+  places, so adding an engine meant finding all five.
+- **A pluggable driver layer**: `driver-cli/` for line-delimited CLI protocols and
+  `driver-acp/` for the Agent Client Protocol. An ACP engine is a profile plus four
+  small files, and adding the fourth does not touch shared code.
+- **Six additional engines**: Antigravity, ZCode, Qoder CN, Hermes, Grok Build and
+  MiniMax Code.
+- **Client-side ACP capabilities** (`terminal/*`, `fs/read_text_file`), routed
+  through the harness's own shell and filesystem services, which is what lets an
+  engine that drives its tools through the client actually use them.
+
+## What the fork does NOT change
+
+The four original engines' protocol code is untouched. `kimi` was migrated onto the
+shared ACP skeleton without a behavior change, and its unchanged test suite is the
+regression pin for that move.
+
+## Third-party artwork
+
+The engine marks in `src/client/engine-marks.ts` are traced or measured from each
+vendor's own published artwork, and remain the trademarks of their respective
+owners. They are used here only to identify the engine a user selected.
+
+## Modifications
+
+Modifications made by this fork are licensed under the same MIT terms as the
+original. See `LICENSE`.
