@@ -1,12 +1,39 @@
 {
-  "extends": "../deepseek-harness/tsconfig.base.json",
+  // Standalone on purpose: this file used to `extends`
+  // "../deepseek-harness/tsconfig.base.json", a sibling checkout that only exists
+  // in the author's working tree. A stranger cloning the repository then could not
+  // run `node build.mjs` or `tsc` at all (TS5083: cannot read the base file), so
+  // the options this package needs are inlined here instead.
+  //
+  // The harness base file also carries a `paths` map into ITS source tree. That map
+  // is intentionally absent: this package compiles against the published npm
+  // artifacts (see tsconfig.build.json, which empties `paths` for the same reason),
+  // so those entries would resolve to files that do not exist here.
   "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2024", "dom"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": false,
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
     "composite": false,
     "incremental": false,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "lib": ["es2024", "dom"],
-    "types": ["node"]
+    "noEmit": true
   },
   "include": ["src", "tests"]
 }
