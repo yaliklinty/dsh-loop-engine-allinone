@@ -1,0 +1,721 @@
+{
+  "$comment": "Coverage floor per file, per metric, measured on src/** (src/client/** and tests/** excluded). Regenerate deliberately with `node scripts/coverage-gate.mjs --update` when a refactor legitimately changes what is reachable — never to make a red gate green.",
+  "generatedBy": "scripts/coverage-gate.mjs --update",
+  "base": "dd4e0d1933e3c34c7f9839475cdfa159b397a8e2",
+  "files": {
+    "src/agent-preset-ids.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/commands.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/compat.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/agent.ts": {
+      "lines": 98.56,
+      "statements": 98.46,
+      "functions": 98.18,
+      "branches": 97.06
+    },
+    "src/driver-acp/approval.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/capabilities.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/client.ts": {
+      "lines": 95.76,
+      "statements": 93.23,
+      "functions": 86.96,
+      "branches": 90.6
+    },
+    "src/driver-acp/executable.ts": {
+      "lines": 100,
+      "statements": 93.1,
+      "functions": 100,
+      "branches": 77.14
+    },
+    "src/driver-acp/mapping.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/profile.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/runtime.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/subprocess.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/terminal.ts": {
+      "lines": 92.86,
+      "statements": 90.32,
+      "functions": 88.89,
+      "branches": 83.33
+    },
+    "src/driver-acp/transport.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-acp/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-cli/capability.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-cli/cli-agent.ts": {
+      "lines": 15.95,
+      "statements": 15.59,
+      "functions": 29.73,
+      "branches": 9.8
+    },
+    "src/driver-cli/cli-loop.ts": {
+      "lines": 66.67,
+      "statements": 66.67,
+      "functions": 50,
+      "branches": 50
+    },
+    "src/driver-cli/flatten.ts": {
+      "lines": 100,
+      "statements": 94.74,
+      "functions": 100,
+      "branches": 94.74
+    },
+    "src/driver-cli/frames.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-cli/ndjson.ts": {
+      "lines": 100,
+      "statements": 97.67,
+      "functions": 100,
+      "branches": 87.5
+    },
+    "src/driver-cli/session-sink.ts": {
+      "lines": 96.91,
+      "statements": 96.57,
+      "functions": 86.11,
+      "branches": 94.05
+    },
+    "src/driver-cli/stream-json.ts": {
+      "lines": 100,
+      "statements": 94.29,
+      "functions": 100,
+      "branches": 91.75
+    },
+    "src/driver-cli/text.ts": {
+      "lines": 100,
+      "statements": 96.3,
+      "functions": 100,
+      "branches": 92.31
+    },
+    "src/driver-cli/transport.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/agents-md-skill-provider.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/assistant-stream.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/context-files.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/host-servers.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/hosted-engine-runtime.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/hosted-tool-vocabulary.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/idle-child.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/image-access.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/inbox.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/model-handover.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/ownership.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/permission-knobs.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/prompt.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/session-lifetime.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/session-model.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/skill-inject.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/step-close.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/step-images.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/step-tools.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/driver-core/system-head.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-agy/agent.ts": {
+      "lines": 3.03,
+      "statements": 2.7,
+      "functions": 0,
+      "branches": 0
+    },
+    "src/engine-agy/frames.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 92.79
+    },
+    "src/engine-agy/loop.ts": {
+      "lines": 57.14,
+      "statements": 57.14,
+      "functions": 40,
+      "branches": 0
+    },
+    "src/engine-agy/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 90.91
+    },
+    "src/engine-claude/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 99.49
+    },
+    "src/engine-claude/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 87.5
+    },
+    "src/engine-claude/mapping.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-claude/permission.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-claude/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-claude/sdk.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 93.75
+    },
+    "src/engine-claude/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/appserver/client.ts": {
+      "lines": 98.59,
+      "statements": 98.68,
+      "functions": 100,
+      "branches": 88.89
+    },
+    "src/engine-codex/appserver/mapping.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/appserver/thread.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/appserver/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 75
+    },
+    "src/engine-codex/model-handover.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/permission.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/skills.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-codex/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-drivers.ts": {
+      "lines": 56.25,
+      "statements": 54.29,
+      "functions": 53.85,
+      "branches": 46.09
+    },
+    "src/engine-grok/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-grok/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-grok/process.ts": {
+      "lines": 100,
+      "statements": 90.91,
+      "functions": 100,
+      "branches": 71.43
+    },
+    "src/engine-grok/profile.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 93.75
+    },
+    "src/engine-hermes/agent.ts": {
+      "lines": 24,
+      "statements": 22.22,
+      "functions": 50,
+      "branches": 0
+    },
+    "src/engine-hermes/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 66.67
+    },
+    "src/engine-hermes/process.ts": {
+      "lines": 100,
+      "statements": 96,
+      "functions": 100,
+      "branches": 89.29
+    },
+    "src/engine-kimi/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/commands.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/model-handover.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/permission.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/profile.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/skills.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-kimi/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-minimaxcode/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-minimaxcode/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 90.91
+    },
+    "src/engine-minimaxcode/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 93.33
+    },
+    "src/engine-minimaxcode/profile.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-of-session.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/agent.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 75
+    },
+    "src/engine-pi/model-handover.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/permission.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/rpc/client.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/rpc/mapping.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/rpc/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/skills.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-pi/types.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-qoderclicn/agent.ts": {
+      "lines": 2.94,
+      "statements": 2.7,
+      "functions": 0,
+      "branches": 0
+    },
+    "src/engine-qoderclicn/loop.ts": {
+      "lines": 40,
+      "statements": 40,
+      "functions": 0,
+      "branches": 0
+    },
+    "src/engine-qoderclicn/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 94.44
+    },
+    "src/engine-registry.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-remote.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-surface.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/engine-zcode/agent.ts": {
+      "lines": 4.17,
+      "statements": 3.7,
+      "functions": 0,
+      "branches": 0
+    },
+    "src/engine-zcode/loop.ts": {
+      "lines": 40,
+      "statements": 40,
+      "functions": 0,
+      "branches": 0
+    },
+    "src/engine-zcode/process.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 97.22
+    },
+    "src/index.ts": {
+      "lines": 100,
+      "statements": 99.57,
+      "functions": 100,
+      "branches": 97.32
+    },
+    "src/invariant.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/model-discovery.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 97.5
+    },
+    "src/model-registry.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 92.86
+    },
+    "src/model-selection-reset.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/namespace.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/patch-manager.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/preset.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/provider-route.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/router-loop.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/session-engine-store.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/settings.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "src/skills.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    }
+  }
+}

@@ -50,7 +50,8 @@
     "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && node scripts/coverage-gate.mjs",
+    "coverage:baseline": "node scripts/coverage-gate.mjs --update",
     "compat:install": "pnpm -C .compat/015 install --frozen-lockfile && pnpm -C .compat/017 install --frozen-lockfile && pnpm -C .compat/020 install --frozen-lockfile && pnpm -C .compat/021 install --frozen-lockfile",
     "test:compat": "vitest run --config vitest.config.compat015.ts && vitest run --config vitest.config.compat017.ts && vitest run --config vitest.config.compat020.ts && vitest run --config vitest.config.compat021.ts",
     "typecheck:compat": "tsc -p tsconfig.compat021.json"

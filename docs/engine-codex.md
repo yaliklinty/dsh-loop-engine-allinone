@@ -283,4 +283,4 @@ app-server 用 `turn/start` 启动的 turn 里，模型请求审批时会从 **s
 - **`appserver/thread.spec.ts`**：纯 fake client 验证事件流转、turn/start 响应前的早期通知缓冲重放、turn/start 失败清 handler、threadId/turnId 双重过滤（含全类型）、error 通知抛出、abort 触发 `turn/interrupt` 且传播 reason、done 后通知忽略。
 - **`appserver/mapping.spec.ts`**：四个映射函数的字段级与边界（null/缺字段/失败态）断言。
 
-改引擎行为时的对应义务：本仓要求 `src/**` 行级 100% 覆盖（`pnpm run test:coverage`，client UI 除外），codex 目录里的 `v8 ignore` 注释标的是经过论证的不可达分支——**新增分支要么测试覆盖，要么给出同等论证**，否则覆盖率门禁会红。
+改引擎行为时的对应义务：覆盖率闸门是 `pnpm run test:coverage`（→ `scripts/coverage-gate.mjs`，client UI 除外）——**本分支改到的文件必须逐文件 100%，没碰的文件不许低于基线**（见 `docs/architecture.md` §8.7）。codex 目录里的 `v8 ignore` 注释标的是经过论证的不可达分支：**新增分支要么测试覆盖，要么给出同等论证**，否则闸门会红。

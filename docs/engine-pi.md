@@ -218,7 +218,7 @@ prompt 由 `serializeHistory`（`src/driver-core/prompt.ts:246`）生成：`<use
 
 （早先版本还有一份 `probe.spec.ts` 覆盖 `pi --list-models` 探针，随探针一起删除。）
 
-注意 `agent.ts` / `loop.ts` 大量分支带 `/* v8 ignore */` 注释（防御性 backstop），覆盖率门槛是 `src/**` 逐文件 100%（`src/client` 除外）——改动这两个文件时新增分支要么测到、要么按既有惯例标注 ignore 理由。
+注意 `agent.ts` / `loop.ts` 大量分支带 `/* v8 ignore */` 注释（防御性 backstop）。覆盖率闸门（`scripts/coverage-gate.mjs`，见 `docs/architecture.md` §8.7）对**本分支改到的文件**要求逐文件 100%——改动这两个文件时新增分支要么测到、要么按既有惯例标注 ignore 理由。
 
 ## 附：代码与注释不一致之处
 

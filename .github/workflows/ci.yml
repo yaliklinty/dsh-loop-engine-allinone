@@ -21,12 +21,16 @@ env:
 jobs:
   gates:
     # Windows on purpose. `src/cli-setup.ts` branches on `process.platform`, and
-    # the per-file 100% coverage gate cannot be satisfied where the win32 arm is
-    # unreachable.
+    # the coverage gate cannot be satisfied where the win32 arm is unreachable.
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
+      # Full history: `scripts/coverage-gate.mjs` diffs this commit against its
+      # base to decide which files the branch TOUCHES, and those are the ones
+      # held to 100%. A depth-1 checkout has no base to diff against.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # A sibling of the checkout, because that is the path both `tsconfig.json`
       # (`../deepseek-harness/tsconfig.base.json`) and `vitest.config.ts`
@@ -55,7 +59,24 @@ jobs:
 
       - run: pnpm run typecheck
       - run: pnpm run build
-      - run: pnpm run test:coverage
+
+      # `test:coverage` = `vitest run --coverage && node scripts/coverage-gate.mjs`.
+      # The gate holds the files THIS BRANCH touches to 100% per file and the
+      # rest to the committed floor in `.coverage-baseline.json`; it needs the
+      # base commit to know which is which. Both expressions below are SHAs, so
+      # the gate never has to guess a branch name.
+      - name: Coverage gate (touched files at 100%, no regressions elsewhere)
+        shell: bash
+        env:
+          # A push carries the previous tip of the branch (`0000…` for a new
+          # one); a pull request carries the commit it targets.
+          COVERAGE_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$COVERAGE_BASE_REF" ] || [[ "$COVERAGE_BASE_REF" =~ ^0+$ ]]; then
+            echo "no usable base commit; gating against HEAD~1"
+            unset COVERAGE_BASE_REF
+          fi
+          pnpm run test:coverage
 
       # One build serves four harness lines, and each `.compat/0NN` set is its
       # own install root with an untracked `node_modules`, so these install

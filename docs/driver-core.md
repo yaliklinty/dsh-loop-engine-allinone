@@ -549,7 +549,7 @@ Codex 与 Kimi 各为自己的会话保留一个常驻子进程（`app-server` /
   - `skill-file` locator 的两臂只在 pi/kimi 的 `SKILL.md` 用例里（codex 从不产生该 locator）；
   - `readSources` 返回 `undefined` 的臂来自各 spec 的"文件已被删除"用例。
   因此**给某个引擎补 spec 或删用例时，必须确认这三份并集仍覆盖全部分支**——删掉 pi 的技能目录用例就会让共享文件掉出 100%。新增引擎若只复用现有 spec 形状，也要补上它自己 spec 打开的那套分支。
-- 全仓覆盖率门槛是 per-file 100%（`pnpm run test:coverage`，`src/client` 除外），共享层任何新分支都必须有用例或显式 `v8 ignore` 理由。
+- 覆盖率闸门（`pnpm run test:coverage` → `scripts/coverage-gate.mjs`，`src/client` 除外）：**本分支改动过的文件必须逐文件 100%**，没碰的文件不许低于 `.coverage-baseline.json` 的地板（见 `docs/architecture.md` §8.7）。共享层任何新分支都必须有用例或显式 `v8 ignore` 理由。
 
 ## 10. router-loop.ts：单槽路由器
 

@@ -221,7 +221,7 @@ export const LEGACY_HARNESS: boolean = 'SettingsProvider' in (dshSettings as obj
 5. **所有线的命令都跑绿**：
    ```sh
    pnpm run typecheck && pnpm run build
-   pnpm run test:coverage                                # 最新代（devDependencies），逐文件 100%
+   pnpm run test:coverage                                # 最新代（devDependencies）；改动过的文件逐文件 100%，其余不许低于基线（见 architecture.md §8.7）
    npx vitest run --config vitest.config.compat015.ts    # 0.1.5 线
    npx vitest run --config vitest.config.compat017.ts    # 0.1.7 线
    npx vitest run --config vitest.config.compat020.ts    # 0.2.0 线
