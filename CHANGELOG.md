@@ -14,8 +14,7 @@ Nothing yet.
 
 - **ZCode's path probe only worked on the author's machine.** The resolver and the
   probe script both hardcoded `D:\Programs\ZCode\...` (and the probe also
-  `D:\Programs
-pm-global`), so on any other host the "well-known location" check
+  `D:\Programs\npm-global`), so on any other host the "well-known location" check
   silently never matched and a user with ZCode installed somewhere normal was told it
   was not installed. Both now derive candidates from the environment:
   `%ZCODE_HOME%` → `%LOCALAPPDATA%\Programs\ZCode` → `%ProgramFiles%\ZCode`, and
