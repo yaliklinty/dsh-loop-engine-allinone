@@ -8,6 +8,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.0]
+
+### Added
+
+- **Runtime model discovery.** A vendor shipping a model no longer needs a plugin
+  release. Two kinds of discovery, chosen so that the plugin still starts no external
+  process at boot:
+  - **free** — Kimi Code's catalog is read from its own `~/.kimi-code/config.toml` at
+    boot; an ACP engine's arrives in its `session/new` response the first time a
+    session opens (already paid for by that session).
+  - **costly** — `grok models` / `agy models` would need a new child process, so they
+    are deliberately not run: a menu render must not spawn anything. Those stay
+    declared.
+- The provider route reads its model list through a thunk, so a catalog discovered
+  after boot appears without re-registering the route or restarting the harness.
+- `catalogReport()` exposes each engine's catalog with its provenance
+  (`discovered` / `declared`), because "the engine told me" and "the plugin assumes"
+  are different claims.
+
+### Changed
+
+- **The per-engine "Custom Models" column is gone from both READMEs.** It listed
+  model ids that are now discovered, so a hardcoded list was exactly the staleness
+  this release removes — and a reader would have taken an old id for the plugin's
+  limit. MiniMax Code's region, the one fact in that column that is not a model,
+  moved into the requirements cell.
+- The model section describes the mechanism (discovered, declared fallback, and the
+  settings page saying which) instead of naming engines.
+- Claude Code's row no longer reads as if the bundled SDK were the only option:
+  `bins.claudeBin` runs an external install. (Pinning changes what executes; it does
+  not unload the SDK package, which the driver imports.)
+
+### Verified
+
+- On the reference host, `bootCatalog('kimi')` returns `origin: discovered`,
+  `source: kimi-config`, with four models read from the live config file.
+
 ## [0.6.0]
 
 ### Added
