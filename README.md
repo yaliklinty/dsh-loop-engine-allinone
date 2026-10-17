@@ -7,7 +7,7 @@
 
 **dsh-loop-engine-allinone** is an all-in-one agent loop engine switcher for **[DeepSeek Harness](https://github.com/deepseek-ai)** (`dsh`). It enables per-session engine switching across **10 hosted engines** (Claude Code, Codex, Pi, Kimi Code, Antigravity, ZCode, Qoder CN, Hermes Agent, Grok Build, MiniMax Code) alongside the built-in `in-process` loop.
 
-> `dsh` is the harness CLI. `dsh web` boots its **web profile**, which is the UI this plugin's engine picker and settings page live in.
+> `dsh` is the harness CLI. `dsh --profile <name>` boots one of its **profiles**, and the engine picker plus this plugin's settings page appear in whichever profile renders a web UI (the shipped `web` template is one; the Desktop app uses `desktop`).
 
 Sessions are fully independent: run Codex in one chat while another runs Kimi Code or Antigravity simultaneously. Handover between two hosted engines happens seamlessly in place; switching to or from the native `in-process` engine performs an in-browser reload without restarting the backend process. All without modifying the DeepSeek Harness core codebase.
 
@@ -32,41 +32,74 @@ Sessions are fully independent: run Codex in one chat while another runs Kimi Co
 
 ## Installation
 
+`dsh plugin` installs into ONE profile, named with `--profile`. Use the profile you
+actually boot — `web`, `desktop`, `headless`, or one you created yourself. There is
+no default; **`web` is only a shipped template, not a requirement.**
+
+### From npm
+
 ```sh
-# From npm (recommended)
-dsh plugin --profile web add dsh-loop-engine-allinone
+# Replace <your-profile> with the profile you boot, e.g. desktop or web.
+dsh plugin --profile <your-profile> add dsh-loop-engine-allinone
 ```
 
-Then boot the web profile once and open **Settings → Loop engine**:
+### From GitHub
 
 ```sh
-dsh web
+dsh plugin --profile <your-profile> add yaliklinty/dsh-loop-engine-allinone
 ```
 
-Installing into a profile other than `web` (the Desktop app's `desktop`, a
-`headless` deployment, a renamed profile) means naming that profile instead:
-`dsh plugin --profile desktop add dsh-loop-engine-allinone`, **and** setting
-`profile: desktop` in the composition entry — see the notes below, because
-forgetting the second half is the one mistake that leaves the plugin mounted but
-unable to run any engine.
+### From a local clone
 
-### Installation Notes
+Only if you are working on the plugin itself:
 
-- **Profile Configuration**: The installer automatically injects a managed configuration block into your profile's `cordis.patch.yml`. All other custom configuration in that file is preserved.
-- **Non-web Profiles**: When installing into non-web profiles (such as `desktop` or headless), explicitly specify `profile: <name>` in the composition entry:
-  ```yaml
-  - id: loop-engine
-    config:
-      profile: desktop
-  ```
-  *(Without this, configuration defaults to `web` and the plugin will not attach to custom profiles.)*
-- **Uninstallation**: Run `dsh plugin --profile web remove dsh-loop-engine-allinone`, then remove the managed `loop-engine` block from `cordis.patch.yml`.
-- **pnpm 10+**: If dependency build scripts are blocked (`ERR_PNPM_IGNORED_BUILDS` mentioning `esbuild`, `@google/genai`, etc.), run `pnpm approve-builds`.
-- **Harness from Source**: If launching the harness directly from a source checkout, bridge peer dependencies using `file:` shims as described in [docs/source-checkout.md](docs/source-checkout.md).
+```sh
+git clone https://github.com/yaliklinty/dsh-loop-engine-allinone.git
+dsh plugin --profile <your-profile> add ./dsh-loop-engine-allinone
+```
 
----
+### Then
 
----
+1. Boot that profile once (`dsh --profile <your-profile>`, or `dsh web` for the web
+   template) so the installer's managed block takes effect.
+2. Open **Settings → Loop engine** and pick the default engine for new sessions.
+
+### The one step people miss
+
+The composition entry must name the SAME profile you installed into. Add this to
+that profile's `cordis.patch.yml`:
+
+```yaml
+- id: loop-engine
+  config:
+    profile: <your-profile>
+```
+
+Without it the entry defaults to `web`, so the plugin writes its managed block into
+`profiles/web/cordis.patch.yml` while the profile you actually boot never reads it:
+the plugin mounts, but the base `agent-loop` row is never disabled, the router cannot
+take the agent-factory slot, and **no hosted engine is reachable**. Nothing errors —
+which is why this is the first thing to check when "the plugin is installed but
+nothing works".
+
+> **Installing into more than one profile** is fine: run the `add` once per profile
+> and give each its own `profile:` value.
+
+### Installation notes
+
+- The installer rewrites one managed block in the profile's `cordis.patch.yml`; every
+  other byte you wrote there is preserved, so upgrading needs no hand edit.
+- **Uninstall**: `dsh plugin --profile <your-profile> remove dsh-loop-engine-allinone`,
+  **then delete the managed `loop-engine` block** from that profile's
+  `cordis.patch.yml`. The block outlives the plugin, and while it is present the
+  profile has no agent factory, so no session can be created.
+- **pnpm 10+** may block dependency build scripts (`ERR_PNPM_IGNORED_BUILDS` naming
+  `esbuild`, `@google/genai`, `protobufjs`). Run `pnpm approve-builds`, or add an
+  `allowBuilds` entry, and retry — only the installing project can grant this.
+- **Harness from source**: bridge the profile's harness peers with `file:` shims, or
+  session resume fails with `agent-presets: refusing to compose an unscoped context`.
+  Steps in [docs/source-checkout.md](docs/source-checkout.md).
+
 
 ## Supported Engines
 

@@ -43,7 +43,7 @@
  * @module dsh-loop-engine-allinone
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -417,6 +417,35 @@ function readPatchFileSync(path: string): string {
 }
 
 /**
+ * Warn when the profile this plugin is configured for does not look like a real one.
+ *
+ * `profile` defaults to `web`, and forgetting it is silent in the worst way: the
+ * managed block lands in another profile's patch file, the profile that actually
+ * boots never reads it, and no engine is reachable with nothing logged. The harness
+ * gives a plugin no way to ask which profile is running, so this checks the one
+ * thing that IS knowable - whether the target directory holds a profile's
+ * `package.json` - and names the field to set when it does not.
+ *
+ * Deliberately a WARNING, not a failure: a first boot may legitimately precede the
+ * profile's own files, and refusing to start would turn a diagnosable state into an
+ * outage.
+ * @param ctx - the context to log through.
+ * @param config - the composition entry, read for the profile field.
+ * @param patchPath - the resolved patch file this plugin will write.
+ */
+function warnIfProfileLooksWrong(ctx: Context, config: Config, patchPath: string): void {
+  const profileDir = dirname(patchPath)
+  if (existsSync(join(profileDir, 'package.json'))) return
+  const named = config.profile ?? 'web'
+  ctx.logger.warn(
+    `loop-engine: profile "${named}" has no package.json beside "${patchPath}". `
+    + 'If you boot a different profile, set `profile: <that-name>` in this plugin\'s '
+    + 'composition entry - otherwise its managed block is written here, the profile you '
+    + 'actually boot never reads it, and no hosted engine will be reachable.',
+  )
+}
+
+/**
  * Apply the plugin: own the profile's managed block, mount the routing factory,
  * author the per-engine presets, and serve every hosted engine's provider
  * route. The settings section carries the deployment's default engine.
@@ -428,6 +457,7 @@ export function apply(ctx: Context, config: Config): void {
   // must fail before anything is written.
   const summarizer = resolveSummarizerTarget(config)
   const patchPath = resolvePatchPath(config)
+  warnIfProfileLooksWrong(ctx, config, patchPath)
   const patchText = readPatchFileSync(patchPath)
   // A block written by an older build names the ONE engine the profile used to
   // be pinned to. Carry that choice into the settings seed so the deployment's
