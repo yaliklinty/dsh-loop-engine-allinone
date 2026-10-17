@@ -85,9 +85,35 @@ shape, naming the field to set.
   delete the managed `loop-engine` block** from that profile's `cordis.patch.yml`. The
   block outlives the plugin, and while it is present the profile has no agent factory,
   so no session can be created.
-- **pnpm 10+** may block dependency build scripts (`ERR_PNPM_IGNORED_BUILDS` naming
-  `esbuild`, `@google/genai`, `protobufjs`). Run `pnpm approve-builds`, or add an
-  `allowBuilds` entry, and retry — only the installing project can grant this.
+- **One-time script approval.** pnpm 10+ refuses to run dependency install scripts
+  until the installing project approves them, so a fresh `dsh plugin add` can stop at
+  `ERR_PNPM_IGNORED_BUILDS` naming `@google/genai` and `protobufjs`. **This is not a
+  missing dependency and there is nothing to install by hand** — the whole tree,
+  including the bundled Pi engine, is already on disk; pnpm is only asking whether to
+  execute two scripts those packages ship:
+
+  | Package | Script | What it actually does |
+  |---|---|---|
+  | `@google/genai` | `preinstall` | `echo 'preinstall: no-op'` |
+  | `protobufjs` | `postinstall` | reads its own `package.json`, prints a version-scheme warning |
+
+  Both are no-ops, so **either answer is safe**: approving runs them, and
+  `allowBuilds: false` skips them. Verified for the second case — with both set to
+  `false`, `@google/genai` loads (145 exports), `protobufjs` loads, and Pi's
+  `dist/cli.js` is present. They arrive only through the bundled Pi engine;
+  Claude Code and Codex ship no install scripts, so this prompt never appears
+  because of them.
+
+  The question is asked **once per profile** — the answer is written into that
+  profile's `pnpm-workspace.yaml` and later installs and upgrades do not ask again.
+  To pre-answer it before the first install, add to the profile's
+  `pnpm-workspace.yaml`:
+
+  ```yaml
+  allowBuilds:
+    '@google/genai': false
+    protobufjs: false
+  ```
 - **Harness from source**: bridge the profile's harness peers with `file:` shims, or
   session resume fails with `agent-presets: refusing to compose an unscoped context`.
   Steps in [docs/source-checkout.md](docs/source-checkout.md).

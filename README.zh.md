@@ -79,9 +79,30 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 - **卸载**：`dsh plugin --profile web remove dsh-loop-engine-allinone`，**然后手动删掉**
   该 profile `cordis.patch.yml` 里的 `loop-engine` 受管块。块会比插件活得久，而它还在时
   profile 里没有任何 agent factory，会话一条也建不出来。
-- **pnpm 10+** 可能拦下依赖的 build script（`ERR_PNPM_IGNORED_BUILDS`，列出 `esbuild`、
-  `@google/genai`、`protobufjs`）。执行 `pnpm approve-builds`，或加一条 `allowBuilds`，然后重试
-  ——只有安装方能授予这个权限。
+- **一次性脚本授权**。pnpm 10+ 默认不执行依赖包自带的安装脚本，要由安装方批准，
+  所以首次 `dsh plugin add` 可能停在 `ERR_PNPM_IGNORED_BUILDS`，点名 `@google/genai` 与
+  `protobufjs`。**这不是缺依赖，也没有任何东西要你手动装**——整棵树（含捆绑的 Pi 引擎）
+  已经落盘，pnpm 只是在问要不要执行这两个包自带的脚本：
+
+  | 包 | 脚本 | 实际做的事 |
+  |---|---|---|
+  | `@google/genai` | `preinstall` | `echo 'preinstall: no-op'` |
+  | `protobufjs` | `postinstall` | 读自己的 `package.json`，打印一行版本方案警告 |
+
+  两个都是空操作，**所以批准或拒绝都安全**：批准就执行，`allowBuilds: false` 就跳过。
+  拒绝这条路径已实测——两者设为 `false` 后，`@google/genai` 正常加载（145 个导出）、
+  `protobufjs` 正常加载、Pi 的 `dist/cli.js` 也在。这两个包**只由捆绑的 Pi 引擎带进来**；
+  Claude Code 与 Codex 不带安装脚本，永远不会因为它们弹这个窗。
+
+  **每个 profile 只问一次**——答案写进该 profile 的 `pnpm-workspace.yaml`，
+  之后的安装与升级都不再问。想在首次安装前就预先回答，往该 profile 的
+  `pnpm-workspace.yaml` 加：
+
+  ```yaml
+  allowBuilds:
+    '@google/genai': false
+    protobufjs: false
+  ```
 - **用源码启动 harness** 时，要用 `file:` shim 把 profile 的 harness peer 包桥接到 checkout 源码，
   否则恢复会话会报 `agent-presets: refusing to compose an unscoped context`。
   步骤见 [docs/source-checkout.md](docs/source-checkout.md)。
