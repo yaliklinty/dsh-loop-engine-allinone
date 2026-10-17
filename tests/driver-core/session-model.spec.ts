@@ -12,9 +12,14 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, canonicalHeader, type Session } from '@deepseek-ai/dsh-session'
 import {
   currentSelection,
+  foreignHostedModelRefusal,
+  modelForStep,
+  nativeModelOf,
   sessionModelOverride,
   sessionModelOverrideOf,
 } from '../../src/driver-core/session-model.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
+import { hostedRouteLabelOf } from '../../src/provider-route.ts'
 import { modelSelectionProjections } from '../helpers/model-selection-projection.ts'
 
 /** A session plus the reads its context carries, for the assertions. */
@@ -119,5 +124,94 @@ describe('sessionModelOverrideOf', () => {
     const { ctx, session } = await boot(false)
     logHeader(session, 'meicloud', 'deepseek-flash')
     expect(sessionModelOverrideOf(ctx, session)).toEqual({ provider: 'meicloud', model: 'deepseek-flash' })
+  })
+})
+
+
+describe('nativeModelOf: picking a model from the engine’s own catalog', () => {
+  it('names the pick when the session selects one of THIS engine’s models', () => {
+    // The engine's own group in the model menu advertises its subscription's
+    // models; selecting one must hand that exact id to the engine.
+    const first = ENGINE_REGISTRY.agy.models![0]!
+    expect(nativeModelOf({ provider: hostedRouteLabelOf('agy'), model: first.id }, 'agy')).toBe(first.id)
+  })
+
+  it('answers nothing for `default`, which still means "the engine decides"', () => {
+    expect(nativeModelOf({ provider: hostedRouteLabelOf('agy'), model: 'default' }, 'agy')).toBeUndefined()
+  })
+
+  it('answers nothing for the shared route, or for another engine’s route', () => {
+    expect(nativeModelOf({ provider: 'external', model: 'default' }, 'agy')).toBeUndefined()
+    expect(nativeModelOf({ provider: 'external', model: 'gemini-3.8-flash-low' }, 'agy')).toBeUndefined()
+    expect(nativeModelOf({ provider: hostedRouteLabelOf('pi'), model: 'x' }, 'agy')).toBeUndefined()
+  })
+
+  it('answers nothing for a real dsh model — that is the handover path, not this one', () => {
+    expect(nativeModelOf({ provider: 'meicloud', model: 'deepseek-flash' }, 'agy')).toBeUndefined()
+    expect(nativeModelOf(undefined, 'agy')).toBeUndefined()
+  })
+
+  it('covers every engine that declares a catalog', () => {
+    for (const engine of HOSTED_ENGINE_IDS) {
+      const models = ENGINE_REGISTRY[engine].models
+      if (models === undefined) continue
+      expect(nativeModelOf({ provider: hostedRouteLabelOf(engine), model: models[0]!.id }, engine)).toBe(models[0]!.id)
+    }
+  })
+})
+
+describe('modelForStep: one place decides what the child is asked to run', () => {
+  it('prefers the session’s native pick over the deployment’s pin', () => {
+    const pick = ENGINE_REGISTRY.agy.models![1]!
+    expect(modelForStep({ provider: hostedRouteLabelOf('agy'), model: pick.id }, 'agy', 'pinned-model')).toBe(pick.id)
+  })
+
+  it('falls back to the deployment’s pin when nothing was picked', () => {
+    expect(modelForStep({ provider: 'external', model: 'default' }, 'agy', 'pinned-model')).toBe('pinned-model')
+    expect(modelForStep(undefined, 'agy', 'pinned-model')).toBe('pinned-model')
+  })
+
+  it('answers nothing when neither was set, leaving the engine its own default', () => {
+    expect(modelForStep(undefined, 'agy', undefined)).toBeUndefined()
+  })
+})
+
+describe('foreignHostedModelRefusal: a pick from another engine’s catalog', () => {
+  const label = ENGINE_REGISTRY.agy.label
+
+  it('refuses a model belonging to a different engine, naming both', () => {
+    // The reachable direction today: a session on an engine WITHOUT a catalog
+    // picking a model from the one engine that HAS one. The model catalog is
+    // built per Host generation, so every engine's group is in every session's
+    // menu — this state is producible by clicking.
+    const owner = HOSTED_ENGINE_IDS.find(engine => ENGINE_REGISTRY[engine].models !== undefined)!
+    const refusal = foreignHostedModelRefusal(
+      { provider: hostedRouteLabelOf(owner), model: 'some-model' },
+      'kimi',
+      ENGINE_REGISTRY.kimi.label,
+    )
+    expect(refusal).toContain('Kimi Code')
+    expect(refusal).toContain('some-model')
+    expect(refusal).toContain('another hosted engine')
+    expect(refusal).toContain('switch this session')
+  })
+
+  it('permits this engine’s own route and the shared one', () => {
+    expect(foreignHostedModelRefusal({ provider: hostedRouteLabelOf('agy'), model: 'x' }, 'agy', label)).toBeUndefined()
+    expect(foreignHostedModelRefusal({ provider: 'external', model: 'default' }, 'agy', label)).toBeUndefined()
+  })
+
+  it('permits a real dsh model, which is the handover path', () => {
+    expect(foreignHostedModelRefusal({ provider: 'meicloud', model: 'deepseek-flash' }, 'agy', label)).toBeUndefined()
+    expect(foreignHostedModelRefusal(undefined, 'agy', label)).toBeUndefined()
+  })
+
+  it('owes no refusal for a pick that belongs to no catalog at all', () => {
+    // An engine with no catalog has no route of its own, so a selection naming it
+    // is not a foreign MODEL — it is the shared route or a dsh model.
+    for (const engine of HOSTED_ENGINE_IDS) {
+      if (ENGINE_REGISTRY[engine].models !== undefined) continue
+      expect(foreignHostedModelRefusal({ provider: engine, model: 'x' }, 'agy', label)).toBeUndefined()
+    }
   })
 })

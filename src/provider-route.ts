@@ -48,6 +48,7 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
 import type { HostedEngineId } from './settings.ts'
 
 /**
@@ -81,34 +82,65 @@ export const DEFAULT_ENGINE_CONTEXT_WINDOW = 262144
 export const HOSTED_MODEL_MODALITIES: readonly ModelModality[] = ['text', 'image']
 
 /**
- * The provider route label ONE hosted engine logs into its sessions'
- * request/header — always {@link HOSTED_ROUTE_LABEL}.
+ * The provider route label one hosted engine logs into its sessions'
+ * request/header.
  *
- * A function rather than a per-engine map because there is now ONE label: the
- * engine an id names no longer changes the route. It is kept as a function so
- * the "an engine logs a route" relationship still reads as such at the call
- * sites that have an engine id in hand (`router-loop.ts` `engineRouteOptions`,
- * `model-selection-reset.ts` `seatOf`).
- * @param _engine - the hosted engine whose route label is asked for.
- * @returns the single route label every hosted engine logs.
+ * **Two kinds of label, on purpose.**
+ *
+ * An engine that declares its own model catalog (`descriptor.models`,
+ * `engine-registry.ts`) gets a route of ITS OWN, named by its engine id. The
+ * model menu then shows a group per such engine — `agy` holding
+ * `default` plus Gemini/Claude ids — and picking one passes that id to the
+ * engine.
+ *
+ * Every other engine keeps the shared {@link HOSTED_ROUTE_LABEL} (`external`)
+ * with its single `default`. That is not a leftover: the browser model catalog
+ * is built per Host GENERATION rather than per session
+ * (`packages/api/session-controller/src/catalog.ts`), so a group per engine
+ * would put eight identical `default` rows in every session's menu — the exact
+ * noise the shared label exists to avoid. A group only earns its place in that
+ * menu by carrying models the others do not.
+ *
+ * Both kinds stay registered, so a session logged either way keeps resolving.
+ * @param engine - the hosted engine whose route label is asked for.
+ * @returns that engine's route label.
  */
-export function hostedRouteLabelOf(_engine: HostedEngineId): string {
-  return HOSTED_ROUTE_LABEL
+export function hostedRouteLabelOf(engine: HostedEngineId): string {
+  // Read through the INTERFACE rather than the literal row: `ENGINE_REGISTRY` is
+  // `as const satisfies`, so a row that declares no `models` does not carry the
+  // key at all and a direct read would not type-check across the union.
+  const descriptor: EngineDescriptor = ENGINE_REGISTRY[engine]
+  return descriptor.models === undefined ? HOSTED_ROUTE_LABEL : engine
+}
+
+/**
+ * The hosted engine whose own route a provider label names, if any.
+ *
+ * The inverse of the per-engine half of {@link hostedRouteLabelOf}, for the
+ * places that must attribute a selection to an engine — chiefly the refusal a
+ * driver owes when a session picks a model belonging to a DIFFERENT engine.
+ * @param provider - a provider label from a selection.
+ * @returns the engine that label belongs to, or undefined for the shared route
+ *   and for anything that is not one of this plugin's routes.
+ */
+export function hostedEngineOfRouteLabel(provider: string): HostedEngineId | undefined {
+  const descriptor = (ENGINE_REGISTRY as Readonly<Record<string, { models?: readonly EngineModel[] }>>)[provider]
+  return descriptor !== undefined && descriptor.models !== undefined ? provider as HostedEngineId : undefined
 }
 
 /**
  * Every provider label this plugin has ever logged, for the membership tests the
  * plugin makes.
  *
- * The registered route ({@link HOSTED_ROUTE_LABEL}) plus the per-engine labels
- * EARLIER builds logged (`claude-code` / `codex` / `pi` / `kimi` — which happen
- * to be the hosted engine ids). The old labels are kept even though no adapter
- * serves them any more, because a session whose log still selects one must
- * still be recognized as selecting a hosted route: that is what makes the reset
- * guard rewrite such a session before the host would refuse its turn with
+ * The shared route ({@link HOSTED_ROUTE_LABEL}) plus every hosted engine id.
+ * The engine ids cover two cases at once: an engine that declares a model
+ * catalog owns a route named by its id (`hostedRouteLabelOf`), and an earlier
+ * build logged bare engine ids as per-engine route labels. Both must be
+ * recognized as "hosted", because that is what makes the reset guard rewrite
+ * such a session's seat before the host would refuse its turn with
  * `model-unavailable` (see {@link isHostedProviderRoute}).
  */
-const HOSTED_PROVIDER_LABELS: readonly string[] = [HOSTED_ROUTE_LABEL, 'claude-code', 'codex', 'pi', 'kimi']
+const HOSTED_PROVIDER_LABELS: readonly string[] = [HOSTED_ROUTE_LABEL, ...HOSTED_ENGINE_IDS]
 
 /**
  * Whether a provider is one of this plugin's hosted engine route labels — a
@@ -160,11 +192,31 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
    *   not a positive integer (absent included) falls back to
    *   {@link DEFAULT_ENGINE_CONTEXT_WINDOW}.
    */
-  constructor(contextWindow?: number) {
+  /**
+   * The provider label this adapter was registered for, echoed by every method
+   * (the registry rejects an identity mismatch).
+   */
+  private readonly label: string
+  /**
+   * The engine-native models this route advertises, beyond `default`.
+   *
+   * Empty for the shared `external` route: an engine with no declared catalog
+   * has nothing to add to "the engine decides".
+   */
+  private readonly models: readonly EngineModel[]
+
+  /**
+   * @param contextWindow - declared context capacity in tokens.
+   * @param label - the provider label this adapter serves.
+   * @param models - the engine-native models to advertise beside `default`.
+   */
+  constructor(contextWindow?: number, label: string = HOSTED_ROUTE_LABEL, models: readonly EngineModel[] = []) {
     super()
     this.contextWindow = contextWindow !== undefined && Number.isInteger(contextWindow) && contextWindow > 0
       ? contextWindow
       : DEFAULT_ENGINE_CONTEXT_WINDOW
+    this.label = label
+    this.models = models
   }
 
   /**
@@ -177,7 +229,13 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
    * @returns the route's display metadata.
    */
   override providerInfo(provider: string): LlmProviderInfo {
-    return { id: provider, name: HOSTED_ROUTE_NAME }
+    // The shared route keeps its fixed name; an engine's own route is named by
+    // the engine's display label, so the menu reads "Antigravity" rather than a
+    // bare id.
+    return {
+      id: provider,
+      name: provider === HOSTED_ROUTE_LABEL ? HOSTED_ROUTE_NAME : this.label,
+    }
   }
 
   /**
@@ -202,13 +260,23 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
    * {@link resolveModel}, the shape the harness asks about capacity through.
    * @returns the one entry this route advertises.
    */
-  override listModels(_provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve([{
-      provider: HOSTED_ROUTE_LABEL,
-      id: HOSTED_DEFAULT_MODEL,
-      name: HOSTED_DEFAULT_MODEL,
-      inputModalities: HOSTED_MODEL_MODALITIES,
-    }])
+  override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
+    return Promise.resolve([
+      {
+        provider,
+        id: HOSTED_DEFAULT_MODEL,
+        name: HOSTED_DEFAULT_MODEL,
+        inputModalities: HOSTED_MODEL_MODALITIES,
+      },
+      // The engine's own models, from its own subscription. Selecting one hands
+      // its id to the engine; the plugin still serves no model on this route.
+      ...this.models.map(model => ({
+        provider,
+        id: model.id,
+        name: model.label,
+        inputModalities: HOSTED_MODEL_MODALITIES,
+      })),
+    ])
   }
 
   /**
@@ -250,7 +318,7 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
 
   stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
     throw new LlmError(
-      `provider "${HOSTED_ROUTE_LABEL}" is a hosted loop engine route, not a model endpoint`,
+      `provider "${this.label}" is a hosted loop engine route, not a model endpoint`,
       'HOSTED_ENGINE_ROUTE',
     )
   }

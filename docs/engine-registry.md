@@ -4,14 +4,6 @@
 > the report it came from. The upstream `docs/` are in English; translating this
 > file is a natural follow-up (its content is the same either way).
 
-# 引擎注册表文档：怎么再加一家
-
-> 这是"以后加更多家"的接口说明书。
-> 目标读者：想接第 9 家 CLI 的人（包括三个月后的你自己）。
-> 对应代码：`src/engine-registry.ts`（唯一数据源）、`src/engine-drivers.ts`（唯一分派表）。
-
----
-
 ## 0. 一句话
 
 **加一家引擎 = 注册表加一行 + 驱动表加一行 + 一个驱动目录 + 词典加四条。**
@@ -68,6 +60,7 @@ export const HOSTED_ENGINE_IDS = [
 | `authPaths` | home 相对路径数组，用于"是否登录过"诊断 | 诊断说不了登录态 |
 | `localeKey` | 词典键，形如 `engineMyEngine` | 下拉里显示空白 |
 | `capabilities` | 见 §2.1 | UI 会承诺引擎做不到的事 |
+| `models` | **可选**：这家引擎自己订阅里的型号清单 `{id, label}[]` | 不填 = 模型菜单里只有一个 `default`（见 §2.2） |
 
 **`bundled: true` ⇒ 必须没有 `updateArgv`。**
 理由：捆绑型的版本由本包 `package.json` 锁死，运行时改写依赖是反模式。
@@ -93,6 +86,29 @@ capabilities: {
   带上引擎名、张数和下一步动作；**不静默丢图**（丢了用户会以为引擎看过图）。
 - `streaming: false` 而引擎其实能流式 → 如实写 `false` 并记 TODO。
   这个字段描述的是**驱动做了什么**，不是 CLI 能做什么（ZCode 就是这样）。
+#### 2.2 `models`：让用户能选订阅里的型号
+
+填了 `models` 的引擎会在模型菜单里获得**自己的分组**（以引擎 id 命名），组内是
+`default` + 你列的型号；选一个就把**那个 id** 交给引擎（`--model <id>`）。
+
+**为什么不是自动探测**：探测要 spawn CLI，而本插件的契约是**宿主启动时不起任何外部进程**。
+所以清单是**声明**的，订阅变了就改这张表；过期 id 会在引擎侧响亮失败——这是诚实的结果。
+
+**为什么其他引擎没有分组**：模型目录是**按 Host 世代**构建的、不按会话。
+给每家都开分组 = 每个会话的菜单里出现 8 个一模一样的 `default`。
+**分组只有带上别人没有的型号才算挣到位置。**
+
+agy 的清单来自 `agy models` 实测（2026‑10‑17，已登录主机），并逐个验证可选：
+
+```
+gemini-3.8-flash-high / -medium / -low
+claude-sonnet-4-6 / claude-opus-4-6-thinking
+gpt-oss-120b-medium
+```
+
+加一家的清单时：跑一次 `agy models`（或该引擎的等价命令）拿到 id 与显示名，
+填进注册表，再跑 `smoke-driver.ts <engine> <model-id>` 确认真能选上。
+
 
 ### 第 3 步：写驱动目录 `src/engine-<id>/`
 

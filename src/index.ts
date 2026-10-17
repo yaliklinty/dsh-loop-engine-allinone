@@ -55,7 +55,7 @@ import type { AgentPresetsService, LlmRegistry, SettingsMutator } from './driver
 import { engineOfSession } from './engine-of-session.ts'
 import { LoopEngineRemote } from './engine-remote.ts'
 import { CODEX_APPROVAL_POLICIES } from './engine-codex/loop.ts'
-import { ENGINE_REGISTRY } from './engine-registry.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
 import { buildEngineDriver } from './engine-drivers.ts'
 import type { EngineDriverConfig } from './engine-drivers.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
@@ -541,20 +541,40 @@ export function apply(ctx: Context, config: Config): void {
       return
     }
     const registered: (() => void)[] = []
-    try {
-      registered.push(llm.registerAdapter(
-        [HOSTED_ROUTE_LABEL],
-        new HostedEngineRouteAdapter(config.engineContextWindow),
-      ))
-    } catch (error: unknown) {
-      // A deployment whose own adapter already serves the label needs no
-      // placeholder. The llm registry signals that structurally with an error
-      // code; the message arm stays for a registry that throws an uncoded one.
-      const duplicateAdapter = (error as { code?: unknown } | null)?.code === 'DUPLICATE_ADAPTER'
-      if (error instanceof Error && (duplicateAdapter || error.message.includes('already registered'))) {
-        ctx.logger.warn(`loop-engine: provider route "${HOSTED_ROUTE_LABEL}" is already served by another adapter`)
-      } else {
-        ctx.logger.error(`loop-engine: provider route "${HOSTED_ROUTE_LABEL}" registration failed: ${String(error)}`)
+    /**
+     * One route per distinct label: the shared {@link HOSTED_ROUTE_LABEL} for
+     * every engine without a declared catalog, plus a route of its own for each
+     * engine that HAS one (so its models get a group in the menu).
+     *
+     * A duplicate is a deployment whose own adapter already serves the label —
+     * the llm registry signals that structurally with an error code, and the
+     * message arm stays for a registry that throws an uncoded one. That is a
+     * warning, not a failure: the rest of the routes still register.
+     */
+    const routes: Array<{ label: string; models: readonly EngineModel[] }> = [{
+      label: HOSTED_ROUTE_LABEL,
+      models: [],
+    }]
+    for (const engine of HOSTED_ENGINE_IDS) {
+      // Read through the interface: `ENGINE_REGISTRY` is `as const satisfies`, so
+      // a row with no `models` does not carry the key at all.
+      const descriptor: EngineDescriptor = ENGINE_REGISTRY[engine]
+      if (descriptor.models === undefined) continue
+      routes.push({ label: engine, models: descriptor.models })
+    }
+    for (const route of routes) {
+      try {
+        registered.push(llm.registerAdapter(
+          [route.label],
+          new HostedEngineRouteAdapter(config.engineContextWindow, route.label, route.models),
+        ))
+      } catch (error: unknown) {
+        const duplicateAdapter = (error as { code?: unknown } | null)?.code === 'DUPLICATE_ADAPTER'
+        if (error instanceof Error && (duplicateAdapter || error.message.includes('already registered'))) {
+          ctx.logger.warn(`loop-engine: provider route "${route.label}" is already served by another adapter`)
+        } else {
+          ctx.logger.error(`loop-engine: provider route "${route.label}" registration failed: ${String(error)}`)
+        }
       }
     }
     routeDisposers = registered

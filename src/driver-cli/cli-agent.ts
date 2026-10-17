@@ -138,7 +138,15 @@ export abstract class CliHostedAgent implements Agent {
    * what makes "the last wake wins" true across a turn boundary.
    */
   constructor(
-    private readonly loopCtx: Context,
+    /**
+     * The context the agent was built on.
+     *
+     * Protected rather than private: a subclass's protocol round trip needs the
+     * same host reads the four original drivers make from this context (the
+     * session's model selection, the attachment service), and re-deriving them
+     * from the agent-scoped context would be a second, subtly different read.
+     */
+    protected readonly loopCtx: Context,
     /** This agent's session id. */
     public readonly id: SessionId,
     /** The loop options the session was built with. */

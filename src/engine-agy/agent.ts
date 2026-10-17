@@ -26,6 +26,12 @@ import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import type { CliFrame } from '../driver-cli/frames.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { sessionSandboxMode } from '../driver-core/permission-knobs.ts'
+import {
+  currentSelection,
+  foreignHostedModelRefusal,
+  modelForStep,
+} from '../driver-core/session-model.ts'
+import type { SessionModelSelection, SessionProjectionsService } from '../driver-core/host-servers.ts'
 import type { AgyEffort, AgyMode, AgySpawnSpec } from './process.ts'
 import { agyDangerouslySkipPermissions, agySpawnRequest, agyStdinPrompt } from './process.ts'
 import { mapAgyDocument, newAgyRun } from './frames.ts'
@@ -84,12 +90,23 @@ export class AgyAgent extends CliHostedAgent {
     }
     this.assertRequestHeader()
 
+    // The model this step runs: a pick from Antigravity's own catalog (the menu
+    // group `agy` in the model selector) outranks the deployment's pin, which
+    // outranks the CLI's own default. A pick belonging to ANOTHER engine's
+    // catalog is refused rather than ignored — the menu is host-global, so that
+    // is reachable, and dropping it would leave the seat naming a model that is
+    // not in force.
+    const selection = this.selection()
+    const foreign = foreignHostedModelRefusal(selection, AGY_ENGINE, ENGINE_REGISTRY[AGY_ENGINE].label)
+    if (foreign !== undefined) throw new Error(foreign)
+    const model = modelForStep(selection, AGY_ENGINE, this.config.model)
+
     const spec: AgySpawnSpec = {
       bin: this.config.bin ?? 'agy',
       prompt,
       cwd,
       env: this.config.env,
-      model: this.config.model,
+      model,
       mode: this.config.mode,
       effort: this.config.effort,
       sandbox: this.config.sandbox ?? this.sandboxRequested(),
@@ -120,6 +137,17 @@ export class AgyAgent extends CliHostedAgent {
     const outcome = this.sink.finish(position)
     if (outcome.kind === 'failed') throw new Error(outcome.message)
     return { kind: 'completed' }
+  }
+
+  /**
+   * The session's current model selection, read the way the host reads it.
+   * @returns the selection, or undefined when the log records none.
+   */
+  private selection(): SessionModelSelection | undefined {
+    return currentSelection(
+      this.session,
+      this.loopCtx.get('sessionProjections') as SessionProjectionsService | undefined,
+    )
   }
 
   /**

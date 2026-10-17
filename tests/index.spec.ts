@@ -35,6 +35,7 @@ import {
   MANAGED_BLOCK_END,
 } from '../src/patch-manager.ts'
 import { HOSTED_ROUTE_LABEL, type LoopEngineId } from '../src/agent-preset-ids.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS } from '../src/engine-registry.ts'
 import { DEFAULT_ENGINE_CONTEXT_WINDOW, HostedEngineRouteAdapter } from '../src/provider-route.ts'
 import { fakeToolRuntime } from './helpers/tool-runtime.ts'
 import {
@@ -1088,22 +1089,33 @@ describe('apply provider routes', () => {
   const providerIds = (ctx: Context): string[] =>
     (ctx.get('llm') as LlmRuntime).listProviders().map(provider => provider.id).sort()
 
-  it('serves the one shared label and withdraws it on unload', async () => {
+  it('serves the shared label plus one route per engine that declares a catalog, and withdraws them on unload', async () => {
     const dir = await tempDir()
     const path = join(dir, 'cordis.patch.yml')
     const { ctx } = await boot({ [NS]: { engine: 'in-process' } })
     const fiber = await mountPlugin(ctx, { patchPath: path })
 
-    // Registration is synchronous once the llm registry is up. ONE route, not
-    // four: all engines log the same label, and the model catalog is per Host
-    // generation, so a route per engine would show four identical groups.
-    expect(providerIds(ctx)).toEqual([HOSTED_ROUTE_LABEL])
-    // The placeholder advertises the one `default` entry every engine logs into
-    // a session's request/header — the pair the picker resolves
-    // (`tests/provider-route.spec.ts`).
+    // Registration is synchronous once the llm registry is up. The shared label
+    // covers every engine with no declared catalog; an engine that HAS one gets
+    // its own route, so its models can appear as a group in the model menu
+    // without eight identical `default` groups appearing in every session.
+    const expected = [HOSTED_ROUTE_LABEL, ...HOSTED_ENGINE_IDS.filter(engine => ENGINE_REGISTRY[engine].models !== undefined)]
+    expect(providerIds(ctx).sort()).toEqual(expected.sort())
+
+    // The shared route advertises only `default`, and every engine route
+    // advertises `default` FIRST (so an unconfigured pick still means "the
+    // engine decides") followed by that engine's own models.
     await expect((ctx.get('llm') as LlmRuntime).listModels(HOSTED_ROUTE_LABEL)).resolves.toEqual([
       { id: 'default', provider: HOSTED_ROUTE_LABEL, name: 'default', inputModalities: ['text', 'image'] },
     ])
+    for (const engine of expected) {
+      const descriptor = ENGINE_REGISTRY[engine as keyof typeof ENGINE_REGISTRY]
+      if (descriptor === undefined || descriptor.models === undefined) continue
+      const models = await (ctx.get('llm') as LlmRuntime).listModels(engine)
+      expect(models[0]).toEqual({ id: 'default', provider: engine, name: 'default', inputModalities: ['text', 'image'] })
+      expect(models.slice(1).map(model => model.id)).toEqual(descriptor.models.map(model => model.id))
+      expect(models.slice(1).map(model => model.name)).toEqual(descriptor.models.map(model => model.label))
+    }
 
     await fiber.dispose()
     expect(providerIds(ctx)).toEqual([])
@@ -1139,7 +1151,9 @@ describe('apply provider routes', () => {
     const fiber = await mountPlugin(ctx, { patchPath: path })
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`provider route "${HOSTED_ROUTE_LABEL}" is already served`))
-    expect(providerIds(ctx)).toEqual([HOSTED_ROUTE_LABEL])
+    // The plugin's OWN routes still register beside the deployment's.
+    const ownRoutes = HOSTED_ENGINE_IDS.filter(engine => ENGINE_REGISTRY[engine].models !== undefined)
+    expect(providerIds(ctx).sort()).toEqual([HOSTED_ROUTE_LABEL, ...ownRoutes].sort())
 
     // Unloading must not withdraw a route the plugin does not own.
     await fiber.dispose()
@@ -1183,8 +1197,9 @@ describe('apply provider routes', () => {
     await new Promise(resolve => setTimeout(resolve, 150))
 
     await ctx.plugin(LlmRuntime)
+    const ownRoutes = HOSTED_ENGINE_IDS.filter(engine => ENGINE_REGISTRY[engine].models !== undefined)
     await vi.waitFor(() => {
-      expect(providerIds(ctx)).toEqual([HOSTED_ROUTE_LABEL])
+      expect(providerIds(ctx).sort()).toEqual([HOSTED_ROUTE_LABEL, ...ownRoutes].sort())
     })
   })
 

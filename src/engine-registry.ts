@@ -91,6 +91,28 @@ export interface EngineCapabilities {
 }
 
 /**
+ * One model an engine offers from its OWN subscription.
+ *
+ * Distinct from a dsh model: a hosted engine answers with its own account, so
+ * these ids are the engine's vocabulary, not something any dsh adapter serves.
+ * Picking one in the model menu hands that id to the engine (`--model <id>`),
+ * which is how a user chooses among the models their subscription includes
+ * instead of accepting "the engine decides".
+ *
+ * The list is DECLARED rather than discovered, for the same reason the
+ * capabilities are: probing an engine's catalog means spawning it, and this
+ * plugin's contract is that booting the harness starts **no** external process.
+ * A deployment whose subscription changed refreshes the list by editing it —
+ * and a stale id fails loudly at the engine, which is the honest outcome.
+ */
+export interface EngineModel {
+  /** The engine's own model id, passed verbatim to the engine. */
+  readonly id: string
+  /** Human-readable name shown in the model menu. */
+  readonly label: string
+}
+
+/**
  * Everything the rest of the plugin needs to know about one engine, as data.
  *
  * The two groups are deliberately different in kind: the fields above
@@ -146,6 +168,17 @@ export interface EngineDescriptor {
   readonly authPaths?: readonly string[]
   /** The copy key naming this engine in the browser half's dictionary. */
   readonly localeKey: string
+  /**
+   * The models this engine offers from its own subscription, when the plugin
+   * knows them.
+   *
+   * An engine that omits this keeps the shared `external` route with its single
+   * `default` entry ("the engine decides") — which is the right answer for an
+   * engine whose catalog this build has no verified list for. An engine that
+   * declares one gets its OWN provider group in the model menu, holding
+   * `default` plus these entries, and selecting one passes its id to the engine.
+   */
+  readonly models?: readonly EngineModel[]
   /** What the engine can do. */
   readonly capabilities: EngineCapabilities
 }
@@ -293,6 +326,16 @@ export const ENGINE_REGISTRY = {
     loginHint: 'run `agy` once and complete the Google sign-in it opens',
     authPaths: ['.gemini/oauth_creds.json'],
     localeKey: 'engineAgy',
+    // Verified with `agy models` on a signed-in host (2026-10-17) and confirmed
+    // selectable end to end: `--model gemini-3.8-flash-low` answered PONG.
+    models: [
+      { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
+      { id: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
+      { id: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
+      { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+      { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
+    ],
     capabilities: {
       // VERIFIED against a signed-in host: `step_update` frames carry
       // `text_delta` increments, and the driver maps them (see

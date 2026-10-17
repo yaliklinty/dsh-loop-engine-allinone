@@ -68,6 +68,12 @@ async function drive(
 }
 
 const target = process.argv[2] ?? 'qoderclicn'
+/**
+ * Optional engine-native model id, so the "pick a model from the engine's own
+ * catalog" path can be exercised against the real CLI:
+ * `node … smoke-driver.ts agy gemini-3.8-flash-low`.
+ */
+const pickedModel = process.argv[3]
 const frames: CliFrame[] = []
 
 if (target === 'qoderclicn') {
@@ -98,7 +104,8 @@ if (target === 'qoderclicn') {
       prompt: PROMPT,
       cwd: process.cwd(),
       env: {},
-      model: undefined,
+      // The session's pick, exactly as the driver resolves it (`modelForStep`).
+      model: pickedModel,
       mode: undefined,
       effort: undefined,
       sandbox: true,

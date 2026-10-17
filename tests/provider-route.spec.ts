@@ -26,9 +26,11 @@ import {
 import {
   DEFAULT_ENGINE_CONTEXT_WINDOW,
   HostedEngineRouteAdapter,
+  hostedEngineOfRouteLabel,
   hostedRouteLabelOf,
   isHostedProviderRoute,
 } from '../src/provider-route.ts'
+import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
 
 describe('HOSTED_ROUTE_LABEL', () => {
   it('is the ASCII wire label every hosted engine logs', () => {
@@ -40,9 +42,38 @@ describe('HOSTED_ROUTE_LABEL', () => {
     expect(HOSTED_ENGINE_IDS).not.toContain(HOSTED_ROUTE_LABEL)
   })
 
-  it('is the label every hosted engine resolves to, whatever the engine', () => {
+  it('gives an engine with no declared catalog the shared label', () => {
+    // The shared route exists for exactly this: an engine whose models this
+    // build does not know keeps one `default` entry meaning "the engine decides",
+    // rather than adding a group of identical rows to every session's menu.
     for (const engine of HOSTED_ENGINE_IDS) {
+      if (ENGINE_REGISTRY[engine].models !== undefined) continue
       expect(hostedRouteLabelOf(engine)).toBe(HOSTED_ROUTE_LABEL)
+    }
+  })
+
+  it('gives an engine that declares a catalog a route of its own', () => {
+    // A group earns its place in the menu only by carrying models the others do
+    // not, so an engine with a catalog is named by its id.
+    let sawCatalog = false
+    for (const engine of HOSTED_ENGINE_IDS) {
+      if (ENGINE_REGISTRY[engine].models === undefined) continue
+      sawCatalog = true
+      expect(hostedRouteLabelOf(engine)).toBe(engine)
+      expect(hostedEngineOfRouteLabel(engine)).toBe(engine)
+    }
+    expect(sawCatalog).toBe(true)
+  })
+
+  it('attributes a per-engine route back to its engine, and no other label', () => {
+    expect(hostedEngineOfRouteLabel(HOSTED_ROUTE_LABEL)).toBeUndefined()
+    expect(hostedEngineOfRouteLabel('not-an-engine')).toBeUndefined()
+    // An engine WITHOUT a catalog has no route of its own, so its id must not be
+    // attributed as one — else a selection naming it would look like a native
+    // pick rather than the shared route.
+    for (const engine of HOSTED_ENGINE_IDS) {
+      if (ENGINE_REGISTRY[engine].models !== undefined) continue
+      expect(hostedEngineOfRouteLabel(engine)).toBeUndefined()
     }
   })
 })

@@ -32,7 +32,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { isHostedProviderRoute } from '../provider-route.ts'
+import { HOSTED_DEFAULT_MODEL } from '../agent-preset-ids.ts'
+import { hostedEngineOfRouteLabel, hostedRouteLabelOf, isHostedProviderRoute } from '../provider-route.ts'
+import type { HostedEngineId } from '../engine-registry.ts'
 import type { SessionModelSelection, SessionProjectionsService } from './host-servers.ts'
 
 /** The model a session's own selection asks a hosted engine to run. */
@@ -105,4 +107,77 @@ export function sessionModelOverrideOf(
   return sessionModelOverride(
     currentSelection(session, ctx.get('sessionProjections') as SessionProjectionsService | undefined),
   )
+}
+
+/**
+ * The ENGINE-NATIVE model one session's selection asks for, if any.
+ *
+ * A hosted engine's route normally answers `default`, meaning "the engine
+ * decides" — and {@link sessionModelOverride} correctly reports that as "send
+ * nothing". But an engine that declares its own catalog
+ * (`EngineDescriptor.models`) owns a route of its own, and selecting one of those
+ * entries names a model from the engine's own subscription. That is a third
+ * case, and it is NOT a dsh model: the id is the engine's vocabulary, so it must
+ * be handed over alone (`--model gemini-3.8-flash-high`), never as
+ * `provider/model`, and never routed through the endpoint handover.
+ *
+ * Kept beside {@link sessionModelOverride} rather than folded into it, so the
+ * four original drivers keep seeing exactly the answer they saw before.
+ * @param selection - the session's current selection, or undefined when none.
+ * @param engine - the engine this session is running.
+ * @returns the engine-native model id, or undefined when the selection is not one.
+ */
+export function nativeModelOf(
+  selection: SessionModelSelection | undefined,
+  engine: HostedEngineId,
+): string | undefined {
+  if (selection === undefined) return undefined
+  if (selection.provider !== hostedRouteLabelOf(engine)) return undefined
+  if (selection.model === HOSTED_DEFAULT_MODEL) return undefined
+  return selection.model
+}
+
+/**
+ * The refusal a driver owes when a session picked a model that belongs to a
+ * DIFFERENT engine, or undefined when the selection is fine.
+ *
+ * The model catalog is built per Host generation, so every engine's group is in
+ * every session's menu. Picking `agy`'s `gemini-3.8-flash-high` while the session
+ * runs Codex is therefore reachable, and silently ignoring it would leave the
+ * seat showing a model that is not in force — the exact class of lie this plugin
+ * exists to prevent. The driver refuses instead, naming both engines.
+ * @param selection - the session's current selection, or undefined when none.
+ * @param engine - the engine this session is running.
+ * @param engineLabel - that engine's display label, for the message.
+ * @returns the refusal message, or undefined.
+ */
+export function foreignHostedModelRefusal(
+  selection: SessionModelSelection | undefined,
+  engine: HostedEngineId,
+  engineLabel: string,
+): string | undefined {
+  if (selection === undefined) return undefined
+  const owner = hostedEngineOfRouteLabel(selection.provider)
+  if (owner === undefined || owner === engine) return undefined
+  return `this session runs ${engineLabel}, but the selected model "${selection.model}"`
+    + ` (${selection.provider}) belongs to another hosted engine's catalog.`
+    + ` Pick a model from ${engineLabel}'s own group, or switch this session's engine first.`
+}
+
+/**
+ * The model a driver should actually pass, resolved in one place.
+ *
+ * Three answers, in precedence order: an engine-native pick from this engine's
+ * own catalog; the deployment's pinned model; the engine's own default.
+ * @param selection - the session's current selection, or undefined when none.
+ * @param engine - the engine this session runs.
+ * @param pinned - the deployment's `model` knob for this engine, if any.
+ * @returns the model id to pass, or undefined to pass nothing.
+ */
+export function modelForStep(
+  selection: SessionModelSelection | undefined,
+  engine: HostedEngineId,
+  pinned: string | undefined,
+): string | undefined {
+  return nativeModelOf(selection, engine) ?? pinned
 }
