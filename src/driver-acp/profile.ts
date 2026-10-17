@@ -110,4 +110,25 @@ export interface AcpEngineProfile {
    * hand over — the shared driver then never resolves a dsh endpoint for it.
    */
   readonly handoverEnv?: (handover: DshModelHandover) => Record<string, string>
+  /**
+   * Whether this engine drives its tools THROUGH the client, and so needs the
+   * client-side capability bridges.
+   *
+   * Measured, and it is the whole reason this field exists: MiniMax Code runs its
+   * own tools and reports results (`rawOutput.details.execution.exitCode`), so it
+   * needs nothing from us. Grok Build asks the CLIENT to read files
+   * (`fs/read_text_file`) and run commands (`terminal/create`), so without these
+   * bridges every one of its tools fails. An engine that omits this gets no
+   * bridges and announces no capabilities — exactly the pre-bridge behavior.
+   */
+  readonly clientBridges?: readonly AcpClientBridge[]
 }
+
+/**
+ * One client-side capability bridge an engine needs.
+ *
+ * Declared as a name rather than a flag per capability so the set is explicit at
+ * the engine's own row, and so `tests/driver-acp/capabilities.spec.ts` can assert
+ * that a declared bridge is really implemented and announced.
+ */
+export type AcpClientBridge = 'readTextFile' | 'terminal'

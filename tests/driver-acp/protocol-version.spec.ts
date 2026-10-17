@@ -75,10 +75,14 @@ describe('the ACP protocol version is declared by the registry', () => {
     const params = await initializeParams(undefined)
     expect(params.protocolVersion).toBe(DEFAULT_ACP_PROTOCOL_VERSION)
     expect(params.protocolVersion).toBe(1)
-    // The capability block stays EMPTY on purpose: this driver implements no
-    // filesystem and no terminal reverse-RPC, so claiming either would invite a
-    // call it answers with `methodNotFound`.
-    expect(params.clientCapabilities).toEqual({})
+    // A client built with no handlers still announces nothing: the capability
+    // block is DERIVED from what the client can answer, and `new
+    // AcpClient(process)` bridges nothing. (An engine that declares bridges gets
+    // a non-empty block — see tests/driver-acp/capabilities.spec.ts.)
+    expect(params.clientCapabilities).toEqual({
+      fs: { readTextFile: false, writeTextFile: false },
+      terminal: false,
+    })
   })
 
   it('sends whatever version its caller passes, so it cannot be a constant', async () => {

@@ -115,6 +115,13 @@ export function grokProfile(bin: string): AcpEngineProfile {
     images: false,
     approve: acpDefaultApproval,
     selectModel: selectGrokModel,
+    // THE reason grok needs the capability bridges, and the finding that made
+    // this engine more than a chat surface: measured, grok runs every shell tool by
+    // asking the CLIENT to do it (`terminal/create`) and reads files the same way
+    // (`fs/read_text_file`). Without these two it answers "Method not found" to
+    // its own tool calls, so every tool fails. Both bridges go through dsh's own
+    // services (the shell executor's sandbox, the filesystem service's policy).
+    clientBridges: ['readTextFile', 'terminal'],
     openSession: async (client, cwd, session, initializeResult) => {
       const extra = acpDefaultApproval(session) ? { _meta: { yoloMode: true } } : {}
       try {

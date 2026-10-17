@@ -32,6 +32,16 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { AcpProcess, AcpSpawnCapability, AcpSpawnSpec } from './transport.ts'
 import {
+  NO_CLIENT_CAPABILITIES,
+  isCapabilityMethod,
+  terminalCommandOf,
+  terminalCwdOf,
+  terminalEnvOf,
+  type AcpClientCapabilities,
+  type AcpReverseHandlers,
+  type AcpTerminal,
+} from './capabilities.ts'
+import {
   isPermissionRequestFrame,
   isUpdateFrame,
   type AcpFrame,
@@ -103,6 +113,16 @@ export interface AcpClientOptions {
   readonly protocolVersion?: number
   /** The engine's name in diagnostics (`kimi`, `grok`, `minimaxcode`). */
   readonly label?: string
+  /**
+   * The reverse-RPC methods this client can answer, and how.
+   *
+   * Absent means "none": the client announces no client capabilities and answers
+   * every reverse request with `methodNotFound`, which is what the kimi driver has
+   * always done and remains a supported configuration. A driver that supplies
+   * `spawnTerminal` gets the `terminal` capability announced for it — the
+   * declaration is DERIVED from the handlers so the two cannot drift.
+   */
+  readonly handlers?: AcpReverseHandlers
 }
 
 /** Default spawn: launch the ACP child under the current node runtime, projecting a native child. */
@@ -148,6 +168,12 @@ export class AcpClient {
   private readonly protocolVersion: number
   /** The engine's name in diagnostics. */
   private readonly label: string
+  /** What this client can answer, and how (see {@link AcpClientOptions.handlers}). */
+  private readonly handlers: AcpReverseHandlers
+  /** Every terminal this client owns, so a disposed client cannot leak a process. */
+  private readonly terminals = new Map<string, AcpTerminal>()
+  /** Monotonic id source for the terminals the agent creates. */
+  private nextTerminalId = 1
 
   /** Whether this client was sealed or its process exited. */
   get closed(): boolean {
@@ -158,6 +184,7 @@ export class AcpClient {
   constructor(private readonly process: AcpProcess, options: AcpClientOptions = {}) {
     this.protocolVersion = options.protocolVersion ?? 1
     this.label = options.label ?? 'kimi'
+    this.handlers = options.handlers ?? {}
     this.process.stdout.on('data', (chunk) => this.feed(chunk))
     this.process.stderr.on('data', () => {
       // Diagnostics are drained through other seams; keeping this pipe flowing
@@ -215,18 +242,40 @@ export class AcpClient {
   }
 
   /**
-   * Open the protocol handshake, announcing the engine's DECLARED protocol
-   * version rather than a constant.
+   * The client capabilities to announce, DERIVED from what this client can
+   * actually answer.
    *
-   * `clientCapabilities` is deliberately empty: this driver implements no
-   * filesystem and no terminal reverse-RPC, so claiming either would invite an
-   * agent to call a method this client answers with `methodNotFound`.
+   * Declaring a capability is a promise an agent plans around, so this never
+   * announces more than the handlers implement: no `spawnTerminal` means no
+   * `terminal: true`, and no `readTextFile` means no `fs.readTextFile`. A client
+   * built with no handlers announces nothing, which is the pre-bridge behavior.
+   * @returns the capability block for `initialize`.
+   */
+  clientCapabilities(): AcpClientCapabilities {
+    if (this.handlers.spawnTerminal === undefined && this.handlers.readTextFile === undefined) {
+      return NO_CLIENT_CAPABILITIES
+    }
+    return {
+      fs: {
+        readTextFile: this.handlers.readTextFile !== undefined,
+        // Writes are deliberately not bridged: an agent that can write files
+        // behind dsh's back would defeat the edit path's own policy, and no
+        // measured engine has asked for one.
+        writeTextFile: false,
+      },
+      terminal: this.handlers.spawnTerminal !== undefined,
+    }
+  }
+
+  /**
+   * Open the protocol handshake, announcing the engine's DECLARED protocol
+   * version and the capabilities this client can honour.
    * @returns the agent's `initialize` result.
    */
   initialize(): Promise<unknown> {
     return this.request('initialize', {
       protocolVersion: this.protocolVersion,
-      clientCapabilities: {},
+      clientCapabilities: this.clientCapabilities(),
       clientInfo: { name: 'dsh-loop-engine', version: '1.0.0' },
     })
   }
@@ -378,6 +427,10 @@ export class AcpClient {
   dispose(): void {
     if (this.sealed) return
     this.sealed = true
+    // Every terminal this client owns is stopped here: an agent that never
+    // released one must not leave a command running after the driver is gone.
+    for (const terminal of this.terminals.values()) terminal.release()
+    this.terminals.clear()
     this.process.terminate()
     const error = new Error(`${this.label} acp client is sealed`)
     for (const { reject } of this.pending.values()) reject(error)
@@ -426,6 +479,11 @@ export class AcpClient {
       this.updateWake?.()
       return
     }
+    // The measured client-side capabilities (fs, terminal) — see capabilities.ts.
+    if (typeof frame.id === 'number' && typeof frame.method === 'string' && isCapabilityMethod(frame.method)) {
+      void this.handleCapability(frame.id, frame.method, frame.params)
+      return
+    }
     // Unknown reverse-RPC → answer methodNotFound so the agent does not hang.
     if (typeof frame.id === 'number' && typeof frame.method === 'string') {
       this.process.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, error: { code: -32601, message: 'Method not found' } })}\n`)
@@ -447,5 +505,122 @@ export class AcpClient {
   private async handlePermission(id: number, frame: AcpFrame): Promise<void> {
     const approved = this.permissionHandler === undefined ? false : await this.permissionHandler(frame)
     this.respondPermission(id, permissionResponse(approved, permissionOptionsOf(frame)))
+  }
+
+  /**
+   * Answer one client-side capability request (`fs/read_text_file`, `terminal/*`).
+   *
+   * A capability this client did not announce is still answered `methodNotFound`
+   * rather than guessed at: an agent that calls one anyway gets the same honest
+   * refusal it would get from a client that never claimed it.
+   * @param id - the reverse-RPC request id.
+   * @param method - the ACP method name.
+   * @param params - the request params.
+   */
+  private async handleCapability(id: number, method: string, params: unknown): Promise<void> {
+    try {
+      this.writeResult(id, await this.capabilityResult(method, params))
+    } catch (error: unknown) {
+      // A failed capability is reported to the AGENT, not thrown: the agent turns
+      // it into a failed tool call, which is what the user should see.
+      this.writeResult(id, undefined, {
+        code: -32000,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * Perform one capability request and return its ACP result payload.
+   * @param method - the ACP method name.
+   * @param params - the request params.
+   * @returns the result object to send back.
+   */
+  private async capabilityResult(method: string, params: unknown): Promise<unknown> {
+    switch (method) {
+      case 'fs/read_text_file': {
+        const read = this.handlers.readTextFile
+        if (read === undefined) throw new Error('this client does not read files for the agent')
+        const path = (params as { path?: unknown } | undefined)?.path
+        if (typeof path !== 'string' || path === '') throw new Error('fs/read_text_file needs a path')
+        return { content: await read(path) }
+      }
+      case 'terminal/create': {
+        const spawn = this.handlers.spawnTerminal
+        if (spawn === undefined) throw new Error('this client does not run commands for the agent')
+        const command = terminalCommandOf(params)
+        if (command === undefined) throw new Error('terminal/create needs a command')
+        const cwd = terminalCwdOf(params)
+        const env = terminalEnvOf(params)
+        const terminal = await spawn(command, {
+          ...cwd === undefined ? {} : { cwd },
+          ...env === undefined ? {} : { env },
+        })
+        const terminalId = `term-${this.nextTerminalId++}`
+        this.terminals.set(terminalId, terminal)
+        return { terminalId }
+      }
+      case 'terminal/output': {
+        const snapshot = this.terminalOf(params).snapshot()
+        return {
+          output: snapshot.output,
+          truncated: false,
+          ...snapshot.exited ? { exitStatus: { exitCode: snapshot.exitCode ?? 0 } } : {},
+        }
+      }
+      case 'terminal/wait_for_exit': {
+        const exit = await this.terminalOf(params).waitForExit()
+        return { exitCode: exit.exitCode }
+      }
+      case 'terminal/release':
+      case 'terminal/kill': {
+        // ACP models a standalone kill as optional; this bridge's stop signal is
+        // the release, so an engine that sends either one still stops its command.
+        const terminalId = this.terminalIdOf(params)
+        const terminal = this.terminals.get(terminalId)
+        this.terminals.delete(terminalId)
+        terminal?.release()
+        return {}
+      }
+      default:
+        throw new Error(`unsupported capability method: ${method}`)
+    }
+  }
+
+  /**
+   * The terminal id one capability frame names.
+   * @param params - the request params.
+   * @returns the id.
+   */
+  private terminalIdOf(params: unknown): string {
+    const terminalId = (params as { terminalId?: unknown } | undefined)?.terminalId
+    if (typeof terminalId !== 'string' || terminalId === '') throw new Error('the frame names no terminal')
+    return terminalId
+  }
+
+  /**
+   * The live terminal one capability frame names.
+   * @param params - the request params.
+   * @returns the terminal.
+   */
+  private terminalOf(params: unknown): AcpTerminal {
+    const terminalId = this.terminalIdOf(params)
+    const terminal = this.terminals.get(terminalId)
+    if (terminal === undefined) throw new Error(`no terminal "${terminalId}" is open`)
+    return terminal
+  }
+
+  /**
+   * Write one reverse-RPC answer (result or error).
+   * @param id - the request id being answered.
+   * @param result - the result payload.
+   * @param error - the error payload, when the request failed.
+   */
+  private writeResult(id: number, result: unknown, error?: { readonly code: number; readonly message: string }): void {
+    if (this.sealed) return
+    const frame = error === undefined
+      ? { jsonrpc: '2.0', id, result }
+      : { jsonrpc: '2.0', id, error }
+    this.process.stdin.write(`${JSON.stringify(frame)}\n`)
   }
 }

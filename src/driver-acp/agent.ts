@@ -42,6 +42,8 @@ import { canonicalHeader } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
 import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL } from '../agent-preset-ids.ts'
 import type { AcpEngineProfile, AcpResolvedConfig } from './profile.ts'
+import type { AcpReverseHandlers } from './capabilities.ts'
+import { createTerminalBridge } from './terminal.ts'
 import { acpDefaultApproval } from './approval.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { createImageAccessResolver } from '../driver-core/image-access.ts'
@@ -541,6 +543,40 @@ export class AcpEngineAgent implements Agent {
       && a.argv.every((value, index) => value === b.argv[index])
   }
 
+  /**
+   * The client-side capability bridges this engine declared, bound to the host.
+   *
+   * Built fresh per client because the terminal bridge closes over the session's
+   * working directory, which is per agent. An engine that declares no bridges gets
+   * an empty object, and the client then announces no capabilities at all.
+   * @param cwd - the session's working directory, the default for a terminal.
+   * @returns the handlers the client answers reverse RPCs with.
+   */
+  private reverseHandlers(cwd: string): AcpReverseHandlers {
+    const bridges = this.profile.clientBridges ?? []
+    if (bridges.length === 0) return {}
+    const handlers: { -readonly [K in keyof AcpReverseHandlers]: AcpReverseHandlers[K] } = {}
+    if (bridges.includes('readTextFile')) {
+      // The harness filesystem service, when the composition has one, so dsh's
+      // observation policy applies to what the engine reads. A composition
+      // without it still answers, through a plain read — see the fallback note.
+      const fs = this.loopCtx.get('fs') as { readText?(target: unknown, signal?: AbortSignal): Promise<string> } | undefined
+      handlers.readTextFile = async (path) => {
+        if (fs?.readText !== undefined) {
+          const target = (fs as unknown as { resolve(path: string, opts?: { cwd?: string }): unknown }).resolve(path, { cwd })
+          return await fs.readText(target)
+        }
+        const { readFile } = await import('node:fs/promises')
+        return await readFile(path, 'utf8')
+      }
+    }
+    if (bridges.includes('terminal')) {
+      const shell = this.loopCtx.get('shell') as Parameters<typeof createTerminalBridge>[0]
+      handlers.spawnTerminal = createTerminalBridge(shell, cwd)
+    }
+    return handlers
+  }
+
   /** Return the cached ACP client, respawning when the spec or process changed. */
   private async acpClient(cwd: string, env: Record<string, string>): Promise<AcpClient> {
     const spec = this.spawnSpec(cwd, env)
@@ -549,6 +585,7 @@ export class AcpEngineAgent implements Agent {
     const client = AcpClient.create(spec, this.spawn, {
       protocolVersion: this.profile.protocolVersion,
       label: this.profile.label,
+      handlers: this.reverseHandlers(cwd),
     })
     this.acp = client
     this.lastSpec = spec

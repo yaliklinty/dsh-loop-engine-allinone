@@ -11,3 +11,13 @@ tests/probe/
 
 .local
 *.tgz
+
+# A CLI whose home is pointed at a RELATIVE path writes its whole state dir -
+# INCLUDING auth.json - into the cwd. That happened once here: a Windows env value
+# whose backslashes a shell ate turned GROK_HOME into a relative "D:Programs..."
+# and grok dumped 497 files (credentials among them) into the repo. These patterns
+# make that mistake inert rather than a shipped credential file.
+/Programs*/
+/grok-home/
+/.grok/
+/.minimax/
