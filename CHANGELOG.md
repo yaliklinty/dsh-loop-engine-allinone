@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.2]
+
+### Changed
+
+- **Installation leads with `--profile web` again.** 0.7.1 made `<your-profile>` the
+  primary spelling, on the reasoning that `web` is one of several shipped templates.
+  That is true but the wrong shape for an install section: `dsh web` is the harness
+  CLI's own documented example (`dsh web` = `dsh --profile web`), and every published
+  plugin says `dsh plugin --profile web add ...` — dsh-market included. Forcing a
+  placeholder substitution before the first command is friction with no payoff for the
+  majority.
+
+  The non-`web` case is now a caveat section instead: `desktop`, `headless`, and
+  self-named profiles get both steps, plus the silent failure that follows from doing
+  only the first one. npm / GitHub / local-clone remain the three sources.
+
 ## [0.7.1]
 
 ### Fixed
