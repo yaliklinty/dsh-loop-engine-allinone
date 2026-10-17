@@ -3,7 +3,7 @@
   "description": "Web-switchable agent loop engine selection for the DeepSeek Harness - out-of-tree plugin with a data-driven engine registry and a pluggable driver layer. Ten engines: Claude Code / Codex / Pi / Kimi Code / Antigravity / ZCode / Qoder CN / Hermes / Grok Build / MiniMax Code. All-in-one fork of kuun993/dsh-loop-engine.",
   "version": "0.4.0",
   "publishConfig": {
-    "access": "public"
+    "registry": "https://registry.npmjs.org/"
   },
   "repository": {
     "type": "git",
