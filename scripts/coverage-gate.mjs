@@ -341,11 +341,21 @@ for (const path of Object.keys(baseline)) {
 // rewrites the file with a fresh `base` stamp) rather than hand-editing.
 const baselineChanged = changed.get('.coverage-baseline.json')
 if (baselineChanged && baselineChanged !== 'A') {
+  // The floor to compare against is the one at the base commit. On a branch
+  // that INTRODUCED the file, the base does not have it — then `HEAD` is the
+  // right reference, which is also what makes a local, still-uncommitted
+  // lowering visible (`git diff HEAD` reports it, `git show HEAD:` has the
+  // original).
   let previous = {}
-  try {
-    previous = JSON.parse(tryGit(['show', `${base}:.coverage-baseline.json`]) || '{}').files ?? {}
-  } catch {
-    previous = {}
+  for (const ref of [base, 'HEAD']) {
+    const text = tryGit(['show', `${ref}:.coverage-baseline.json`]).trim()
+    if (!text) continue
+    try {
+      previous = JSON.parse(text).files ?? {}
+      break
+    } catch {
+      previous = {}
+    }
   }
   for (const [path, row] of Object.entries(baseline)) {
     const before = previous[path]
