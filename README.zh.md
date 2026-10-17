@@ -2,178 +2,181 @@
 
 [English](README.md) · **简体中文**
 
-[![npm version](https://img.shields.io/npm/v/dsh-loop-engine-allinone?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine-allinone)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Harness: 0.1.5 | 0.1.7 | 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#版本兼容性)
 
-像选模型一样选 **dsh web** 的 agent 循环引擎——**按会话**选：内置的 `in-process`（默认），或十家托管引擎
-`claude-code` / `codex` / `pi` / `kimi` / `agy` / `zcode` / `qoderclicn` / `hermes` / `grok` / `minimaxcode`。
-会话之间互不影响：一个对话跑 Codex，另一个可以同时跑 Kimi。只要会话打开且空闲，任何时候都能换引擎——
-两个托管引擎之间是**原地换手**，有一边是 `in-process` 时会让**页面重新载入**（`dsh web` 进程本身**不重启**）。
-以上**无需改动主仓库**。
+**dsh-loop-engine-allinone** 是专为 [DeepSeek Harness](https://github.com/deepseek-ai) (`dsh web`) 打造的 Agent 循环引擎全功能切换插件。支持**按会话独立切换** 10 家主流外部引擎与 Harness 原生 `in-process` 循环。
 
-> **本仓库 fork 自 [`kuun993/dsh-loop-engine`](https://github.com/kuun993/dsh-loop-engine)。**
-> 上游插件已经能按会话切引擎。本 fork 的贡献是**一套架构**——一份数据驱动的引擎注册表
-> 加一层可插拔驱动——以及这套架构让「加一家引擎」变得便宜的六家引擎。
->
-> | | 上游 | 本 fork |
-> |---|---|---|
-> | 引擎名单 | 硬编码在五个地方 | **一张注册表**，其余全部派生 |
-> | 加一家引擎 | 改五个文件 | **一行注册表 + 一个驱动** |
-> | 引擎数 | 4 | **10** |
-> | ACP 引擎 | 1（kimi） | **3**（kimi / grok / minimaxcode）共用一个骨架 |
-> | 外部 CLI 驱动 | 每家各写 | `driver-cli/` + `driver-acp/` |
->
-> 四家原有引擎的协议代码**一行未动**。`kimi` 迁到共享 ACP 骨架上时**行为不变**，
-> 它那套没改过的测试就是这次迁移的回归钉。
+各会话完全隔离互不干扰：一个窗口运行 Codex，另一个窗口可同时运行 Kimi Code 或 Antigravity。托管引擎之间支持**无缝原地热换**；切换至原生 `in-process` 时会自动刷新页面重新挂载（无需重启 `dsh web` 后端进程）。**全程无需修改 DeepSeek Harness 主仓库源码**。
 
-## 引擎标记
+> **Fork 说明**：本项目基于 [`kuun993/dsh-loop-engine`](https://github.com/kuun993/dsh-loop-engine) 进行深度重构与扩展。  
+> 上游插件实现了初代 4 款引擎的按会话切换。本 Fork 将其重构为**统一的数据驱动引擎注册表**与**可插拔的共享驱动架构**，将支持的引擎一举扩充至 **10 款**，并支持外部 CLI 自由配置与独立订阅模型选择。
 
-每家引擎在引擎选择器里有自己的标记，在对话页的 turn-status 行上有自己的颜色与字形；
-**只有 `in-process` 用 DeepSeek 的鱼**。
+---
 
-四家原有引擎用厂商公布的 path。本 fork 加的第一波四家（agy / zcode / qoderclicn / hermes）
-是从**本机找到的厂商自己的 artwork** 描或量出来的——手工画的版本不像真标记，被用户否过。
-第二波两家（grok / minimaxcode）从**用户提供的图**描出：Grok Build 的黑环加斜杠
-（斜杠两个尖端只有约 1px 宽，所以那条描摹必须是 8 连通——4 连通会把尖端削掉约 6%），
-MiniMax Code 在蓝色底上的白色团块（底色是渐变，所以掩码规则是"最暗通道仍然够亮"而不是亮度阈值）。
-Grok 厂商公布的 ACP 图标是同一个标记**粗约一个像素**的版本，对照记录在 `docs/engine-registry.md`。
+### 核心亮点与对比
 
-标记以**数据**形式放在 [`src/client/engine-marks.ts`](src/client/engine-marks.ts) 而不是 JSX 里，
-所以测试能断言"每个注册的引擎都有自己的标记"。
+| 功能特性 | 上游仓库 (`kuun993`) | 本 Fork (`allinone`) |
+|---|---|---|
+| **支持引擎数** | 4 款 | **10 款**（+ 原生 `in-process`） |
+| **引擎名单维护** | 分散硬编码在 5+ 处文件 | **单张注册表统一声明** (`src/engine-registry.ts`) |
+| **接入新引擎** | 需修改 5 个文件 | **1 行注册表 + 1 个驱动实现** |
+| **ACP 协议支持** | 仅 1 款（Kimi） | **3 款**（Kimi / Grok / MiniMax）共享一套标准化 ACP 驱动骨架 |
+| **外部 CLI 适配** | 零散处理 | 标准化 `driver-cli/` 与 `driver-acp/` 运行时 |
+| **订阅模型选择** | 仅全局 default | **支持各引擎专属订阅模型列表**（Antigravity、Grok、MiniMax 等） |
+| **UI 视觉与标识** | 基础显示 | **10 款引擎均具备专属图标与状态栏色彩字形** |
 
-## 引擎注册表
+---
 
-每一个跟引擎有关的决定都来自**一张表** [`src/engine-registry.ts`](src/engine-registry.ts)：
-id 名单、能力声明、型号目录、显示文案。设置页的 schema、preset id 运算、驱动分派、
-浏览器半边的选项与字形全部从它派生。第二张表
-（[`src/engine-drivers.ts`](src/engine-drivers.ts)）是 node 侧唯一必须 import 各驱动类的模块。
-两张表都对托管名单**全量**，所以「注册了引擎但忘了驱动」是编译错误，不是运行时才发现。
+## 支持引擎一览
 
-想加引擎？读 [docs/engine-registry.md](docs/engine-registry.md)——其中 §2 第 6 步是
-**ACP 引擎的全部配方**：一个 profile 加四个小文件，共享层一行不用改。
+| 引擎名称 | 运行模式 / 协议 | 本机依赖与环境准备 | 专属模型 / 区域支持 |
+|---|---|---|---|
+| **Claude Code** | 捆绑 SDK / `ndjson` | 安装 Claude Code CLI 并登录（或使用 SDK 内置二进制） | 共享 `external` |
+| **Codex** | 捆绑二进制 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` | 共享 `external` |
+| **Pi** | 捆绑二进制 / `jsonrpc` | 配置 `~/.pi/agent/auth.json` 或对应 API Key | 共享 `external` |
+| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | 共享 `external` |
+| **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 | 支持 Gemini / Claude 深度思考模型 |
+| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI 并开通 GLM Coding Plan 订阅 | 共享 `external` |
+| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 | 共享 `external` |
+| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并配置认证 (`hermes setup`) | 共享 `external` |
+| **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并完成登录（ACP 需有效账号授权） | Grok 4.7 |
+| **MiniMax Code** | 外部 CLI / `acp` | 全局安装 `@minimax-ai/code`，登录并切换至 Token Plan | MiniMax M3/M2.7 系列（支持 `cn`/`en` 区域） |
 
-## 安装
+> **提示**：外部 CLI 引擎（`bundled: false`）直接调度本机已安装的工具，插件本身不捆绑、不替用户安装或登录外部 CLI。请确保对应命令行已在系统中安装就绪。
+
+---
+
+## 安装说明
+
+通过 `dsh plugin` 命令行直接安装：
 
 ```sh
-# 从本仓库装（npm 上的包名是本 fork 自己的）：
-dsh plugin --profile web add dsh-loop-engine-allinone
+# 通过 GitHub 安装
+dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
 
-# 或者从本地 checkout：
+# 或从本地目录安装
 dsh plugin --profile web add /path/to/dsh-loop-engine-allinone
 ```
 
-启动一次 `dsh web`（路由器会在有界窗口内重试，等基础 bundle 让出 factory 槽位），
-然后打开 **Settings → Loop engine**。
+启动 `dsh web`，打开 **Settings → Loop engine** 即可进行引擎管理与默认配置。
 
-**安装须知**
+### 安装注意事项
 
-- 安装会重写 profile 的 `cordis.patch.yml` 里一小段**不带引擎 id** 的受管理块；文件里你写的其它部分逐字节保留。从更早版本升级**不需要手工改文件**。
-- **装到 `web` 以外的 profile**（桌面版的 `desktop`、`headless` 部署、改过名的 profile）必须在该 profile 的组合条目里写上 `profile: <名字>`：
+- **Profile 自动配置**：安装时会自动在对应 Profile 的 `cordis.patch.yml` 中写入一段受管配置块，原有配置内容均逐字节安全保留。
+- **非 Web Profile 部署**：若安装至桌面版 `desktop` 或 headless 等自定义 profile，需在配置中显式指定 `profile: <name>`：
   ```yaml
   - id: loop-engine
     config:
       profile: desktop
   ```
-  `profile` 默认是 `web`，不写的话插件会把受管块写进 `<home>/profiles/web/cordis.patch.yml`，而正在跑的那个 profile 永远不会读它：插件挂着，但基础 `agent-loop` 行没被禁，路由器拿不到 factory 槽位，任何托管引擎都不可达。（这是装进桌面版时踩出来的。）
-- **卸载**是 `dsh plugin --profile web remove dsh-loop-engine-allinone` **再加上删掉那段受管理块**——块会比插件活得久，而它还在时 profile 里没有任何 agent factory，会话一条也建不出来。
-- **pnpm 10+** 可能拦下依赖的 build script（`ERR_PNPM_IGNORED_BUILDS`，列出 `esbuild`、`@google/genai`、`protobufjs`）。执行 `pnpm approve-builds`（或加一条 `allowBuilds`）后重试；只有安装方能授予这个权限。
-- **用源码启动 harness** 时还要多做一步：用 `file:` shim 把 profile 的 harness peer 包桥接到 checkout 源码，否则恢复会话会报 `agent-presets: refusing to compose an unscoped context`。步骤见 [docs/source-checkout.md](docs/source-checkout.md)。
+  *(若未指定，插件默认挂载到 `web` profile，导致自定义 profile 无法生效。)*
+- **卸载插件**：执行 `dsh plugin --profile web remove dsh-loop-engine-allinone`，并手动清理 `cordis.patch.yml` 中残留的 `loop-engine` 受管块。
+- **pnpm 10+ 构建拦截**：若遇到 `ERR_PNPM_IGNORED_BUILDS`（提示 `esbuild`、`@google/genai` 等构建被忽略），执行 `pnpm approve-builds` 允许即可。
+- **源码模式运行 Harness**：若通过源码启动 Harness，需按照 [docs/source-checkout.md](docs/source-checkout.md) 说明配置 `file:` shim 桥接依赖包。
 
-## 环境要求
+---
 
-| 引擎 | 本机需要 |
+## 配置参考
+
+在 profile 的配置文件（`cordis.patch.yml`）中可自定义各项参数：
+
+```yaml
+- id: loop-engine
+  config:
+    # 1. 自定义可执行文件路径（可选，覆盖 PATH 或替换默认二进制）
+    bins:
+      claudeBin: 'D:/tools/claude.exe'
+      kimiBin: 'D:/tools/kimi.exe'
+      agyBin: 'D:/tools/agy.exe'
+      qoderclicnBin: 'D:/tools/qoderclicn.exe'
+      grokBin: 'C:/Users/username/.grok/bin/grok.exe'
+      minimaxcodeBin: 'D:/npm-global/node_modules/@minimax-ai/code/cli.js'
+
+    # 2. 账号区域设置（可选，MiniMax Code 支持 'cn' 或 'en'）
+    regions:
+      mcodeRegion: 'cn'
+
+    # 3. 常驻子进程空闲回收时间（毫秒，默认 0 为不回收）
+    # 适用于具备常驻会话进程的引擎（Kimi、Codex、Grok、MiniMax Code）。
+    childIdleMs: 300000
+
+    # 4. 托管会话上下文上限（token，默认 262144）
+    # 用于 dsh 自动上下文压缩（默认达到 80% 触发）。建议设置为使用中最小引擎的窗口。
+    engineContextWindow: 262144
+
+    # 5. 托管会话压缩摘要模型（必须成对配置）
+    # 托管会话进行上下文压缩时，通过此模型进行内容摘要总结。
+    summarizerProvider: 'deepseek-official'
+    summarizerModel: 'deepseek-flash'
+```
+
+---
+
+## 使用指南
+
+- **创建新会话**：在工作区旁的 Preset 下拉栏选择目标引擎；选择 `standard` 则使用 Harness 原生 `in-process` 引擎。子 Agent 自动继承父会话的引擎。
+- **修改全局默认**：在 **Settings → Loop engine** 中设置新会话的默认引擎，立即生效且不影响既有会话。
+- **会话中途切换引擎**：在设置中开启「在对话页显示引擎选择器」后，可在输入框底部随时更换：
+  - **托管引擎 ↔ 托管引擎**：原地热换，即刻生效。
+  - **托管引擎 ↔ 原生 in-process**：弹出确认提示，确认后刷新浏览器标签页重载会话（会话历史完整保留；未发送草稿和滚动位置重置）。
+  - *注意*：正在执行推理的会话不可切换，必须在会话空闲时进行。
+- **状态徽标**：会话标题栏会实时显示当前正在驱动该会话的引擎图标与名称，可通过设置开关控制显隐。
+- **模型与订阅选择**：
+  - 声明了独立型号目录的引擎（如 **Antigravity**、**Grok Build**、**MiniMax Code**）会在模型列表中呈现其专属订阅模型，供用户灵活挑选。
+  - 其余托管引擎统一归类至 `external` 分组。
+  - 原生命令（`/export`、`/feedback`、`/permission`）及自动压缩机制完全可用。
+
+---
+
+## 架构设计与扩展
+
+本插件采用严格的数据驱动设计，扩展一款新引擎仅需以下步骤：
+
+1. **注册元数据**：在 `src/engine-registry.ts` 中添加引擎 ID 至 `HOSTED_ENGINE_IDS` 并填写配置属性与能力声明（TypeScript 保证类型完全穷举）。
+2. **实现驱动逻辑**：继承 `src/driver-cli/` 或 `src/driver-acp/` 基础能力，实现核心 `runStep` 交互。
+3. **注册分派表**：在 `src/engine-drivers.ts` 中绑定引擎 ID 与驱动类。
+4. **UI 与文案**：在 `src/client/locales.ts` 补充显示文案，并可在 `src/client/engine-marks.ts` 中配置专属 SVG 矢量字形。
+
+完整开发步骤与最佳实践详见 [docs/engine-registry.md](docs/engine-registry.md)。
+
+---
+
+## 版本兼容性
+
+单一版本通过动态探测，全面兼容 DeepSeek Harness 多代版本：
+
+| 插件版本系列 | 兼容的 DeepSeek Harness 版本 |
 |---|---|
-| Claude Code | 已安装并登录 Claude Code CLI（或什么都不装：SDK 自带一个捆绑二进制） |
-| Codex | 执行过 `codex login`，或配置 `CODEX_API_KEY` |
-| Pi | `pi` 自己要求的认证方式（其 `~/.pi/agent/auth.json`，或提供方的 API-key 环境变量） |
-| Kimi Code | 已安装并登录 `kimi` CLI，且在 `PATH` 上（或用 `bins.kimiBin` 固定路径） |
-| Antigravity | 已安装 `agy` CLI 并完成 Google 登录 |
-| ZCode | ZCode CLI 加一个有效的 GLM Coding Plan 订阅 |
-| Qoder CN | 已安装 `qoderclicn` CLI 并登录 |
-| Hermes Agent | 已安装 `hermes` CLI 并登录；它读自己的 `HERMES_HOME`，由子进程继承 |
-| Grok Build | 已安装 `grok` CLI（`~/.grok/bin/grok.exe`，或 `npx @xai-official/grok@<pin> agent stdio`）并**登录过一次**（`grok` / `grok login`）——它的 ACP server 在没有账号时会拒绝 `session/new` |
-| MiniMax Code | `npm i -g @minimax-ai/code`，然后 `mcode login --region cn\|global`，再 `mcode provider use token-plan` 才会花 M Plan 订阅额度而不是 API key |
+| `0.2.0-rcX` | `0.2.0-rc.1`, `0.2.0-rc.2` |
+| `0.1.7-rcX` | `0.1.7-rc.1`, `0.1.7-rc.2` |
+| `0.1.5-rcX` | `0.1.5-rc.1`, `0.1.5-rc.2` |
 
-**这些 CLI 由你自己安装，插件不装、也不登录。** 插件对 `bundled: false` 的引擎只做两件事：
-探可执行文件、按 argv 起子进程（没有任何 `postinstall`，依赖里也没有这些包）。
-没装时选中它会报「找不到可执行文件」，这是设计。
+版本号 `<harness 线>-rcN` 中的 `rcN` 为本插件对应分支的迭代发布号。详见 [docs/compatibility.md](docs/compatibility.md)。
 
-## 使用方法
+---
 
-- **新会话**——在 preset 选择器（工作区选择器旁的 chip）上选引擎；保留部署自己的默认（`standard`）则走 in-process。子 agent 沿用拉起它的那个 agent 的引擎。
-- **Settings → Loop engine** 决定**新会话**的默认引擎：改完立即生效，已经在跑的会话不受影响。选 **In-process** 会把插件接手前的默认值恢复回去。
-- **换当前这条会话**用对话页 composer 的引擎选择器（勾选 *在对话页显示引擎选择器*）。
-  - 托管 → 托管：原地换手，当场生效。
-  - 涉及 `in-process` 的方向：先弹确认框，确认后页面重新载入并回到同一条会话（滚动位置与未发出的草稿会丢，会话记录不丢）。
-  - 正在跑一轮的会话会被**拒绝**，子 agent 的会话不能换。
-- **对话头部那个标记**（preset 标签旁边）写的是这条会话**实际在跑**的引擎；取消勾选 *在对话头部显示引擎标记* 即可关掉它。
-- **模型**——两种分组，刻意区分：
-  - **声明了自己型号目录的引擎独占一组**，用引擎自己的名字（今天是 `Antigravity`、`Grok Build`、`MiniMax Code`），里面是 `default` 加该引擎订阅包含的型号。选一条就把那个 id 交给引擎（`agy --model …`，ACP 引擎则是 `session/set_config_option`），于是你能在自己的订阅里挑，而不是接受"引擎自己决定"。`default` 仍然就是那个意思。
-  - **其余引擎共用 `external` 分组**，只有一条 `default`。这不是残留：模型目录是按 Host **代际**构建的、不按会话区分，一家一组会把十个一模一样的 `default` 塞进每个会话的菜单。
-  - 型号表**在注册表里声明**，启动时不探测——插件开机不启动任何外部进程。订阅变了的部署改 `src/engine-registry.ts` 的 `models` 行；过期的 id 会在引擎处**响亮地失败**，这是诚实的结果。
-- **`bins`**（组合条目，可选）——按每家引擎注册表的 `binConfigKey` 覆盖可执行文件：
-  ```yaml
-  - id: loop-engine
-    config:
-      bins:
-        claudeBin: 'D:/tools/claude.exe'
-        kimiBin: 'D:/tools/kimi.exe'
-        grokBin: 'C:/Users/me/.grok/bin/grok.exe'
-        minimaxcodeBin: 'D:/Programs/npm-global/node_modules/@minimax-ai/code/cli.js'
-  ```
-  **升级外部 CLI 后插件立刻认**：它不缓存版本、不比版本号，每次开会话都是现起进程。
-  三家捆绑引擎里，`codexBin` 与 `piBin` 能让插件**彻底不依赖**捆绑包；
-  `claudeBin` 只是换掉真正执行的二进制，`@anthropic-ai/claude-agent-sdk` 仍是硬依赖（value import）。
-- **`regions`**（组合条目，可选）——按注册表 `region.configKey` 覆盖引擎账号区域。今天只有 MiniMax Code 声明（`regions.mcodeRegion`，默认 `cn`），因为它的登录端点与凭据都是按区域存的：
-  ```yaml
-  - id: loop-engine
-    config:
-      regions:
-        mcodeRegion: 'en'
-  ```
-  值会写进子进程环境里**该 CLI 真正读的那个变量**（`MAVIS_REGION`——实测；`MCODE_REGION` 在 `mcode acp` 上无效）。未知值、或与 `env` 里同一个变量冲突，会在构造期失败而不是把子进程指向没人选的账号。
-- **`childIdleMs`**（组合条目，毫秒，默认 `0` = 不启用）——Kimi、Codex、Grok、MiniMax Code **每条会话保有一个常驻子进程**跨 step 复用；设了它就在空闲这么久之后把子进程关掉，下一步再重新拉起。只关子进程，所以不会触发任何重载。Pi 与 Claude Code 每步各起一次，不受影响。
-- **`engineContextWindow`**（组合条目，token，默认 `262144`）——dsh 给共享托管路由假设的上下文窗口。托管引擎不向 dsh 报自己的容量，这是 dsh 自动压缩算阈值用的数（默认在它的 80% 触发）。跑多家引擎时设成**最小的那个窗口**。
-- **`summarizerProvider` / `summarizerModel`**（组合条目，**要么都设、要么都不设**）——托管会话**压缩**时用来做摘要的真实 dsh 模型。压缩是 dsh 自己的，但那次摘要调用是普通 llm 请求，而托管会话的路由模型是本插件的占位路由——没有这一对，托管会话永远压不下去：每次尝试只记一条警告然后继续。只设一个（或空串）会在启动期被拒。
-- **dsh 自己的命令**（`/export`、`/feedback`、`/permission`）在托管引擎下照常可用。托管引擎的 preset 是 `standard` 的副本，去掉了被外部引擎接管的那几行（dsh 的 `/plan`、goal 工具与 `/goal`、技能相关行）。dsh 的**压缩是保留的**：它是让会话日志（也就是每步回放给引擎的 transcript）保持有界的唯一手段，而引擎自己的每轮压缩做不到（每步都新开一个引擎会话，引擎那边缩了、日志还在长）。配好 `summarizerProvider` / `summarizerModel`，否则那次摘要调用没有模型可用。
+## 技术细节与已知限制
 
-## 版本兼容
+- **Agent Factory 统一门面**：本插件接管了 Harness 的 Agent 工厂。若遇到无法识别或异常的会话，会自动平滑降级至原生 `in-process` 循环，保证服务可用性。
+- **会话与引擎映射**：当前会话与引擎的对应关系保存在 Sidecar 配置文件 `$DSH_HOME/.loop-engine/engines.json` 中；若环境重置则自动回退至预设默认引擎。
+- **多会话并发**：同一引擎的并发会话共享该 CLI 本机的用户登录态与配置目录。
+- **Grok Build Shell 支持**：Grok 相关命令行工具依赖 Harness 客户端终端桥接能力（`ctx.shell`）。
 
-**一个发布版本同时服务三代 harness**：0.1.5 线（`>=0.1.5-rc.1 <0.1.6-0`）、0.1.7 线（`>=0.1.7-rc.1 <0.1.8-0`）
-与 0.2.0 线（`>=0.2.0-rc.1 <0.2.1-0`）——它在加载期探测当前是哪一代、走对应分支。
-这两个并集范围就是它在 `peerDependencies` 里声明的范围；超出范围的 harness 会在启动或会话恢复时**响亮地失败**。
+---
 
-版本读作 `<harness 线>-rcN`，其中 **`rcN` 是本插件对那条线的第 N 次发布号**，不是 harness 自己的 `rc` 号。
-在被覆盖的线里，新的 harness `rc` **不需要**插件跟版——除非某个 API 面动了；
-[docs/compatibility.md](docs/compatibility.md) §1 列出了这些面与判定命令。
+## 文档索引
 
-## 已知限制
+- [docs/engine-registry.md](docs/engine-registry.md) — 引擎注册表规范与 ACP 新引擎添加指南
+- [docs/per-session-engine.md](docs/per-session-engine.md) — 按会话切换引擎的详细交互机制与生命周期说明
+- [docs/architecture.md](docs/architecture.md) — 插件核心架构：路由分发、Factory 槽位与 Patch 注入
+- [docs/driver-core.md](docs/driver-core.md) — 共享驱动层设计与生命周期管理
+- [docs/compatibility.md](docs/compatibility.md) — Harness 跨代版本兼容指南与排错说明
+- [docs/source-checkout.md](docs/source-checkout.md) — 基于 Harness 源码仓库的运行调试方案
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 开发规范与协议抓包探测工作流
 
-- **它替掉了 harness 的 agent factory。** 唯一那个门面服务所有会话，所以插件对此的承诺是：它读不出引擎的会话——包括跟托管引擎毫无关系的会话——一律**降级到 `in-process`**，而不是打不开。见 [docs/per-session-engine.md](docs/per-session-engine.md) §6。
-- **引擎记录是侧车文件** `$DSH_HOME/.loop-engine/engines.json`，不在会话日志里：换机器或换 `DSH_HOME` 就丢，会话回退到自己的 preset。见 §5.5。
-- **涉及 `in-process` 的换引擎会重新载入页面**——harness loop 既不交出活会话，也不接受不是它建的会话。见 §5.2/§5.4。
-- **已经跑过一轮的会话**仍可换引擎，但只能在空闲时，且会重建那条会话的 agent。见 §5。
-- **带旧 preset id `loop-engine` 的老会话**在重建一次之前显示为"旧版托管引擎"。见 §7。
-- **同引擎的多条会话共享该 CLI 自己的认证目录**，插件不加锁。见 §6。
-- **切回 `in-process` 之后**，模型菜单里那个共享的 `external` 分组仍在（模型目录不按会话裁剪）。
-- **grok 的工具要走 harness 的 shell 服务**：它的 shell 工具通过客户端侧终端桥执行，没有 `ctx.shell` 的组合会**拒绝**而不是无约束执行。对话与推理两条路不受影响。
-- **`claudeBin` 卸不掉捆绑 SDK**（见上），`codexBin` / `piBin` 可以。
-- **捆绑引擎没有运行时升级按钮**，这是刻意的：它们的版本是本包的依赖钉，升级＝改依赖，不是原地改写。
+---
 
-## 细节都在哪
+## 开源协议
 
-- [docs/engine-registry.md](docs/engine-registry.md) —— **加引擎的配方**；§2 第 6 步是 ACP 引擎的全部，另有 5 个踩过的坑。
-- [docs/per-session-engine.md](docs/per-session-engine.md) —— 按会话选引擎的完整用户可见行为（上面引的 § 就是它）。
-- [docs/architecture.md](docs/architecture.md) —— 插件核心：唯一 factory 槽位、受管理块、路由、provider 路由。
-- [docs/compatibility.md](docs/compatibility.md) —— **harness 升级时先看这篇**。
-- [docs/driver-core.md](docs/driver-core.md) —— 共享驱动层。
-- [docs/engine-claude.md](docs/engine-claude.md) · [engine-codex](docs/engine-codex.md) · [engine-kimi](docs/engine-kimi.md) · [engine-pi](docs/engine-pi.md) —— 逐引擎内部实现。
-- [CHANGELOG.md](CHANGELOG.md) —— 每个版本改了什么，含被实测推翻的假设与已知限制。
-- [CONTRIBUTING.md](CONTRIBUTING.md) —— 贡献规则（**probe first**：协议结论必须来自真实帧）。
-- [docs/source-checkout.md](docs/source-checkout.md) —— 源码启动 harness 需要的 `file:` shim。
-- `scripts/probe/` —— 协议探针：`probe.mjs`、`acp-handshake.mjs`、`smoke-driver.ts`、`smoke-acp.ts`。
-
-## License
-
-MIT —— 全文见 [LICENSE](LICENSE)。上游作者的版权声明与本 fork 的声明并列保留在其中；
-本 fork 做了什么、刻意没动什么，见 [NOTICE](NOTICE)。
+本项目采用 [MIT](LICENSE) 开源许可证。保留上游 `kuun993/dsh-loop-engine` 及本 Fork 贡献者的版权声明，改动范围与细节说明请参阅 [NOTICE](NOTICE)。
