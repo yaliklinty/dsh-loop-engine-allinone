@@ -30,8 +30,10 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  ENGINE_PAINT,
   blurTurnStatusSession, focusTurnStatusSession, installTurnStatusStyles, reflectTurnStatusEngine,
 } from '../../src/client/turn-status.ts'
+import { HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
 import { FakeElement, installFakeTurnStatusDom, type FakeTurnStatusDom } from '../helpers/fake-dom.ts'
 
 /**
@@ -47,12 +49,43 @@ const LIVE_ATTR = 'data-loop-engine-live'
  * because the pair is what the sheet promises that generation, and the glyph is
  * what a user sees.
  */
-const RUNNING_PAINT = [
-  ['claude-code', '✻', '#d97757', '#f5bda6'],
-  ['codex', '•', '#a9b1c0', '#e6eaf2'],
-  ['pi', '⠋', '#8e4ec6', '#d6bff0'],
-  ['kimi', '🌗', '#e5484d', '#f5b2b4'],
-] as const
+/**
+ * Every engine's paint, read from the module that emits it.
+ *
+ * Deliberately NOT a hand-written list. A copy would let a new engine ship with
+ * no paint while this spec stayed green — and "no paint" is not a harmless
+ * fallback here: the 0.2.0 sheet hides the harness's own whale on any
+ * `data-loop-engine` value, so an unpainted engine gets NO mark at all.
+ */
+const RUNNING_PAINT = ENGINE_PAINT.map(([engine, paint]) => [engine, paint.glyph, paint.colour, paint.tint] as const)
+
+describe('every hosted engine has its own paint', () => {
+  it('covers exactly the hosted roster, with no engine left unpainted', () => {
+    expect(ENGINE_PAINT.map(([engine]) => engine).sort()).toEqual([...HOSTED_ENGINE_IDS].sort())
+  })
+
+  it('gives every engine a distinct glyph, so the row identifies the engine', () => {
+    const glyphs = ENGINE_PAINT.map(([, paint]) => paint.glyph)
+    expect(new Set(glyphs).size).toBe(glyphs.length)
+  })
+
+  it('gives every engine a distinct colour, so the row does not blur two engines together', () => {
+    const colours = ENGINE_PAINT.map(([, paint]) => paint.colour)
+    expect(new Set(colours).size).toBe(colours.length)
+  })
+
+  it('drives a monogram only with a transform/opacity animation', () => {
+    // `le-braille` and `le-moon` step `content`, which would REPLACE a monogram
+    // every frame with a braille dot or a moon. Only the engines that ship such
+    // a glyph may use them.
+    const contentStepping = ['le-braille', 'le-moon']
+    for (const [engine, paint] of ENGINE_PAINT) {
+      const stepsContent = contentStepping.some(name => paint.animation.startsWith(name))
+      if (!stepsContent) continue
+      expect(['pi', 'kimi'], engine).toContain(engine)
+    }
+  })
+})
 
 describe('the live turn-status row', () => {
   let dom: FakeTurnStatusDom | undefined

@@ -230,8 +230,16 @@ const GRADIENT_VARS: ColourVars = ['--dsw-static-deepseek-500', '--dsw-static-de
 /** The 0.2.0 aliases `.running` resolves its text colour and overlay tint from. */
 const RUNNING_VARS: ColourVars = ['--dsw-alias-label-deep-diving', '--dsw-alias-label-deep-diving-shimmer']
 
-/** One engine's paint: the colours, the glyph and the animation that drives it. */
-interface EnginePaint {
+/**
+ * One engine's paint: the colours, the glyph and the animation that drives it.
+ *
+ * Exported for the coverage test, which asserts that EVERY hosted engine has an
+ * entry here. Without that assertion a new engine silently keeps the row
+ * unpainted — and because the 0.2.0 sheet hides the harness's own whale on any
+ * `data-loop-engine` value, "unpainted" does not fall back to the DeepSeek
+ * brand, it falls back to nothing at all.
+ */
+export interface EnginePaint {
   /** The text's own colour — and the glyph's, where the glyph is not an emoji. */
   readonly colour: string
   /** The lighter tint the sweep (0.1.x gradient, 0.2.0 overlay) travels in. */
@@ -253,7 +261,7 @@ interface EnginePaint {
  * sheet is this table emitted through that generation's selectors and variables
  * rather than a second copy of the four engines.
  */
-const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]> = [
+export const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]> = [
   ['claude-code', {
     colour: '#d97757', tint: '#f5bda6', glyph: '✻', extras: [],
     animation: 'le-bloom 1.6s ease-in-out infinite',
@@ -270,6 +278,33 @@ const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]> = [
   ['kimi', {
     colour: '#e5484d', tint: '#f5b2b4', glyph: '🌗', extras: [],
     animation: 'le-moon 2.5s linear infinite',
+  }],
+  // ── The engines added by the registry fork ──────────────────────────────
+  // Their animation must be a TRANSFORM/OPACITY one (`le-bloom`, `le-pulse`,
+  // `le-flicker`, `le-drift`): `le-braille` and `le-moon` step `content`, so
+  // handing one of those to a monogram would replace the letter every frame.
+  ['agy', {
+    // Antigravity: the four-point sparkle, in Google blue.
+    colour: '#4285f4', tint: '#a8c4fb', glyph: '✦', extras: [],
+    animation: 'le-bloom 1.8s ease-in-out infinite',
+  }],
+  ['zcode', {
+    // ZCode / GLM: a "Z", in the teal this family tends to use. The flicker
+    // reads as an electric charge rather than a heartbeat.
+    colour: '#0d9488', tint: '#8fd8d2', glyph: 'Z', extras: ['font-weight: 700'],
+    animation: 'le-flicker 1.9s steps(1, end) infinite',
+  }],
+  ['qoderclicn', {
+    // Qoder CN: a "Q", in magenta so it never sits next to Codex's slate or
+    // Antigravity's blue.
+    colour: '#db2777', tint: '#f4a8c8', glyph: 'Q', extras: ['font-weight: 700'],
+    animation: 'le-pulse 1.6s ease-in-out infinite',
+  }],
+  ['hermes', {
+    // Hermes Agent: the psi, which drifts — a messenger that does not stand
+    // still. Amber keeps it clear of Claude's terracotta and Kimi's red.
+    colour: '#d97706', tint: '#f3cd94', glyph: 'Ψ', extras: ['font-weight: 700'],
+    animation: 'le-drift 2.2s ease-in-out infinite',
   }],
 ]
 
@@ -335,6 +370,23 @@ const GLYPH_KEYFRAMES = `/* Grows from small to large each cycle — the opposit
 @keyframes le-pulse {
   0%, 100% { transform: scale(0.5); opacity: 0.35; }
   50% { transform: scale(1.3); opacity: 1; }
+}
+/* Two-step flicker for an engine whose mark should read as a charge rather than
+   a breath: full, dropped hard, back. The steps timing function holds each state
+   instead of easing between them, which is what makes it read as flicker rather
+   than as the pulse above. */
+@keyframes le-flicker {
+  0% { opacity: 1; }
+  55% { opacity: 0.25; }
+  62% { opacity: 1; }
+  100% { opacity: 1; }
+}
+/* A slow vertical drift: the mark rises and settles. Small on purpose (2px) —
+   the glyph sits on a text baseline, and anything larger reads as a layout
+   glitch rather than a motion. */
+@keyframes le-drift {
+  0%, 100% { transform: translateY(1.5px); opacity: 0.6; }
+  50% { transform: translateY(-1.5px); opacity: 1; }
 }
 /* Moon phases rather than a rigid rotation: a spinning moon bitmap can only
    squash and mirror itself, never show a full or a new moon. Stepping the

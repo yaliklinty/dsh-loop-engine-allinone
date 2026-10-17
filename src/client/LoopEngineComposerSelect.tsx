@@ -195,11 +195,19 @@ function defaultFace(fallback: LoopEngineId): TriggerFace {
  * Official mark per engine, tinted by `currentColor` so it follows the trigger
  * and menu text. The composer bundle is esbuild-built without a CSS loader, so
  * these are inline SVGs with each source's own viewBox (scaled to a `size`px
- * square by the renderer): the dsh fish for the harness's own in-process loop,
- * the Simple Icons Claude Code mark, OpenAI's knot mark (codex has no distinct
- * vector mark and carries the OpenAI blossom), and pi.dev's official Pi logo.
+ * square by the renderer).
+ *
+ * The four original engines carry their vendors' own marks (the dsh fish for the
+ * harness loop, the Simple Icons Claude Code mark, OpenAI's blossom, pi.dev's
+ * logo, and Kimi's "K"). The four engines added by the registry fork have no
+ * vendor path this build can verify, so they carry a MONOGRAM instead — the
+ * engine's own initial or emblem, in a distinct colour. That is a deliberate
+ * choice over inventing a logo: a wrong-but-confident mark would claim a brand
+ * identity this plugin cannot vouch for, while a monogram is honest and still
+ * tells the eight engines apart at a glance. Swapping in official paths later is
+ * a one-case change per engine.
  */
-function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
+export function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
   switch (engine) {
     case 'claude-code':
       return (
@@ -226,7 +234,47 @@ function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
           <path fill="currentColor" d="M6 3h2.6v6.5L14.4 3h3.4l-5.6 7.4L17.8 21h-3.4l-5.9-8v8H6z" />
         </svg>
       )
+    // ── Monogram marks for the engines added by the registry fork ──────────
+    // Antigravity: a four-point sparkle, the AI-family emblem, distinct from
+    // Claude's six-point asterisk.
+    case 'agy':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path fill="currentColor" d="M12 1.5 14.4 9.6 22.5 12 14.4 14.4 12 22.5 9.6 14.4 1.5 12 9.6 9.6Z" />
+        </svg>
+      )
+    // ZCode: a "Z", which is also the mark its own vendor leans on.
+    case 'zcode':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path fill="currentColor" d="M4 4h16v3.1L9.3 17H20v3H4v-3.1L14.7 7H4z" />
+        </svg>
+      )
+    // Qoder: a "Q" — ring plus its tail.
+    case 'qoderclicn':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            fill="currentColor"
+            fillRule="evenodd"
+            d="M11 2a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z"
+          />
+          <path fill="currentColor" d="M15.2 15.2 20.8 20.8 19.1 22.5 13.5 16.9Z" />
+        </svg>
+      )
+    // Hermes: the Greek psi (Ψ), the emblem its vendor uses.
+    case 'hermes':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            fill="currentColor"
+            d="M6.4 3h2.6v6.3a3 3 0 0 0 6 0V3h2.6v6.3a5.6 5.6 0 0 1-4.3 5.45V21h-2.6v-6.25A5.6 5.6 0 0 1 6.4 9.3z"
+          />
+        </svg>
+      )
     default:
+      // `in-process` only: the harness's own loop, which is the one session kind
+      // that really is DeepSeek's.
       return <FishLogo size={size} />
   }
 }

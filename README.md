@@ -11,6 +11,19 @@ Pick **dsh web**'s agent loop engine **per session** — the built-in `in-proces
 > recipe, and the fork's `output/` reports for the protocol probes each new
 > engine was written against.
 
+## Engine marks
+
+Every engine has its own mark in the engine picker and its own colour + glyph on
+the chat's turn-status row; **only `in-process` carries the DeepSeek fish**. The
+four original engines use their vendors' own paths; the four added here use a
+monogram (a sparkle for Antigravity, `Z`, `Q`, `Ψ`), because a wrong-but-confident
+logo would claim a brand identity this plugin cannot vouch for.
+
+Both tables are exhaustive over the hosted roster and pinned by tests — the
+failure this prevents is real: when four engines were first added, every one of
+them fell through the mark switch's `default` arm and rendered the DeepSeek fish
+beside its name.
+
 ## Engine registry
 
 Every engine-shaped decision derives from ONE table,
