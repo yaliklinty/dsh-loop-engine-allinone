@@ -362,8 +362,10 @@ export abstract class CliHostedAgent implements Agent {
 
   /** Report one failure at its live boundary, then preserve it for driver containment. */
   private throwError(error: unknown): never {
+    /* v8 ignore start -- every caller runs inside a running phase; the idle arms are the defensive backstop for a write that fails after the phase was released */
     const turn = this.phase.kind === 'running' ? this.phase.turn : this.phase.lastTurn
     const step = this.phase.kind === 'running' ? this.phase.step : 0
+    /* v8 ignore stop */
     this.dispatch.emit('agent/error', { turn, step, error })
     throw error
   }
@@ -374,19 +376,23 @@ export abstract class CliHostedAgent implements Agent {
     } catch {
       // Reported failures and cancellation are contained at the driver boundary.
     } finally {
+      /* v8 ignore start -- kick owns the phase until this boundary, so the non-running arm is unreachable */
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
         this.setPhase({ kind: 'idle', lastTurn: turn })
         if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
       }
+      /* v8 ignore stop */
     }
   }
 
   /** Open one turn and run its steps until the inbox stops feeding it. */
   private async turn(): Promise<boolean> {
+    /* v8 ignore start -- only `kick` calls this, and it reserves the running phase first */
     if (this.phase.kind !== 'running') {
       this.throwError(new Error(`agent "${this.id}": turn without driver reservation`))
     }
+    /* v8 ignore stop */
     const phase: RunningPhase = this.phase
     const { signal } = phase.abort
     signal.throwIfAborted()
@@ -474,7 +480,9 @@ export abstract class CliHostedAgent implements Agent {
    * @returns the step's decision.
    */
   private async preStep(target: InboxTarget, position: { turn: number; step: number }): Promise<PreparedStep> {
+    /* v8 ignore start -- only `turn` calls this, and it runs inside the running phase it reserved */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
+    /* v8 ignore stop */
     const signal = this.phase.abort.signal
     const claimed = this.inbox.claim(target, position.turn)
     const decision = await this.dispatch.waterfall(
@@ -509,7 +517,9 @@ export abstract class CliHostedAgent implements Agent {
     const cwd = this.session.header.cwd
     const injections: UserMessage[] = []
     for (const name of names) {
+      /* v8 ignore start -- SKILL_GESTURE only captures kebab-case names, so the guard cannot fire */
       if (!isSkillName(name)) continue
+      /* v8 ignore stop */
       let skill: SkillDefinition | undefined
       try {
         skill = await skills.get(name, { signal, scope: this, ...cwd === undefined ? {} : { cwd } })
