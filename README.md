@@ -14,10 +14,15 @@ Pick **dsh web**'s agent loop engine **per session** — the built-in `in-proces
 ## Engine marks
 
 Every engine has its own mark in the engine picker and its own colour + glyph on
-the chat's turn-status row; **only `in-process` carries the DeepSeek fish**. The
-four original engines use their vendors' own paths; the four added here use a
-monogram (a sparkle for Antigravity, `Z`, `Q`, `Ψ`), because a wrong-but-confident
-logo would claim a brand identity this plugin cannot vouch for.
+the chat's turn-status row; **only `in-process` carries the DeepSeek fish**.
+
+The four original engines carry their vendors' published vector paths. The four
+added by this fork are **traced or measured from the vendors' own artwork found on
+this machine** — Antigravity's arch, ZCode's knocked-out `Z` (written out from
+measured spans, because its straight edges defeat a raster trace), Qoder's green
+disc with the white crescent between its two forms, and Hermes' silhouette. Marks
+live in [`src/client/engine-marks.ts`](src/client/engine-marks.ts) as data rather
+than JSX, so a test can assert that every registered engine has one.
 
 Both tables are exhaustive over the hosted roster and pinned by tests — the
 failure this prevents is real: when four engines were first added, every one of
