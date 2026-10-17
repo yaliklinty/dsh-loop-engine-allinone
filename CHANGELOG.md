@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.6.0]
+
+### Added
+
+- **Kimi Code declares its model catalog** (K3, K3-256k, K2.8 Preview, K2.7 Code
+  Highspeed), read out of `~/.kimi-code/config.toml` — the file the Kimi Code
+  desktop app writes for a signed-in account. Those are the ids the app passes as
+  `model`, so they are the right vocabulary for this driver's `session/set_model`.
+
+### Documented
+
+- **Why ZCode has no catalog**: its GLM Coding Plan subscription has lapsed
+  (`[1309] 您的GLM Coding Plan套餐已到期`), and an expired account cannot enumerate
+  what it may use. This is an account state, not a missing CLI.
+- **Why Pi has no catalog**: it refreshes its model list at runtime
+  (`pi update --models`) from each provider, so any list shipped here would be stale
+  by design.
+- The model-menu section now says what a **shared** group means (the menu collapsing
+  engines whose catalogs this build has not measured) and that declaring a `models`
+  row gives an engine its own group.
+
 ## [0.5.0]
 
 ### Added
