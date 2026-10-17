@@ -118,6 +118,27 @@ describe("grok's ACP dialect", () => {
     expect(calls.newSession.length).toBe(2)
   })
 
+  it('reports the login hint when `authenticate` ITSELF takes the child down', async () => {
+    // Measured on this fork's host: on a signed-out machine `authenticate` starts
+    // the vendor's browser sign-in, so with no terminal the child exits and the
+    // shared client rejects with "grok acp process exited unexpectedly". That
+    // message is unactionable, so the profile has to turn it into the registry's
+    // login hint — which it can only do if the `authenticate` call sits inside the
+    // same catch as the retry.
+    const { client, calls } = fakeClient({ newSession: new Error('Authentication required') })
+    ;(client as unknown as { authenticate: () => Promise<never> }).authenticate = vi.fn(async () => {
+      calls.authenticate.push([])
+      throw new Error('grok acp process exited unexpectedly')
+    })
+    const error = await grokProfile('grok').openSession!(client, 'D:/w', session, INITIALIZE_RESULT)
+      .catch((thrown: unknown) => thrown)
+    expect(String(error)).toMatch(/run `grok` once/)
+    expect((error as Error).cause).toBeInstanceOf(Error)
+    expect(String((error as Error).cause)).toContain('process exited unexpectedly')
+    // It did NOT go on to retry `session/new` against a dead child.
+    expect(calls.newSession.length).toBe(1)
+  })
+
   it('reports the registry login hint when authenticating still does not open a session', async () => {
     const { client, calls } = fakeClient({ newSession: new Error('Authentication required') })
     const error = await grokProfile('grok').openSession!(client, 'D:/w', session, INITIALIZE_RESULT).catch((thrown: unknown) => thrown)

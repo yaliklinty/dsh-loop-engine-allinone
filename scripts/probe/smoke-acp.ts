@@ -57,7 +57,13 @@ const ENGINES: Record<string, { profile: (bin: string) => AcpEngineProfile; bin:
 const argv = process.argv.slice(2)
 const binFlag = argv.indexOf('--bin')
 const explicitBin = binFlag === -1 ? undefined : argv[binFlag + 1]
-const positional = argv.filter((value, index) => !value.startsWith('--') && index !== binFlag + 1)
+// The flag's VALUE must be skipped, not "index !== binFlag + 1": with no `--bin`
+// at all `binFlag` is -1, so that expression skipped index 0 — the engine name —
+// and `smoke-acp.ts grok` silently ran minimaxcode instead. Skipping only when
+// the flag is actually present keeps the positional list honest.
+const binValueIndex = binFlag === -1 ? -1 : binFlag + 1
+const positional = argv.filter((value, index) =>
+  !value.startsWith('--') && index !== binValueIndex)
 const target = positional[0] ?? 'minimaxcode'
 const pickedModel = positional[1]
 

@@ -125,10 +125,17 @@ export function grokProfile(bin: string): AcpEngineProfile {
         const methodId = firstAuthMethodId(initializeResult)
         if (!isAuthenticationRequired(error) || methodId === undefined) throw error
         // ACP's own flow: answer with the method the agent published, then retry.
-        // On an unsigned host this is what starts the vendor's sign-in; the
-        // failure path below still tells the user the command to run.
-        await client.authenticate(methodId)
+        //
+        // BOTH halves are wrapped, and that is load-bearing rather than tidy: on a
+        // signed-out host `authenticate` is what starts the vendor's browser
+        // sign-in, so with no terminal it can take the child down instead of
+        // answering. Measured on this fork's host: the child exits and the shared
+        // client rejects every pending request with "grok acp process exited
+        // unexpectedly" — a message that tells the user nothing they can act on.
+        // Either failure therefore becomes the registry's login hint, with the
+        // engine's own words kept as the cause.
         try {
+          await client.authenticate(methodId)
           return await client.newSession(cwd, extra)
         } catch (retryError: unknown) {
           throw new Error(`grok: ${grokLoginHint()}`, { cause: retryError })
