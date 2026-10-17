@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,7 +16,7 @@ concurrency:
 # build, which is all `tsconfig.base.json` + `vendor/*/src` amount to.
 # Bump HARNESS_TAG in the same change as those version ranges.
 env:
-  HARNESS_TAG: dsh-v0.2.0-rc.2
+  HARNESS_TAG: dsh-v0.2.1-rc.1
 
 jobs:
   gates:
@@ -49,6 +49,7 @@ jobs:
             .compat/015/pnpm-lock.yaml
             .compat/017/pnpm-lock.yaml
             .compat/020/pnpm-lock.yaml
+            .compat/021/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -56,7 +57,7 @@ jobs:
       - run: pnpm run build
       - run: pnpm run test:coverage
 
-      # One build serves three harness lines, and each `.compat/0NN` set is its
+      # One build serves four harness lines, and each `.compat/0NN` set is its
       # own install root with an untracked `node_modules`, so these install
       # separately from the root workspace.
       - run: pnpm run compat:install

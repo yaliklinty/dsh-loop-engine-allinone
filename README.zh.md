@@ -3,7 +3,7 @@
 [English](README.md) · **简体中文**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Harness: 0.1.5 | 0.1.7 | 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#版本兼容性)
+[![Harness: 0.1.5 | 0.1.7 | 0.2.0 | 0.2.1](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0%20%7C%200.2.1-6f42c1)](#版本兼容性)
 
 **dsh-loop-engine-allinone** 是专为 [DeepSeek Harness](https://github.com/deepseek-ai)（`dsh`）打造的 Agent 循环引擎全功能切换插件。支持**按会话独立切换** 10 家主流外部引擎与 Harness 原生 `in-process` 循环。
 
@@ -181,11 +181,14 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 
 单一版本通过动态探测，全面兼容 DeepSeek Harness 多代版本：
 
-| 插件版本系列 | 兼容的 DeepSeek Harness 版本 |
+| 插件版本 | 兼容的 DeepSeek Harness |
 |---|---|
-| `0.2.0-rcX` | `0.2.0-rc.1`, `0.2.0-rc.2` |
-| `0.1.7-rcX` | `0.1.7-rc.1`, `0.1.7-rc.2` |
-| `0.1.5-rcX` | `0.1.5-rc.1`, `0.1.5-rc.2` |
+| `0.7.4` 起 | `0.2.0-rc.1` … `0.2.1-rc.1` |
+| `0.7.0` – `0.7.3` | `0.1.5-rc.1` … `0.2.0-rc.2` |
+
+并集范围是 `>=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0`。
+`0.2.0` 与 `0.2.1` 共用末段，因为 harness 在这两代之间没有改 API 形状，一段范围就够了。
+`dsh` 的兼容性判定读的就是这些 peer，差一条就拒绝加载——这正是 `0.7.3` 在 `0.2.1` 上装不上的原因。
 
 版本号 `<harness 线>-rcN` 中的 `rcN` 为本插件对应分支的迭代发布号。详见 [docs/compatibility.md](docs/compatibility.md)。
 

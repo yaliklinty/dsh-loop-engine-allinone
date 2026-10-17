@@ -12,7 +12,7 @@ import { Context, symbols, type EffectMeta, type Fiber } from '@deepseek-ai/cord
 import SessionStore, { SessionId, SessionLogOffset, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import AgentRegistry, { type AgentHandle } from '@deepseek-ai/dsh-agent'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import JsonlSessionPersistence from '../helpers/jsonl-persistence.ts'
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence'
 import { CodexLoop } from '../../src/engine-codex/loop.ts'
 import type { AppServerEvent } from '../../src/engine-codex/appserver/thread.ts'

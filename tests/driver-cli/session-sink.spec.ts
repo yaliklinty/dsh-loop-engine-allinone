@@ -32,6 +32,7 @@ import { describe, expect, it } from 'vitest'
 import { SessionSink, flattenToolResult, mapUsage, type SinkHost } from '../../src/driver-cli/session-sink.ts'
 import type { CliFrame } from '../../src/driver-cli/frames.ts'
 import type { Session } from '@deepseek-ai/dsh-session'
+import { toolResultView } from '../helpers/harness-generation.ts'
 
 /** One recorded append. */
 interface Append {
@@ -259,7 +260,7 @@ describe('the tool-call / tool-result pairing', () => {
     ])
     sink.finish(position)
     const result = rec.appends.find(entry => entry.type === 'tool/result')!
-    expect((result.data.message as { isError?: boolean }).isError).toBe(true)
+    expect(toolResultView(result.data.message).isError).toBe(true)
   })
 
   it('writes a placeholder for an empty result, because a block with no text is not renderable', () => {
@@ -270,7 +271,7 @@ describe('the tool-call / tool-result pairing', () => {
     ])
     sink.finish(position)
     const result = rec.appends.find(entry => entry.type === 'tool/result')!
-    const content = (result.data.message as { content: { text: string }[] }).content
+    const content = toolResultView(result.data.message).content as { text: string }[]
     expect(content[0]!.text).toBe('(no content)')
   })
 
@@ -345,7 +346,7 @@ describe('closing a step honestly', () => {
     sink.closeStep(position)
     const results = rec.appends.filter(entry => entry.type === 'tool/result')
     expect(results).toHaveLength(1)
-    expect((results[0]!.data.message as { isError?: boolean }).isError).toBe(true)
+    expect(toolResultView(results[0]!.data.message).isError).toBe(true)
     expect(rec.types().at(-1)).toBe('step/end')
   })
 

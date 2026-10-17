@@ -7,13 +7,13 @@
 
 ---
 
-## 1. 现状：一个产物服务三代
+## 1. 现状：一个产物服务四代
 
-从 `0.2.0-rc1` 起，**同一个已发布产物**同时跑在三代 harness 上：
+从 `0.7.4` 起，**同一个已发布产物**同时跑在四代 harness 上：
 
 | 插件版本 | 目标 harness | 说明 |
 |---|---|---|
-| `0.2.0-rc1`（当前） | `>=0.1.5-rc.1 <0.1.6-0` **或** `>=0.1.7-rc.1 <0.1.8-0` **或** `>=0.2.0-rc.1 <0.2.1-0` | 三代由运行期探测分流；每条线内的新 `rc` 由同一段并集范围覆盖，**插件无需改版** |
+| `0.7.4`（当前） | `>=0.1.5-rc.1 <0.1.6-0` **或** `>=0.1.7-rc.1 <0.1.8-0` **或** `>=0.2.0-rc.1 <0.2.2-0` | 四代由运行期探测分流；0.2.0 与 0.2.1 共用同一段并集范围（`>=0.2.0-rc.1 <0.2.2-0`），因为两者的 API 形状**没有分叉**（见 §1.1）。每条线内的新 `rc` 由并集覆盖，**插件无需改版** |
 | `0.1.7-rc1` … `0.1.7-rc5` | 0.1.5 线 + 0.1.7 线 | 同一套规则，各自对应这一份工作区的一次发布 |
 | `0.1.5-rc3` … `0.1.5-rc5` | `0.1.5-rc.2` | 单代 |
 | `0.1.5-rc1` / `0.1.5-rc2` | `0.1.5-rc.1` | 单代 |
@@ -21,7 +21,7 @@
 
 > **`rcN` 的读法**：**核心版本**（`0.2.0`）对齐的是 harness 的**线**，不是 harness 的某个 `rc`——并集范围 `>=0.2.0-rc.1 <0.2.1-0` 本来就覆盖整条线，所以 `0.2.0-rc1`、`0.2.0-rc2`… 全都服务 `0.2.0-rc.1` 与 `0.2.0-rc.2`。**`rcN` 是本插件对这条线的第 N 次发布号**，与 harness 自己的 `rc.N`（如 `0.2.0-rc.2`）**没有编号对应关系**：它们撞名只是历史写法，别把它读成"这个插件只对 harness `rc2` 有效"。
 
-**支持一条线 = 一份隔离依赖集 + 一条 vitest 配置**（`§4.4`）：本仓 devDependencies 跟最新线（0.2.0），另外两条线各占一个 `.compat/0xx/`。加一代的成本主要在这里。
+**支持一条线 = 一份隔离依赖集 + 一条 vitest 配置**（`§4.4`）：本仓 devDependencies 跟最新线（**0.2.1**），另外三条线各占一个 `.compat/0xx/`。加一代的成本主要在这里。
 
 **已逐个核对过的 harness 小版本**（"支持"= 跑过 `typecheck` + 全部线的测试，**且启动过一次 `dsh web` 看启动日志**）：
 
@@ -30,7 +30,8 @@
 | `0.1.5-rc.1` … `0.1.5-rc.3` | 支持（单代） | `.compat/015/` 兼容作业；0.1.5 上托管引擎的**老会话恢复**仍会撞 `$.prefix`（见 §9） |
 | `0.1.7-rc.1` | 支持 | `.compat/017/` 兼容作业；启动日志无插件报错 |
 | `0.1.7-rc.2` | 支持 | 同上。曾有「preset 载体写错代际」的缺陷（见下面那段），已修 |
-| `0.2.0-rc.1` / `0.2.0-rc.2` | 支持（当前工作区所对） | 本仓 devDependencies + `.compat/020/` 兼容作业；启动日志无插件报错。**这一代唯一的形状漂移是 turn-status 行**（见 §4.3 与 §5），其余节点半差异都是增量 |
+| `0.2.0-rc.1` / `0.2.0-rc.2` | 支持 | `.compat/020/` 兼容作业 + `tsc -p tsconfig.build.json`。**这一代唯一的形状漂移是 turn-status 行**（见 §4.3 与 §5），其余节点半差异都是增量 |
+| `0.2.1-rc.1` | 支持（当前工作区所对） | 本仓 devDependencies + `.compat/021/` + `tsconfig.compat021.json`；真机 `dsh web` 起过两次，托管块写入后**第二次启动逐字节不变**（不动点），10 个 preset 全部出现在 `--dump-config`，浏览器半的 `client.js` 正常下发。差异见 §1.1 |
 
 > **`0.1.7-rc.2` 上修掉的缺陷：preset 的载体写错了代际（2026-09-25 定位）**。插件把四个托管 preset 写成
 > **目录** `$DSH_HOME/.agent-presets/loop-engine-<engine>/{agent.cordis.yml,preset.yml}`——那是 **0.1.5 的
@@ -52,6 +53,22 @@
 > 真名是 `packages/preset/agent-preset-registry`），于是漏掉了 registry 的改动。
 > 现在用 `git cat-file -e <tag>:<path>` 先确认路径存在，或把命令换成 `git diff <旧> <新> -- <包目录>`
 > （目录不存在时同样要警惕）。判定"要不要动代码"，**最终仍以启动一次 `dsh web` 看日志为准**。
+
+### 1.1 `0.2.1` 相对 `0.2.0` 改了什么（2026-10-17 实测）
+
+**节点半：一处真实的包级漂移，其余全是增量。**
+
+| 变化 | 影响 | 处理 |
+|---|---|---|
+| **`@deepseek-ai/dsh-invariants` 整包消失**。0.2.1 运行时的 304 个依赖里再没有它，npm 上也**从未发布过** `0.2.1-rc.1`（`versions` 到 `0.2.0-rc.2` 为止）。各包自带的 `lib/types/invariant.js` 还在，但**没有任何 `invariants` 服务的提供者**，那批 companion 在 0.2.1 上根本不会被注册 | 本插件的 `./invariant` companion 是**纯类型依赖**（`src/invariant.ts` 只 `import type`；产物里 `grep dsh-invariants lib/*.js` = 0 条），运行时不受影响。但**peer 范围里留着它，宿主就会以 `incompatible-version` 拒绝整个安装**——这正是 0.7.3 在 0.2.1 上装不上的直接原因之一 | 从 `peerDependencies` 移除，改成 `peerDependenciesMeta` 的 `optional: true`；`devDependencies` 继续钉 `0.2.0-rc.2` 供类型检查 |
+| **`dsh-session-persistence-jsonl` 取消默认导出**：0.2.0 是 `export { JsonlSessionPersistence as default }`，0.2.1 是 `export { Config, JsonlCompressionSchema, apply, name }` | 只影响 **spec**（`tests/**` 把它当 plugin 挂载）：`import X from '...'` 在 0.2.1 上得到 `undefined`，cordis 报 `invalid plugin, expect function or object with an "apply" method, received undefined`。**插件源码不 import 这个包**，产物无影响 | 新增 `tests/helpers/jsonl-persistence.ts`：有 `default` 用 `default`，没有就用命名空间本身（0.2.1 的 `{name, apply}` 正是一个合法的 cordis plugin）。9 个 spec 改从这里取 |
+| **peer 上界** `<0.2.1-0` 把整条 0.2.1 线挡在外面 | 宿主 `evaluatePluginCompatibility()` 直接拒绝安装，UI 显示"插件安装失败 / 与 DSH 0.2.1-rc.1 不兼容" | 并集末段改成 `>=0.2.0-rc.1 <0.2.2-0`，一段覆盖 0.2.0 与 0.2.1——两者之间**没有 API 形状分叉**，不需要两条独立的线。用 `semver.satisfies` 复核：0.1.5-rc.2 / 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-rc.1 / 0.2.1 全部满足，`0.2.2-rc.1` 不满足 |
+
+**浏览器半：0.2.1 与 0.2.0 完全一致**。在 0.2.1 的 `dsh-client-ui-chat` / `dsh-client-ui-primitives` 客户端产物里逐条 grep，`data-chat-running`、`_runningContent`、`_runningIcon`、`--dsw-alias-label-deep-diving{,-shimmer}`、`data-turn-process` **全部仍在**，`RUNNING_ROW` 那张表不用动；`configForms` 服务仍在，`settingsScope` 依旧没有（与 0.1.7+ 一致）。真机 `dsh web` 下 `client.js` 正常下发、`window.__ModuleLoader__` 包装完好。
+
+**类型表面**：`tsc -p tsconfig.build.json`（对着 0.2.1 的 devDependencies）**零错误**；`tsconfig.compat021.json`（对着 `.compat/021/` 的隔离声明）同样**零错误**。`SessionEventMap` 的事件键集两代逐字相同。
+
+> **踩过的坑（差点误判）**：一开始用 `paths: {"@deepseek-ai/*": [...]}` 做类型检查，报了两条 `'todo/write' is not assignable to keyof SessionEventMap` / `'model/selection'` 同上。那是**假阳性**：通配 `*` 跨不过 `dsh-session/types` 里的 `/`，子路径解析失败 → `declare module '@deepseek-ai/dsh-session/types'` 的增补整体失效 → 插件自己补的那两个事件看起来"不在 map 里"。修法是给每个**真实用到的子路径**单独写一条 `paths`（`tsconfig.compat021.json` 里那 5 条），之后零错误。**判据：报错点落在 `declare module` 补的事件上时，先怀疑子路径解析，别怀疑 harness。**
 
 > 新增一个小版本的**判定成本很低**：按 §5 的清单逐个 `git diff <旧tag> <新tag> -- <路径>`，落在清单外的改动不用看。这条命令就是"要不要动代码"的答案。
 
@@ -132,16 +149,18 @@ export const LEGACY_HARNESS: boolean = 'SettingsProvider' in (dshSettings as obj
 |---|---|
 | `tests/helpers/harness-generation.ts` | 测试侧代际探测 + `toolResultView()` / `toolResultRole()`，把两代的 tool-result 读成**同一份事实**，让同一份 spec 两代都过 |
 | `tests/helpers/fake-settings.ts` | 假 settings 服务同时实现两代接口（`installSection` 与 `configure`/`mutate`/`describe`），按代际把"提交默认引擎"写进正确通道 |
+| `tests/helpers/jsonl-persistence.ts` | 把 `dsh-session-persistence-jsonl` 读成**每条线上都合法**的 plugin：0.1.5–0.2.0 取 `default`，0.2.1 起该包改成 `{name, apply}` 命名导出、`default` 是 `undefined` |
 | `tests/helpers/fake-dom.ts` | node 里能跑 turn-status 反射的最小 DOM（`querySelector(All)`、元素属性、以及**手工投递记录**的假 `MutationObserver`——真的那个什么时候触发由浏览器定，逐行标记就没法测）。选择器只认 `tag[attr]` 与裸 `[attr]` 两种形式（后者给 0.2.0 的 `[data-chat-running]`），查不到时像真 DOM 一样回 `null` |
 | `.compat/015/` | **隔离的 0.1.5 依赖集**（`package.json` + `pnpm-lock.yaml` + `pnpm-workspace.yaml`；`node_modules` 不进仓库）。只装 0.1.5 那一套，与本仓自己的 `node_modules` 互不干扰 |
 | `.compat/017/` | 同上，装 **0.1.7 线**（`0.1.7-rc.2`）那一套 |
 | `.compat/020/` | 同上，装 **0.2.0 线**（`0.2.0-rc.2`）那一套 |
+| `.compat/021/` | 同上，装 **0.2.1 线**（`0.2.1-rc.1`）那一套；`node_modules` 里多一个 `@types/node`（`tsconfig.compat021.json` 要用） |
 | `vitest.config.compat0NN.ts` | 把每个 `@deepseek-ai/*` 别名到 `.compat/0NN/node_modules/@deepseek-ai/`，跑**同一批 spec**（**不跑覆盖率**，是功能性验证）：`npx vitest run --config vitest.config.compat017.ts` 等。只别名该集合里**存在**的包，所以嵌套传递依赖仍走 pnpm 自己的布局 |
-| `package.json` `peerDependencies` | 联合范围 `">=0.1.5-rc.1 <0.1.6-0 \|\| >=0.1.7-rc.1 <0.1.8-0 \|\| >=0.2.0-rc.1 <0.2.1-0"`；`@deepseek-ai/cordis` 放宽到 `^4.0.1`（`Volatile` 只在**构建期**用）；`schemastery` 钉 `3.18.4` |
+| `package.json` `peerDependencies` | 联合范围 `">=0.1.5-rc.1 <0.1.6-0 \|\| >=0.1.7-rc.1 <0.1.8-0 \|\| >=0.2.0-rc.1 <0.2.2-0"`（0.2.0 与 0.2.1 共用末段）。**唯一例外**：`@deepseek-ai/dsh-invariants` 是 `optional` 的 peer（`peerDependenciesMeta`），因为 0.2.1 起运行时不再提供该服务。`@deepseek-ai/cordis` 放宽到 `^4.0.1`（`Volatile` 只在**构建期**用）；`schemastery` 钉 `3.18.5` |
 | `pnpm-workspace.yaml` `minimumReleaseAgeExclude` | pnpm "最小发布年龄"供应链护栏的豁免名单。本仓库**没有开启** `minimumReleaseAge`（`pnpm config get minimumReleaseAge` = `undefined`），所以这项目前是前瞻性的；但 `pnpm install` 会**自动**把刚装上的版本追加进去，因此每次提版后这个文件都会自己变长——跟着提交即可，不要手删。 |
 | `pnpm-workspace.yaml` 的 profile shim 版本 | 源码启动的 harness 用 `file:` shim 指回源码（`docs/source-checkout.md`），**每个 shim 声明的 `version` 必须落在上面的并集范围内**——写成占位值会让 pnpm 再装一份 harness 包，于是同一个包出现两份实例。换线时跟着改这里 |
 
-> **覆盖率注释的边界**：只在一条代际上执行的分支，在现代线（本仓 devDependencies，当前 0.2.0）的覆盖率作业里标了 `/* v8 ignore */`（注释里写明"由哪套 compat 作业接管"）。**这些分支的真实执行只由兼容作业保证**；改动它们之后，所有线都要跑（§6 步骤 5）。
+> **覆盖率注释的边界**：只在一条代际上执行的分支，在现代线（本仓 devDependencies，当前 0.2.1）的覆盖率作业里标了 `/* v8 ignore */`（注释里写明"由哪套 compat 作业接管"）。**这些分支的真实执行只由兼容作业保证**；改动它们之后，所有线都要跑（§6 步骤 5）。
 
 ---
 
@@ -206,9 +225,11 @@ export const LEGACY_HARNESS: boolean = 'SettingsProvider' in (dshSettings as obj
    npx vitest run --config vitest.config.compat015.ts    # 0.1.5 线
    npx vitest run --config vitest.config.compat017.ts    # 0.1.7 线
    npx vitest run --config vitest.config.compat020.ts    # 0.2.0 线
+   npx vitest run --config vitest.config.compat021.ts    # 0.2.1 线
+   npx tsc -p tsconfig.compat021.json                    # 0.2.1 的声明表面
    ```
 6. **更新声明与文档**：`package.json` 每个 `@deepseek-ai/dsh-*` peer 范围加上新一代（`|| >=0.2.1-rc.1 <0.2.2-0`），`pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 跟着加；**源码启动的 profile 里那 12 个 `file:` shim 声明的版本也要跟着改**（`docs/source-checkout.md`，否则 pnpm 会再装一份 harness 包）；然后更新本篇 §1 的矩阵、§4/§5 的清单，以及 `docs/architecture.md` §8 与两个 README 的版本对应段落。
-7. **版本号**：插件版本跟 harness 走 `<harness version>-rcN`（`0.2.0-rc.2` → `0.2.0-rc1`，`rcN` 是本插件那条线的发布号）。
+7. **版本号**：自 `0.7.0` 起改用本插件自己的 semver（不再跟 harness 的线号走）；这份手册里"加一代"= 提高插件 minor。
 8. **真机冒烟**：源码 harness + 发行版 harness 各起一个 `dsh web`，跑 in-process 与托管引擎各一轮对话，并**硬刷新**核对 turn-status 行（进行中要有字形+扫光、结束后要回朴素）。0.2.0 起还要多看一件事：**dsh 自己会在开机时按 peer 范围跳过不兼容的插件**（`dsh plugin allow-version` 可显式放行），所以启动日志里出现的 `skipping profile bundle` 是**别的插件**没跟上这一代，不是本插件的问题——本插件被跳过只可能因为它自己的 peer 范围没写上新线。
 
 ---

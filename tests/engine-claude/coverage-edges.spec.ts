@@ -28,7 +28,7 @@ import AgentRegistry, {
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import JsonlSessionPersistence from '../helpers/jsonl-persistence.ts'
 import { ClaudeCodeLoop } from '../../src/engine-claude/loop.ts'
 import { loopPluginFor } from '../helpers/agent-harness.ts'
 

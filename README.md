@@ -3,7 +3,7 @@
 **English** · [简体中文](README.zh.md)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Harness: 0.1.5 | 0.1.7 | 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#version-compatibility)
+[![Harness: 0.1.5 | 0.1.7 | 0.2.0 | 0.2.1](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0%20%7C%200.2.1-6f42c1)](#version-compatibility)
 
 **dsh-loop-engine-allinone** is an all-in-one agent loop engine switcher for **[DeepSeek Harness](https://github.com/deepseek-ai)** (`dsh`). It enables per-session engine switching across **10 hosted engines** (Claude Code, Codex, Pi, Kimi Code, Antigravity, ZCode, Qoder CN, Hermes Agent, Grok Build, MiniMax Code) alongside the built-in `in-process` loop.
 
@@ -193,11 +193,16 @@ Both tables enforce compile-time exhaustiveness checks — incomplete engine reg
 
 A single release seamlessly supports multiple DeepSeek Harness generations via runtime detection:
 
-| Plugin Release | Supported DeepSeek Harness Line |
+| Plugin release | Supported DeepSeek Harness |
 |---|---|
-| `0.2.0-rcX` | `0.2.0-rc.1`, `0.2.0-rc.2` |
-| `0.1.7-rcX` | `0.1.7-rc.1`, `0.1.7-rc.2` |
-| `0.1.5-rcX` | `0.1.5-rc.1`, `0.1.5-rc.2` |
+| `0.7.4`+ | `0.2.0-rc.1` … `0.2.1-rc.1` |
+| `0.7.0` – `0.7.3` | `0.1.5-rc.1` … `0.2.0-rc.2` |
+
+The union range is `>=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0`.
+`0.2.0` and `0.2.1` share the last segment because the harness kept the same API shape
+across them, so one range covers both. `dsh`'s compatibility check reads these peers
+and refuses to load a plugin that misses one, which is what made `0.7.3` uninstallable
+on `0.2.1`.
 
 See [docs/compatibility.md](docs/compatibility.md) for harness upgrade checklists and API surface diffs.
 

@@ -21,7 +21,7 @@ import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-ses
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import JsonlSessionPersistence from '../helpers/jsonl-persistence.ts'
 import { ClaudeCodeLoop } from '../../src/engine-claude/loop.ts'
 import { loopPluginFor } from '../helpers/agent-harness.ts'
 

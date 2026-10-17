@@ -1,7 +1,7 @@
 {
   "name": "dsh-loop-engine-allinone",
   "description": "Web-switchable agent loop engine selection for the DeepSeek Harness - out-of-tree plugin with a data-driven engine registry and a pluggable driver layer. Ten engines: Claude Code / Codex / Pi / Kimi Code / Antigravity / ZCode / Qoder CN / Hermes / Grok Build / MiniMax Code. All-in-one fork of kuun993/dsh-loop-engine.",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -51,8 +51,9 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "compat:install": "pnpm -C .compat/015 install --frozen-lockfile && pnpm -C .compat/017 install --frozen-lockfile && pnpm -C .compat/020 install --frozen-lockfile",
-    "test:compat": "vitest run --config vitest.config.compat015.ts && vitest run --config vitest.config.compat017.ts && vitest run --config vitest.config.compat020.ts"
+    "compat:install": "pnpm -C .compat/015 install --frozen-lockfile && pnpm -C .compat/017 install --frozen-lockfile && pnpm -C .compat/020 install --frozen-lockfile && pnpm -C .compat/021 install --frozen-lockfile",
+    "test:compat": "vitest run --config vitest.config.compat015.ts && vitest run --config vitest.config.compat017.ts && vitest run --config vitest.config.compat020.ts && vitest run --config vitest.config.compat021.ts",
+    "typecheck:compat": "tsc -p tsconfig.compat021.json"
   },
   "dsh": {
     "bundle": {
@@ -84,42 +85,42 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-agent": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-agent-loop": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-invariants": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-llm": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-scope": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-session": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-session-persistence": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-settings": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-subprocess": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-timeout": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0"
+    "@deepseek-ai/dsh-agent": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-agent-loop": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-invariants": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-llm": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-scope": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-session": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-session-persistence": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-settings": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-subprocess": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-timeout": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-agent-loop": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.1",
     "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-session-persistence": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-subprocess": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-timeout": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-attachment": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-locale": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-store": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-ui-slots": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-home-paths": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-subprocess-local": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-timeout": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.1",
     "@types/node": "^22.20.0",
     "@types/react": "^19.0.0",
     "@vitest/coverage-v8": "^4.1.8",
@@ -128,7 +129,9 @@
     "typescript": "^6.0.3",
     "vite": "^7.0.0",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/schemastery": "3.18.5"
   },
   "bugs": {
     "url": "https://github.com/yaliklinty/dsh-loop-engine-allinone/issues"
@@ -148,5 +151,10 @@
     "grok",
     "minimax",
     "acp"
-  ]
+  ],
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-invariants": {
+      "optional": true
+    }
+  }
 }

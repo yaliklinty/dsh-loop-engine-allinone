@@ -8,6 +8,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.4]
+
+### Fixed
+
+- **`0.7.3` could not be installed on DeepSeek Harness `0.2.1`.** `dsh` refuses a
+  plugin whose declared peers the running version does not satisfy, and two things
+  broke at once. The union range ended at `<0.2.1-0`, so every `0.2.1-rc.N` host fell
+  outside it; and `@deepseek-ai/dsh-invariants` — declared as a hard peer — was never
+  published for that line and is not part of the `0.2.1` runtime at all. Both are
+  fixed: the last segment is now `>=0.2.0-rc.1 <0.2.2-0` (one range covers `0.2.0` and
+  `0.2.1`, which kept the same API shape), and the invariants peer is marked
+  `optional`, which is what it always was in practice — the `./invariant` companion
+  imports it for types only and the built bundle contains no runtime import of it.
+
+### Added
+
+- **The `0.2.1` line is a supported generation**, verified end to end: an isolated
+  `.compat/021/` dependency set plus `vitest.config.compat021.ts` run the same 1,613
+  specs, `tsconfig.compat021.json` typechecks the sources against `0.2.1`'s published
+  declarations, and a real `dsh web` on `0.2.1-rc.1` installs the plugin, writes its
+  managed block once (byte-identical on reboot), publishes all ten engine presets,
+  and serves the client bundle.
+- `npm run test:compat` and `npm run compat:install` cover all four generations, and
+  `npm run typecheck:compat` is the `0.2.1`-against-isolated-declarations check.
+
+### Changed
+
+- `devDependencies` moved to the `0.2.1` line; `schemastery` to `3.18.5`,
+  `cordis` to `4.0.5`.
+- The test suite mounts the JSONL durability backend through the new
+  `tests/helpers/jsonl-persistence.ts`. `0.2.1` replaced that package's default
+  export with named `{ name, apply }` exports, so the direct default import the specs
+  used resolved to `undefined` and cordis rejected the mount with
+  `invalid plugin, expect function or object with an "apply" method`.
+
 ## [0.7.3]
 
 ### Fixed

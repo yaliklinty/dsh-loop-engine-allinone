@@ -34,7 +34,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type AgentHandle } from '@deepseek-ai/dsh-agent'
 import { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, SessionSeq, canonicalHeader, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import JsonlSessionPersistence from './helpers/jsonl-persistence.ts'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import {

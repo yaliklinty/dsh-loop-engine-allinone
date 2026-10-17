@@ -525,11 +525,11 @@ chip 与 composer 要读的标准座位成员——session scope 的 `sessionId`
 - **测试约定**：`tests/index.spec.ts` 用真实服务栈（SessionStore/SystemPrompt/AgentRegistry/Subprocess/LlmRuntime + 内存 settings provider）起真实 Cordis context；`tests/router-loop.spec.ts` 只用假的 `HostedEngineRuntime`（只记录 create/resume 并回一个句柄，`tests/router-loop.spec.ts:66-115`）钉路由决策，因为那是路由器与引擎之间的全部契约；`tests/engine-remote.spec.ts` 把两者接到一起——真实 `SessionStore` + 真实 JSONL 持久化 + 会真正折叠的投影、一条 header 记 `loop-engine-claude-code` 而日志记 `agent-preset/selected = loop-engine-pi` 的会话，断言 Remote 报 `pi` 且路由器 resume 时构建的是 Pi（这是"显示与路由不可能不一致"的回归钉）；`tests/engine-of-session.spec.ts` 单独钉三态判定与那次读取。按主题分组：路由分发 / resume 路由 / 记账 / 空白期换引擎（`:320`、`:421`、`:510`、`:583`），插件级的分组是 `apply managed block`（`tests/index.spec.ts:418`）、`apply engine presets`（`:574`）、`apply provider routes`（`:707`）、`apply engine remote`（`:830`）、`apply preset steering`（`:881`）、`apply router mount`（`:1125`）；路由器挂载的**重试窗口**单独一组在 `tests/router-mount.spec.ts:196` 起（窗口内释放后成功挂载 / 永不释放则 loud 放弃 / 卸载中途停止重试 / 非冲突错误不重试）。
 - **inject 门与「属性读取」守卫**（§3.1 的 `ROUTER_SERVICES`）：cordis 只对**未 inject 服务的属性读取**报错，`ctx.get(...)` 不受约束；而属性读取在**祖先 fiber 的 store 里能兜住**，`agent` 的 scope ctx 是 isolate 边界、兜不住 —— 所以漏一个服务会在「创建 agent 时全绿、第一轮真回合才按 `turn/end` 的 `error` reason 失败」。`tests/router-inject.spec.ts` 因此不只断言路由器自身的 ctx，而是断言**路由器创建的 agent 的 scope ctx** 能解析 `AgentLoop.inject` 的每一项，并显式比对 `ROUTER_SERVICES` 与 `AgentLoop.inject`（不硬编码服务名，harness 上游加服务会直接红）。`tests/router-turn.spec.ts` 是端到端那条：经 `apply()` 起路由器、用 `agentPreset: 'standard'` 跑完一轮 canned 模型回合，断言 `turn/end` 的 `reason.kind === 'completed'`。共享替身在 `tests/helpers/session-projections.ts`（必须真正折叠：`ReactLoopInbox.current()` 每轮回读自己的 cell）与 `tests/helpers/tool-runtime.ts`。
 
-## 8. 跨代兼容：一份产物同时服务 0.1.5 线、0.1.7 线与 0.2.0 线
+## 8. 跨代兼容：一份产物同时服务 0.1.5 线、0.1.7 线、0.2.0 线与 0.2.1 线
 
-本插件从 `0.1.7-rc1` 起，**一个发布产物**同时跑在 harness 的 **0.1.5 线**（`>=0.1.5-rc.1 <0.1.6-0`，三段 `rc` 共用同一套旧 settings API）、**0.1.7 线**（`>=0.1.7-rc.1 <0.1.8-0`）与 **0.2.0 线**（`>=0.2.0-rc.1 <0.2.1-0`）上。各线的差异不是版本号而是**API 形状**，所以在**运行期**探测、分叉，而不是发多份包。**本篇讲架构；逐文件的兼容点清单、四种跨代手法、以及"跟着 harness 升级到下一代"的操作清单在 [compatibility.md](compatibility.md)**——升级时先看那一篇。
+本插件从 `0.1.7-rc1` 起，**一个发布产物**同时跑在 harness 的 **0.1.5 线**（`>=0.1.5-rc.1 <0.1.6-0`，三段 `rc` 共用同一套旧 settings API）、**0.1.7 线**（`>=0.1.7-rc.1 <0.1.8-0`）与 **0.2.x 线**（`>=0.2.0-rc.1 <0.2.2-0`，同时覆盖 0.2.0 与 0.2.1）上。各线的差异不是版本号而是**API 形状**，所以在**运行期**探测、分叉，而不是发多份包。`0.2.1` 与 `0.2.0` **API 形状没有分叉**——只需把 peer 上界放开，外加一处影响 spec 的导出形状漂移（`compatibility.md` §1.1）——所以两者共用一段范围，而不是各自开一条线。**本篇讲架构；逐文件的兼容点清单、四种跨代手法、以及"跟着 harness 升级到下一代"的操作清单在 [compatibility.md](compatibility.md)**——升级时先看那一篇。
 
-**线的数量不是免费的**：每条线要一份隔离依赖集 + 一条 vitest 配置（`compatibility.md` §4.4 的 `.compat/0NN/`），所以"支持哪几条线"是一个要显式决定的产品选择：新线加进来、旧线在被判定为无价值之前**继续带着**。0.2.0 是一次**跨 minor**，实际需要动代码的只有浏览器半那一处（turn-status 行，§8.4 末尾）；节点半的差异全是增量。
+**线的数量不是免费的**：每条线要一份隔离依赖集 + 一条 vitest 配置（`compatibility.md` §4.4 的 `.compat/0NN/`），所以"支持哪几条线"是一个要显式决定的产品选择：新线加进来、旧线在被判定为无价值之前**继续带着**。0.2.0 是一次**跨 minor**，实际需要动代码的只有浏览器半那一处（turn-status 行，§8.4 末尾）；节点半的差异全是增量。0.2.1 是**同一条线的续版**：源码一行没改，要动的是 peer 范围与测试脚手架。
 
 ### 8.1 唯一的代际开关：`src/compat.ts`
 
@@ -565,7 +565,7 @@ export const LEGACY_HARNESS: boolean = 'SettingsProvider' in (dshSettings as obj
 
 ### 8.3 依赖声明
 
-`package.json` 的每个 `@deepseek-ai/dsh-*` peer 范围写成 `">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0"`；`@deepseek-ai/cordis` peer 放宽到 `^4.0.1`（`Volatile` 类型只在**构建期**用到，0.1.5 线的 cordis 4.0.x 运行期足够）。`devDependencies` 钉**最新那条线**（当前 `0.2.0-rc.2`）用于本仓库的类型检查与构建，另外两条线各由一份 `.compat/0NN/` 依赖集覆盖；`@deepseek-ai/schemastery` 保持 `3.18.4`（`.volatile()` 只在现代分支需要）。
+`package.json` 的每个 `@deepseek-ai/dsh-*` peer 范围写成 `">=0.1.5-rc.1 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.2-0"`。**一个例外**：`@deepseek-ai/dsh-invariants` 标成 `optional` 的 peer——它是本插件 `./invariant` companion 的**类型**依赖（产物里没有它的 import），而 `0.2.1` 的运行时**不再提供 invariants 服务**、npm 上也从未发布该线的包。写成硬性 peer 会让宿主在 0.2.1 上以 `incompatible-version` 拒绝整个安装：宿主的兼容性判定只认 `engines.dsh`，没有它就把**每个** `@deepseek-ai/dsh*` peer 拿去跑 semver，一条不满足即整包拒绝。`@deepseek-ai/cordis` peer 放宽到 `^4.0.1`（`Volatile` 类型只在**构建期**用到，0.1.5 线的 cordis 4.0.x 运行期足够）。`devDependencies` 钉**最新那条线**（当前 `0.2.1-rc.1`）用于本仓库的类型检查与构建，另外三条线各由一份 `.compat/0NN/` 依赖集覆盖；`@deepseek-ai/schemastery` 保持 `3.18.5`。
 
 ### 8.4 客户端分流
 
@@ -573,9 +573,9 @@ export const LEGACY_HARNESS: boolean = 'SettingsProvider' in (dshSettings as obj
 
 ### 8.5 验证各代
 
-- **最新线**（devDependencies，当前 0.2.0）：`pnpm run typecheck && pnpm run build && pnpm run test && pnpm run test:coverage`（覆盖率仍是 `src/**` 每文件 100%，`src/client/**` 排除）。
-- **其余各线**：`.compat/015/`（0.1.5）与 `.compat/017/`（0.1.7）各是隔离的依赖集（`pnpm install` 只写它自己的 `node_modules`），`vitest.config.compat0NN.ts` 把每个 `@deepseek-ai/*` 指向该目录，`npx vitest run --config vitest.config.compat0NN.ts` 用**同一批 spec**跑那一条线。
-- spec 侧靠 `tests/helpers/harness-generation.ts`（复刻探测 + `toolResultView` 把各代的 tool-result 读成同一份事实）与 `tests/helpers/fake-settings.ts`（假 settings 服务同时实现 `installSection` 与 `configure`/`mutate`/`describe`；`createLiveLoopConfig` 按代际把"提交默认引擎"写到正确的通道）实现"同一文件各代都过"。
+- **最新线**（devDependencies，当前 0.2.1）：`pnpm run typecheck && pnpm run build && pnpm run test && pnpm run test:coverage`（覆盖率仍是 `src/**` 每文件 100%，`src/client/**` 排除）。
+- **其余各线**：`.compat/015/`（0.1.5）、`.compat/017/`（0.1.7）、`.compat/020/`（0.2.0）、`.compat/021/`（0.2.1）各是隔离的依赖集（`pnpm install` 只写它自己的 `node_modules`），`vitest.config.compat0NN.ts` 把每个 `@deepseek-ai/*` 指向该目录，`npx vitest run --config vitest.config.compat0NN.ts` 用**同一批 spec**跑那一条线。类型表面另有一条：`npx tsc -p tsconfig.compat021.json` 对着最新的隔离声明编译。
+- spec 侧靠 `tests/helpers/harness-generation.ts`（复刻探测 + `toolResultView` 把各代的 tool-result 读成同一份事实）、`tests/helpers/jsonl-persistence.ts`（把 `dsh-session-persistence-jsonl` 读成各代都合法的 plugin：0.2.1 起它不再有 `default` 导出）与 `tests/helpers/fake-settings.ts`（假 settings 服务同时实现 `installSection` 与 `configure`/`mutate`/`describe`；`createLiveLoopConfig` 按代际把"提交默认引擎"写到正确的通道）实现"同一文件各代都过"。
 - **浏览器半只能靠真机**：它不跑在覆盖率作业里，而 spec 里的假 DOM 画的是**插件记忆中的**标记——0.2.0 把在跑的那一行换成 harness 自己的 `[data-chat-running]` 时，兼容作业全绿、假 DOM 全绿，只有真机暴露（§4.3 的 turn-status 那段）。
 
 > **覆盖率注释的边界**：只在一条代际上执行的分支（`src/index.ts` 的 legacy settings 接线、`src/router-loop.ts` 的 legacy `super` 形态、`src/driver-core/hosted-engine-runtime.ts` 的 legacy 公告、`src/settings.ts` 的 `.volatile()` 降级）在最新线的覆盖率跑里标了 `/* v8 ignore */`，其真实执行由 `vitest.config.compat015.ts` 那次运行保证——那一次不跑覆盖率，是**功能性**验证。

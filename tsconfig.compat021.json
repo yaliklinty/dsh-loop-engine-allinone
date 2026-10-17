@@ -1,0 +1,26 @@
+{
+  // Typecheck the SAME sources against the 0.2.1 harness line's published
+  // declarations. `paths` sends every harness-scope package to the isolated
+  // `.compat/021/` install, so a signature that drifted between two lines fails
+  // here instead of in a consumer's build.
+  //
+  // Bare package names map to their directory; the subpath imports the sources
+  // actually use are listed one by one, because a `@deepseek-ai/*` pattern
+  // cannot span the `/` in `dsh-session/types` — and a subpath that fails to
+  // resolve silently breaks the `declare module` augmentations of
+  // `SessionEventMap`, which then reports the plugin's own event types as
+  // unknown keys instead of the real drift.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@deepseek-ai/*": ["./.compat/021/node_modules/@deepseek-ai/*"],
+      "@deepseek-ai/dsh-session/types": ["./.compat/021/node_modules/@deepseek-ai/dsh-session/lib/types/types.d.ts"],
+      "@deepseek-ai/dsh-client-locale/client": ["./.compat/021/node_modules/@deepseek-ai/dsh-client-locale/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-conversation/client": ["./.compat/021/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-renderer/client": ["./.compat/021/node_modules/@deepseek-ai/dsh-client-ui-renderer/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-settings/client": ["./.compat/021/node_modules/@deepseek-ai/dsh-client-ui-settings/lib/types/client/index.d.ts"]
+    }
+  },
+  "include": ["src"]
+}
