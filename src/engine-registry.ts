@@ -374,6 +374,20 @@ export const ENGINE_REGISTRY = {
     loginHint: 'run `kimi` once and sign in (or `kimi login`)',
     authPaths: ['.kimi-code/credentials.json', '.kimi-code/auth.json'],
     localeKey: 'engineKimi',
+    // Read out of `~/.kimi-code/config.toml`, which the Kimi Code app writes for
+    // the signed-in account: one `[models."kimi-code/<id>"]` block per model the
+    // account is provisioned for, with the vendor's own display name. The ids are
+    // what the app passes as `model`, so they are the right vocabulary for this
+    // driver's `session/set_model`. The catalog was NOT read off the ACP surface
+    // itself, because the `kimi` CLI is not installed on the machine this was
+    // measured on (only the desktop app is) — a stale id fails loudly at the
+    // engine rather than silently falling back.
+    models: [
+      { id: 'k3', label: 'K3' },
+      { id: 'k3-256k', label: 'K3-256k' },
+      { id: 'kimi-for-coding', label: 'K2.8 Preview' },
+      { id: 'kimi-for-coding-highspeed', label: 'K2.7 Code Highspeed' },
+    ],
     capabilities: {
       streaming: true,
       protocol: 'acp',

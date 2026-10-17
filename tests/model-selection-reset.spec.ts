@@ -4,7 +4,7 @@
  *
  * The fact this pins: a session's model selection follows its ENGINE. A hosted
  * engine owns its model natively, logs its own provider label into the session's
- * `request/header` (`kimi` here), and that label is served only by this plugin's
+ * `request/header` (`hermes` here), and that label is served only by this plugin's
  * placeholder route — which fails loud (`HOSTED_ENGINE_ROUTE`) the moment a real
  * model call reaches it; so a session a hosted engine drives selects
  * `<engine>/default`. The harness loop DOES make real calls, so a session
@@ -58,9 +58,9 @@ const ENGINE_LABEL = HOSTED_ROUTE_LABEL
  * more, but a pre-existing session's header still names it — so it must be
  * recognized as a hosted route and rewritten like {@link ENGINE_LABEL}.
  */
-const LEGACY_ENGINE_LABEL = 'kimi'
+const LEGACY_ENGINE_LABEL = 'hermes'
 /** The model label that engine logs, native to it and unknown to any adapter. */
-const ENGINE_MODEL = 'kimi-code-native'
+const ENGINE_MODEL = 'hermes-native'
 /** The deployment default the host gives a session without a selection. */
 const DEFAULT_PROVIDER = 'deployment'
 const DEFAULT_MODEL = 'deployment-model'
@@ -327,7 +327,7 @@ interface HostedSession {
 async function createHostedSession(app: App, sessionId: string): Promise<HostedSession> {
   const handle = await app.ctx.agents.create({
     sessionId: SessionId(sessionId),
-    meta: { agentPreset: enginePresetId('kimi') },
+    meta: { agentPreset: enginePresetId('hermes') },
   })
   const session = app.ctx.sessions.get(SessionId(sessionId))
   if (session === undefined) throw new Error(`session "${sessionId}" was not entered by its engine`)
@@ -338,7 +338,7 @@ async function createHostedSession(app: App, sessionId: string): Promise<HostedS
  * Log the request header the session's engine writes for it.
  *
  * The engine writes this header on the first step of its first turn
- * (`src/engine-kimi/agent.ts` `assertRequestHeader`), so a session that has not
+ * (`src/driver-acp/agent.ts` `assertRequestHeader`), so a session that has not
  * run one carries none — logging it here is the fixture's stand-in for that
  * turn, and it is the exact event the host derives a session's model selection
  * from.
@@ -360,16 +360,16 @@ function selections(session: Session): SessionEvent<'model/selection'>[] {
 describe('a session switched back onto the harness loop', () => {
   it('restores the deployment default instead of the engine label it was selecting', async () => {
     const app = await boot({ defaultModel: deploymentDefault('high') })
-    const { handle, session } = await createHostedSession(app, 'kimi-session')
+    const { handle, session } = await createHostedSession(app, 'hermes-session')
     logEngineHeader(session)
 
-    const result = await select(app, 'kimi-session', 'in-process')
+    const result = await select(app, 'hermes-session', 'in-process')
 
     // The engine change lands the same way every switch involving the harness
     // loop does: the agent is released and the page told to reload, so the
     // session's next build is what runs in-process.
     expect(result).toEqual({ ok: true, engine: 'in-process', reload: true })
-    expect(app.ctx.agents.get(SessionId('kimi-session'))).toBeUndefined()
+    expect(app.ctx.agents.get(SessionId('hermes-session'))).toBeUndefined()
     // Two writes: the seat the session was CREATED with, then the one this
     // switch hands the harness loop. The last is what the host's next build
     // installs.
@@ -422,14 +422,14 @@ describe('a session switched back onto the harness loop', () => {
 
   it('writes the deployment default for a session whose engine never logged a header', async () => {
     const app = await boot()
-    const { handle, session } = await createHostedSession(app, 'kimi-blank')
+    const { handle, session } = await createHostedSession(app, 'hermes-blank')
     // A session switched before its engine ever made a request: the only
     // selection in this log is the seat the session was CREATED with, which the
     // harness loop cannot use — the label is served only by this plugin's
     // placeholder route.
     expect(session.requestHeader()).toBeUndefined()
 
-    await select(app, 'kimi-blank', 'in-process')
+    await select(app, 'hermes-blank', 'in-process')
 
     expect(selections(session).map(event => event.data)).toEqual([
       { provider: ENGINE_LABEL, model: HOSTED_DEFAULT_MODEL },
@@ -470,8 +470,8 @@ describe('a new session on a hosted engine', () => {
     const app = await boot()
     const installed: unknown[] = []
     const handle = await app.ctx.agents.create({
-      sessionId: SessionId('kimi-new'),
-      meta: { agentPreset: enginePresetId('kimi') },
+      sessionId: SessionId('hermes-new'),
+      meta: { agentPreset: enginePresetId('hermes') },
       // The host's own composition installs the session's model selection from
       // inside setup (`ApiSessionAgentController.composeAgent` →
       // `installSelection` → `selectionFor`), and that read takes the log's
@@ -479,7 +479,7 @@ describe('a new session on a hosted engine', () => {
       // nothing, and what the installer sees here is what the agent starts on.
       setup: (_agentCtx: Context, agent: Agent) => { installed.push(pendingSelection(app, agent.session)) },
     })
-    const session = app.ctx.sessions.get(SessionId('kimi-new'))!
+    const session = app.ctx.sessions.get(SessionId('hermes-new'))!
 
     // The seat the engine owns, in the log and in the installer's hands alike.
     const seat = { provider: ENGINE_LABEL, model: HOSTED_DEFAULT_MODEL }
@@ -500,7 +500,7 @@ describe('a new session on a hosted engine', () => {
     // makes that explicit pick wrong, so the build writes no second seat.
     const handle = await app.ctx.agents.create({
       sessionId: SessionId('kimi-seeded'),
-      meta: { agentPreset: enginePresetId('kimi') },
+      meta: { agentPreset: enginePresetId('hermes') },
       seed: [{
         type: 'model/selection',
         seq: SessionSeq(0),
@@ -600,13 +600,13 @@ describe('a session switched between hosted engines', () => {
 
   it('does not write a second seat when the session already selects the engine it picks', async () => {
     const app = await boot()
-    const { handle, session } = await createHostedSession(app, 'kimi-again')
+    const { handle, session } = await createHostedSession(app, 'hermes-again')
 
     // Picking the engine the session already runs is recorded and left running,
     // and the seat it already carries is not appended a second time.
-    const result = await select(app, 'kimi-again', 'kimi')
+    const result = await select(app, 'hermes-again', 'hermes')
 
-    expect(result).toEqual({ ok: true, engine: 'kimi' })
+    expect(result).toEqual({ ok: true, engine: 'hermes' })
     expect(selections(session).map(event => event.data))
       .toEqual([{ provider: ENGINE_LABEL, model: HOSTED_DEFAULT_MODEL }])
     expect(resetWarnings(app)).toEqual([])
@@ -668,7 +668,7 @@ describe('a session whose log selects a legacy per-engine provider label', () =>
     // `kimi` rather than `codex`: an engine that declares a model catalog gets a
     // route of its OWN (so codex no longer demonstrates the shared route), while
     // kimi keeps the shared `external` label.
-    expect(reset.resetFor(session, 'kimi')).toBe(true)
+    expect(reset.resetFor(session, 'hermes')).toBe(true)
     expect(selections(session).map(event => event.data))
       .toEqual([{ provider: ENGINE_LABEL, model: HOSTED_DEFAULT_MODEL }])
   })

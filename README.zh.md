@@ -23,7 +23,7 @@
 | **接入新引擎** | 需修改 5 个文件 | **1 行注册表 + 1 个驱动实现** |
 | **ACP 协议支持** | 仅 1 款（Kimi） | **3 款**（Kimi / Grok / MiniMax）共享一套标准化 ACP 驱动骨架 |
 | **外部 CLI 适配** | 零散处理 | 标准化 `driver-cli/` 与 `driver-acp/` 运行时 |
-| **订阅模型选择** | 仅全局 default | **支持各引擎专属订阅模型列表**（Antigravity、Grok、MiniMax 等） |
+| **订阅模型选择** | 仅全局 default | **支持各引擎专属订阅模型列表**（Antigravity、Codex、Kimi、Grok、MiniMax） |
 | **UI 视觉与标识** | 基础显示 | **10 款引擎均具备专属图标与状态栏色彩字形** |
 
 ---
@@ -74,7 +74,7 @@ dsh web
 | **Claude Code** | 捆绑 SDK / `ndjson` | 安装 Claude Code CLI 并登录（或使用 SDK 内置二进制） | 共享 `external` |
 | **Codex** | 捆绑二进制 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` | GPT-5.x Codex 系列 |
 | **Pi** | 捆绑二进制 / `jsonrpc` | 配置 `~/.pi/agent/auth.json` 或对应 API Key | 共享 `external` |
-| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | 共享 `external` |
+| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | K3 / K2.8 / K2.7 系列 |
 | **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 | 支持 Gemini / Claude 深度思考模型 |
 | **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI 并开通 GLM Coding Plan 订阅 | 共享 `external` |
 | **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 | 共享 `external` |
@@ -134,8 +134,10 @@ dsh web
   - *注意*：正在执行推理的会话不可切换，必须在会话空闲时进行。
 - **状态徽标**：会话标题栏会实时显示当前正在驱动该会话的引擎图标与名称，可通过设置开关控制显隐。
 - **模型与订阅选择**：
-  - 声明了独立型号目录的引擎（如 **Antigravity**、**Grok Build**、**MiniMax Code**）会在模型列表中呈现其专属订阅模型，供用户灵活挑选。
-  - 其余托管引擎统一归类至 `external` 分组。
+  - 声明了独立型号目录的引擎（**Antigravity**、**Codex**、**Kimi Code**、**Grok Build**、**MiniMax Code**）会在模型列表中呈现其专属订阅模型，选中即把该 id 交给引擎。
+  - **Pi** 与 **ZCode** 故意没有声明型号表。Pi 的型号表是**运行时刷新**的（`pi update --models` 从各 provider 拉取），写死必然过期；ZCode 的型号表读不到，因为它的 GLM Coding Plan 套餐已到期——过期账号列不出自己能用什么。
+  - 其余托管引擎统一归类至 `external` 分组，组内只有一条 `default`，含义是「交给引擎自己决定」。**这不是功能限制**：它只是菜单把「本版本还没实测过型号的引擎」折叠在一起；在注册表里加一行 `models`，该引擎立刻就有自己的分组。
+  - 也可以选一个**真实的 dsh 模型**：插件会把该模型的端点与凭据一并交给引擎。引擎能不能用是引擎的事，被拒会如实报错而不是悄悄吞掉。
   - 原生命令（`/export`、`/feedback`、`/permission`）及自动压缩机制完全可用。
 
 ---

@@ -25,7 +25,7 @@ Sessions are fully independent: run Codex in one chat while another runs Kimi Co
 | **Adding New Engines** | Modify 5 separate files | **1 registry row + 1 driver** |
 | **ACP Protocol** | 1 engine (Kimi) | **3 engines** (Kimi, Grok, MiniMax) on a shared ACP skeleton |
 | **CLI Drivers** | Ad-hoc implementations | Standardized `driver-cli/` & `driver-acp/` runtimes |
-| **Model Selection** | Global default only | **Per-engine subscription catalogs** (Antigravity, Codex, Grok, MiniMax) |
+| **Model Selection** | Global default only | **Per-engine subscription catalogs** (Antigravity, Codex, Kimi, Grok, MiniMax) |
 | **UI Integration** | Standard labels | **Custom branded marks & status badges** for all 10 engines |
 
 ---
@@ -75,7 +75,7 @@ unable to run any engine.
 | **Claude Code** | Bundled SDK / `ndjson` | Claude CLI installed and logged in (or bundled binary via SDK) | Shared `external` |
 | **Codex** | Bundled / `jsonrpc` | `codex login` or `CODEX_API_KEY` | GPT-5.x Codex family |
 | **Pi** | Bundled / `jsonrpc` | `~/.pi/agent/auth.json` or provider API key | Shared `external` |
-| **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) | Shared `external` |
+| **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) | K3 / K2.8 / K2.7 series |
 | **Antigravity** | External CLI / `ndjson` | `agy` CLI installed and authenticated via Google | Gemini & Claude thinking models |
 | **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed with active GLM Coding Plan | Shared `external` |
 | **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated | Shared `external` |
@@ -135,7 +135,8 @@ Custom settings can be configured under your profile's composition entry:
   - *Note*: Engine switching is permitted only when the current session is idle.
 - **Header Badge**: Shows the engine actively powering the current session. Can be toggled via *Show the engine badge in the conversation header*.
 - **Model Selection**:
-  - Engines with dedicated catalogs (**Antigravity**, **Codex**, **Grok Build**, **MiniMax Code**) display their subscription-included models in the model picker, and picking one passes that id to the engine.
+  - Engines with dedicated catalogs (**Antigravity**, **Codex**, **Kimi Code**, **Grok Build**, **MiniMax Code**) display their subscription-included models in the model picker, and picking one passes that id to the engine.
+  - **Pi** and **ZCode** deliberately have no declared catalog. Pi refreshes its model list at runtime (`pi update --models`) from each provider, so any list shipped here would be stale by design. ZCode's catalog could not be read because its GLM Coding Plan subscription has lapsed — an expired account cannot enumerate what it may use.
   - Other hosted engines share one `external` group holding a single `default`, which means "let the engine decide". A shared group is not a limitation on what you can run — it is the menu collapsing engines whose catalogs this build has not measured. Declaring a catalog (one `models` row in the registry) gives an engine its own group.
   - Picking a **real dsh model** instead hands the engine that model's endpoint and credential as well; whether the engine can serve it is the engine's business, and a refusal is reported rather than swallowed.
   - Native dsh commands (`/export`, `/feedback`, `/permission`) and context auto-compaction remain fully functional.
