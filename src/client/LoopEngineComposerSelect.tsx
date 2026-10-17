@@ -216,6 +216,9 @@ export function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
   return (
     <svg width={size} height={size} viewBox={mark.viewBox} fill="none" aria-hidden>
       <path fill="currentColor" fillRule={mark.fillRule ?? 'nonzero'} d={mark.d} />
+      {/* A two-tone brand mark (Kimi's blue dot) paints its accent in its own
+          colour; everything else follows the surface's text colour. */}
+      {mark.accent === undefined ? null : <path fill={mark.accent.fill} d={mark.accent.d} />}
     </svg>
   )
 }

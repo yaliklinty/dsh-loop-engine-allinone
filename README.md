@@ -16,13 +16,18 @@ Pick **dsh web**'s agent loop engine **per session** — the built-in `in-proces
 Every engine has its own mark in the engine picker and its own colour + glyph on
 the chat's turn-status row; **only `in-process` carries the DeepSeek fish**.
 
-The four original engines carry their vendors' published vector paths. The four
-added by this fork are **traced or measured from the vendors' own artwork found on
-this machine** — Antigravity's arch, ZCode's knocked-out `Z` (written out from
-measured spans, because its straight edges defeat a raster trace), Qoder's green
-disc with the white crescent between its two forms, and Hermes' silhouette. Marks
-live in [`src/client/engine-marks.ts`](src/client/engine-marks.ts) as data rather
-than JSX, so a test can assert that every registered engine has one.
+The three engines this fork added as external CLIs are **traced or measured from
+the vendors' own artwork found on this machine** — Antigravity's arch, ZCode's
+knocked-out `Z` (written out from measured spans, because its straight edges
+defeat a raster trace), and Qoder's green disc with the white crescent between its
+two forms. Kimi's mark was rebuilt from its app tile: a bold `K` plus the brand's
+blue dot, which rides an `accent` subpath because one path can only be filled one
+way.
+
+Hermes is the exception worth knowing about: that vendor's mark is a detailed
+character portrait rather than a glyph, so its mark is the portrait's own line art.
+Marks live in [`src/client/engine-marks.ts`](src/client/engine-marks.ts) as data
+rather than JSX, so a test can assert that every registered engine has one.
 
 Both tables are exhaustive over the hosted roster and pinned by tests — the
 failure this prevents is real: when four engines were first added, every one of

@@ -56,6 +56,21 @@ describe('ENGINE_MARKS', () => {
       expect([undefined, 'nonzero', 'evenodd'], engine).toContain(ENGINE_MARKS[engine].fillRule)
     }
   })
+
+  it('keeps an accent subpath drawable and colour-carrying, where one exists', () => {
+    // Kimi's brand mark is two-tone: a white "K" with a blue dot. The dot rides
+    // an accent path because one `d` can only be filled one way.
+    for (const engine of HOSTED_ENGINE_IDS) {
+      const accent = ENGINE_MARKS[engine].accent
+      if (accent === undefined) continue
+      expect(accent.d.startsWith('M'), engine).toBe(true)
+      expect(accent.d.length, engine).toBeGreaterThan(20)
+      expect(accent.fill, engine).toMatch(/^#[0-9a-f]{6}$/i)
+      // The accent must not be a copy of the main path, or it would just hide it.
+      expect(accent.d, engine).not.toBe(ENGINE_MARKS[engine].d)
+    }
+    expect(ENGINE_MARKS.kimi.accent?.fill.toUpperCase()).toBe('#1D7FFB')
+  })
 })
 
 describe('the composer’s mark renderer', () => {
