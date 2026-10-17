@@ -5,7 +5,7 @@
  * session here on the plugin's own engine record, else its recorded agent
  * preset; this module is a library, not a Cordis plugin entry.
  *
- * @module dsh-loop-engine/engine-claude
+ * @module dsh-loop-engine-allinone/engine-claude
  */
 
 import type { Context } from '@deepseek-ai/cordis'

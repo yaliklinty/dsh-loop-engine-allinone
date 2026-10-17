@@ -13,7 +13,7 @@
  * authoritative transcript from its own protocol, and this class only frames
  * the attempt and compacts its stream for replay fidelity.
  *
- * @module dsh-loop-engine/driver-core/assistant-stream
+ * @module dsh-loop-engine-allinone/driver-core/assistant-stream
  */
 
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'

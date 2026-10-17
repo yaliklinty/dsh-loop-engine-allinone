@@ -35,7 +35,7 @@
  *
  * Styling is token-driven inline styles like the settings section (the
  * client-module bundle is esbuild-built without a CSS loader).
- * @module dsh-loop-engine/client/badge
+ * @module dsh-loop-engine-allinone/client/badge
  */
 
 import type { CSSProperties, JSX } from 'react'

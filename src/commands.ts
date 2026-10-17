@@ -25,7 +25,7 @@
  * `isn't available in this environment` outside the interactive TUI; that
  * report is the engine's own answer and travels back as an assistant message.
  *
- * @module dsh-loop-engine/commands
+ * @module dsh-loop-engine-allinone/commands
  */
 
 import { readdirSync, readFileSync } from 'node:fs'

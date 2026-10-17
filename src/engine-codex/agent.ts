@@ -13,7 +13,7 @@
  * seam (`agent/requestPermission` → `ctx.approval`), while the thread still
  * starts with a declarative `sandboxMode`/`approvalPolicy` stance.
  *
- * @module dsh-loop-engine/engine-codex/agent
+ * @module dsh-loop-engine-allinone/engine-codex/agent
  */
 
 import type {

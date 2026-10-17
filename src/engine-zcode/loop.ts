@@ -8,7 +8,7 @@
  * See `./process.ts` for why this driver uses ZCode's one-shot print surface
  * rather than its JSON-RPC app-server, and what was and was not verified.
  *
- * @module dsh-loop-engine/engine-zcode
+ * @module dsh-loop-engine-allinone/engine-zcode
  */
 
 import type { Context } from '@deepseek-ai/cordis'

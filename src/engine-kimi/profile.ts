@@ -11,7 +11,7 @@
  * imports no host service: `scripts/probe/smoke-acp.ts` exercises THIS profile
  * (argv, protocol version, model selection, handover) against the real CLI.
  *
- * @module dsh-loop-engine/engine-kimi/profile
+ * @module dsh-loop-engine-allinone/engine-kimi/profile
  */
 
 import type { AcpEngineProfile } from '../driver-acp/profile.ts'

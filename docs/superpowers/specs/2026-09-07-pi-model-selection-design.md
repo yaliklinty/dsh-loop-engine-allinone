@@ -4,7 +4,7 @@
 
 **目标**：让运行在 Pi loop engine 上的会话，能通过 dsh 原生的 `/model` 弹层与 composer 模型位切换 Pi 的推理模型，且该选择真实驱动 Pi 子进程的 `--model`。
 
-改动全部收在 `dsh-loop-engine` 插件内（`src/provider-route.ts` + `src/engine-pi/`），**不修改主仓 harness**。
+改动全部收在 `dsh-loop-engine-allinone` 插件内（`src/provider-route.ts` + `src/engine-pi/`），**不修改主仓 harness**。
 
 ## 背景与问题
 

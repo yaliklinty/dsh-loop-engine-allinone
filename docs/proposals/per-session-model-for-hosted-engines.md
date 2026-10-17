@@ -2,7 +2,7 @@
 
 > **目标**：在 dsh web 里给某条会话选一个模型（`/model` 弹层或 composer 模型位），让这条会话的**托管引擎真的用那个模型**，而不是由引擎自己的原生配置决定。
 >
-> **范围**：改动主体在 `dsh-loop-engine`（`src/provider-route.ts`、`src/driver-core/`、四个 `src/engine-*/`、`src/model-selection-reset.ts`、`src/client/`）；另有一处**建议的主仓改动**（`session.selectModel` 的默认值持久化），单独列在 §8。
+> **范围**：改动主体在 `dsh-loop-engine-allinone`（`src/provider-route.ts`、`src/driver-core/`、四个 `src/engine-*/`、`src/model-selection-reset.ts`、`src/client/`）；另有一处**建议的主仓改动**（`session.selectModel` 的默认值持久化），单独列在 §8。
 >
 > **与本目录既有提案的关系**：`model-selection-disable.md` 的诉求是"托管引擎下**隐藏**模型选择器"。本提案针对同一问题给出**相反方向的解**：能枚举出模型清单的引擎让它**生效**，枚举不出来的才保持"原生决定 + UI 说明"。该提案 §"建议改动"的第 1 条（引擎能力标志 `consumesModelSelection`）与本提案 §5.5 的"按引擎的 UI 说明"是同一件事，本提案给出了它的判据，因此两篇不矛盾。
 
@@ -30,7 +30,7 @@
 1. §5.1 那个"可注入 `listModels` 的接缝"**已被删除**（方案 A 让 `HostedEngineRouteAdapter` 固定返回一条 `default`，且四个引擎共用一个 `external` 标签：`src/provider-route.ts`）。真目录必须重新引入一个**引擎中立**的清单来源（按引擎的 holder / provider），并且**必须同时决定那条 `default` 条目去留**——它今天正是"引擎原生默认"在菜单里的名字，而真目录出现后它要么保留为"引擎决定的默认"、要么换成真模型条目。
 2. 四个驱动的 `modelLabel()` **今天写死 `default`**。要让 dsh 的选择驱动引擎，`request/header` 必须改记"本步实际交给引擎的模型"（§5.4 的收益仍在），并让引擎的 `spawnSpec` / thread params / ACP `set_model` 读会话选择（§5.3）。
 
-**行号基准**：本仓库 `dsh-loop-engine` 自身检出；主仓引用写作 `packages/...`，对照同级 `../deepseek-harness` 检出（harness `0.1.5-rc.2`）。§4 的行号是撰写时实测；§0 的行号在 0.1.5-rc3 实装时重新核对过，**§4–§12 里其余引用的行号按那时的代码写，方案 B 落地时需重新核对**。
+**行号基准**：本仓库 `dsh-loop-engine-allinone` 自身检出；主仓引用写作 `packages/...`，对照同级 `../deepseek-harness` 检出（harness `0.1.5-rc.2`）。§4 的行号是撰写时实测；§0 的行号在 0.1.5-rc3 实装时重新核对过，**§4–§12 里其余引用的行号按那时的代码写，方案 B 落地时需重新核对**。
 
 
 ## 1. 结论速览
@@ -293,7 +293,7 @@ servesModelCalls(): boolean   // 默认 true；占位路由返回 false
 | client 文案按引擎分流（locales + 两处渲染点 + spec） | 0.5 天 |
 | 文档：`architecture.md` §3.6/§3.7、四篇 `engine-*.md`、`docs/per-session-engine.md` §5.2、本提案的落地状态 | 0.5 天 |
 
-合计约 **6–7 天**，其中相当一部分是测试——本仓库 `pnpm run test:coverage` 对 `src/**` 是**逐文件 100%**（`src/client` 除外；见容器根 `../AGENTS.md` 的 dsh-loop-engine 一节），每个引擎都要补"有选择/无选择/目录未就绪/目录不命中/provider 不匹配"几条路径。
+合计约 **6–7 天**，其中相当一部分是测试——本仓库 `pnpm run test:coverage` 对 `src/**` 是**逐文件 100%**（`src/client` 除外；见容器根 `../AGENTS.md` 的 dsh-loop-engine-allinone 一节），每个引擎都要补"有选择/无选择/目录未就绪/目录不命中/provider 不匹配"几条路径。
 
 ## 10. 测试与验收要点
 

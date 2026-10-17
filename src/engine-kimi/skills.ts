@@ -27,7 +27,7 @@
  * The discovery algorithm itself lives in {@link AgentsMdSkillProvider}; this
  * module supplies only Kimi's locations and ranks.
  *
- * @module dsh-loop-engine/engine-kimi/skills
+ * @module dsh-loop-engine-allinone/engine-kimi/skills
  */
 
 import { homedir } from 'node:os'

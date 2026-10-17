@@ -44,7 +44,7 @@
  *    dsh sandbox knob is mapped to exactly that one flag (see
  *    {@link agyDangerouslySkipPermissions}).
  *
- * @module dsh-loop-engine/engine-agy/process
+ * @module dsh-loop-engine-allinone/engine-agy/process
  */
 
 import { existsSync } from 'node:fs'

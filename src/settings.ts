@@ -20,7 +20,7 @@
  * Which family a running plugin builds is decided by `./compat.ts`
  * (`LEGACY_HARNESS`) in `./index.ts`.
  *
- * @module dsh-loop-engine/settings
+ * @module dsh-loop-engine-allinone/settings
  */
 
 import z from '@deepseek-ai/schemastery'

@@ -8,7 +8,7 @@
  * exercise a real dialect against a real CLI in a process that has no dsh
  * composition at all.
  *
- * @module dsh-loop-engine/driver-acp/subprocess
+ * @module dsh-loop-engine-allinone/driver-acp/subprocess
  */
 
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'

@@ -13,7 +13,7 @@
  * module supplies only Codex's locations and ranks — and, having no skills
  * catalog, no `skills` entry.
  *
- * @module dsh-loop-engine/engine-codex/skills
+ * @module dsh-loop-engine-allinone/engine-codex/skills
  */
 
 import { homedir } from 'node:os'

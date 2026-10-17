@@ -27,7 +27,7 @@
  * `command-goal` row (`src/preset.ts`, `STRIPPED_ROWS`) — so the command is
  * simply not part of their menu.
  *
- * @module dsh-loop-engine/engine-kimi/commands
+ * @module dsh-loop-engine-allinone/engine-kimi/commands
  */
 
 import { createUserMessage } from '@deepseek-ai/dsh-llm'

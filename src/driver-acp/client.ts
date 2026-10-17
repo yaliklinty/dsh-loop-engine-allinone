@@ -25,7 +25,7 @@
  *   - the engine's name in diagnostics, which travels as `label` so a message
  *     from a `grok agent stdio` child never says "kimi".
  *
- * @module dsh-loop-engine/driver-acp/client
+ * @module dsh-loop-engine-allinone/driver-acp/client
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -276,7 +276,7 @@ export class AcpClient {
     return this.request('initialize', {
       protocolVersion: this.protocolVersion,
       clientCapabilities: this.clientCapabilities(),
-      clientInfo: { name: 'dsh-loop-engine', version: '1.0.0' },
+      clientInfo: { name: 'dsh-loop-engine-allinone', version: '1.0.0' },
     })
   }
 

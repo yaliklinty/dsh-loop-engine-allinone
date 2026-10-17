@@ -2,12 +2,12 @@ MIT License
 
 Copyright (c) 2026 kuun993 (original author, https://github.com/kuun993/dsh-loop-engine)
 
-Copyright (c) 2026 dsh-loop-engine fork contributors
+Copyright (c) 2026 dsh-loop-engine-allinone fork contributors
 
 This project is a FORK of https://github.com/kuun993/dsh-loop-engine. The
 original work is MIT-licensed and its copyright notice is preserved above. The
 fork adds a data-driven engine registry, a pluggable external-CLI driver layer,
-and four additional engine drivers; those modifications are licensed under the
+and six additional engine drivers plus a shared ACP driver skeleton; those modifications are licensed under the
 same terms.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

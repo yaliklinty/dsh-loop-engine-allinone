@@ -14,7 +14,7 @@
  * dsh's own `skill-filesystem` provider already serves them through the same
  * registry in the web profile.
  *
- * @module dsh-loop-engine/driver-core/agents-md-skill-provider
+ * @module dsh-loop-engine-allinone/driver-core/agents-md-skill-provider
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises'

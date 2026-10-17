@@ -6,9 +6,9 @@
 
 **Goal:** 让运行在 Pi loop engine 上的会话，能通过 dsh 原生 `/model` 弹层与 composer 模型位切换 Pi 的推理模型，且该选择真实驱动 Pi 子进程的 `--model`。
 
-**Architecture:** 挂载 Pi 引擎时 spawn `pi --list-models` 探针并缓存模型清单；把该清单注入 Pi 的 provider 路由占位 adapter 使 `/model` 目录显示 Pi 模型；PiAgent 在 `spawnSpec()` 读会话日志最新的 `model/selection` 事件覆写 `config.model`，argv 变化触发 RPC 子进程 respawn。改动全部在 dsh-loop-engine 内，不碰主仓 harness。
+**Architecture:** 挂载 Pi 引擎时 spawn `pi --list-models` 探针并缓存模型清单；把该清单注入 Pi 的 provider 路由占位 adapter 使 `/model` 目录显示 Pi 模型；PiAgent 在 `spawnSpec()` 读会话日志最新的 `model/selection` 事件覆写 `config.model`，argv 变化触发 RPC 子进程 respawn。改动全部在 dsh-loop-engine-allinone 内，不碰主仓 harness。
 
-**Tech Stack:** TypeScript, Vitest, Cordis 插件 (dsh-loop-engine), 子进程 spawn `pi --list-models`, 会话日志事件读取。
+**Tech Stack:** TypeScript, Vitest, Cordis 插件 (dsh-loop-engine-allinone), 子进程 spawn `pi --list-models`, 会话日志事件读取。
 
 ## Global Constraints
 

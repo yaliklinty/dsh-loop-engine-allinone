@@ -9,7 +9,7 @@
  * boundary is the dsh subprocess sandbox the whole child is spawned under
  * (default read-only).
  *
- * @module dsh-loop-engine/engine-hermes
+ * @module dsh-loop-engine-allinone/engine-hermes
  */
 
 import type { Context } from '@deepseek-ai/cordis'

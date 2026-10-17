@@ -17,7 +17,7 @@
  * cost is process startup per step, which is what `capabilities.sessionResume`
  * describes rather than hides.
  *
- * @module dsh-loop-engine/engine-qoderclicn/agent
+ * @module dsh-loop-engine-allinone/engine-qoderclicn/agent
  */
 
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'

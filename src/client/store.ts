@@ -4,7 +4,7 @@
  * abstracted so one store follows either generation's client service — the
  * 0.1.7 `ConfigForm` for the plugin's own profile entry, or the 0.1.5
  * `SettingsScope` for its `agent-loop-engine` settings section.
- * @module dsh-loop-engine/client/store
+ * @module dsh-loop-engine-allinone/client/store
  */
 
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'

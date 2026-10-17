@@ -60,7 +60,7 @@
  * status is not success is reported as a failure carrying the CLI's own words,
  * because a failed run must never read as an empty answer.
  *
- * @module dsh-loop-engine/engine-agy/frames
+ * @module dsh-loop-engine-allinone/engine-agy/frames
  */
 
 import type { CliFrame } from '../driver-cli/frames.ts'

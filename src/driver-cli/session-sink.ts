@@ -29,7 +29,7 @@
  * inbox, the prompt, and the protocol. Those stay in the driver, because they
  * are where engines actually differ.
  *
- * @module dsh-loop-engine/driver-cli/session-sink
+ * @module dsh-loop-engine-allinone/driver-cli/session-sink
  */
 
 import type { AgentEventDispatch } from '@deepseek-ai/dsh-agent'

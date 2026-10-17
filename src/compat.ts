@@ -13,7 +13,7 @@
  * profile actually provides. It is host-side only: the browser bundle must not
  * import host packages, so `src/client/*` never imports this module.
  *
- * @module dsh-loop-engine/compat
+ * @module dsh-loop-engine-allinone/compat
  */
 
 import * as dshSettings from '@deepseek-ai/dsh-settings'

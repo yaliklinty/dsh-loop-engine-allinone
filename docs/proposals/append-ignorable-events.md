@@ -6,7 +6,7 @@
 
 ## 动机
 
-`dsh-loop-engine`（仓外插件，<https://github.com/kuun993/dsh-loop-engine>）需要持久记录一条逐会话事实：**这个会话跑的是哪个 agent loop 引擎**。该插件托管多个引擎（`claude-code`、`codex`、`pi`、`kimi`）作为内置进程内 loop 的替代，而同一个部署要服务跑着不同引擎的多个会话。
+`dsh-loop-engine-allinone`（仓外插件，<https://github.com/kuun993/dsh-loop-engine>）需要持久记录一条逐会话事实：**这个会话跑的是哪个 agent loop 引擎**。该插件托管多个引擎（`claude-code`、`codex`、`pi`、`kimi`）作为内置进程内 loop 的替代，而同一个部署要服务跑着不同引擎的多个会话。
 
 会话日志是这条事实的正确归宿，也是 harness 自身的卫生规范唯一留下的口子："Model-visible ⟺ logged"（`AGENTS.md:111`）——任何进入请求的内容都必须能从日志重建。插件自有的旁路存储（side store）会成为会话已经拥有的东西的第二份真相来源：对每一个日志读者（会话列表、fork、压缩、会话日志上传）都不可见，还自带迁移与垃圾回收问题。
 
@@ -47,7 +47,7 @@ if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable !== true) {
 
 **4. 编译期词表已经接纳插件自有类型；持久词表没有。**
 
-`SessionEventType = keyof SessionEventMap`（`types.ts:404`），建立在 "merge-extensible, append-only source of truth" 之上（`types.ts:263-269`），所以插件可以用模块增强（module augmentation）声明自己的事件——`dsh-loop-engine` 已经为一个一方类型这么做了（`src/driver-core/hosted-tool-vocabulary.ts:52-56`），`session-log-deepseek` 也为自己的类型这么做（`packages/session/session-log-deepseek/src/types.ts:78-89`）。于是插件一旦声明 `loop-engine/engine-selected`，`session.append('loop-engine/engine-selected', { engine: 'pi' })` 在它自己的编译中就通过类型检查，而 harness 的持久记录闸门永远不知道这个名字。这种不对称——类型系统接受该事件，持久化读路径拒绝这份日志——就是全部问题。
+`SessionEventType = keyof SessionEventMap`（`types.ts:404`），建立在 "merge-extensible, append-only source of truth" 之上（`types.ts:263-269`），所以插件可以用模块增强（module augmentation）声明自己的事件——`dsh-loop-engine-allinone` 已经为一个一方类型这么做了（`src/driver-core/hosted-tool-vocabulary.ts:52-56`），`session-log-deepseek` 也为自己的类型这么做（`packages/session/session-log-deepseek/src/types.ts:78-89`）。于是插件一旦声明 `loop-engine/engine-selected`，`session.append('loop-engine/engine-selected', { engine: 'pi' })` 在它自己的编译中就通过类型检查，而 harness 的持久记录闸门永远不知道这个名字。这种不对称——类型系统接受该事件，持久化读路径拒绝这份日志——就是全部问题。
 
 **5. 实测后果。**
 
@@ -128,4 +128,4 @@ append<T extends SessionEventType>(
 
 ## 落地后插件会有什么变化
 
-`dsh-loop-engine` 把逐会话引擎事实搬回会话日志：一条会话的引擎被选定或改变时，路由器追加 `loop-engine/engine-selected`（`{ engine: 'claude-code' | 'codex' | 'pi' | 'kimi' | 'in-process' }`），并通过日志读回它，而不是从 `agentPreset` 字符串或侧车推导答案。引擎于是不再是 agent preset 的函数，跑过一轮的会话可以在不触发 `agent-preset/locked` 拒绝的情况下换引擎（`packages/preset/agent-presets/src/index.ts:714-721`）——preset 保留自己的含义（组成与命令面），引擎变成一条独立记录的事实。迁移期的读取顺序是：日志里的记录 → 侧车（改动前写入的会话，`src/session-engine-store.ts:147-217`）→ 由 preset 推导的答案（`src/engine-of-session.ts:71-85`，这条兜底同时负责把"未记录"如实报成 legacy 而不是猜测）。侧车只服务迁移期的老会话，可以在后续版本里退役。
+`dsh-loop-engine-allinone` 把逐会话引擎事实搬回会话日志：一条会话的引擎被选定或改变时，路由器追加 `loop-engine/engine-selected`（`{ engine: 'claude-code' | 'codex' | 'pi' | 'kimi' | 'in-process' }`），并通过日志读回它，而不是从 `agentPreset` 字符串或侧车推导答案。引擎于是不再是 agent preset 的函数，跑过一轮的会话可以在不触发 `agent-preset/locked` 拒绝的情况下换引擎（`packages/preset/agent-presets/src/index.ts:714-721`）——preset 保留自己的含义（组成与命令面），引擎变成一条独立记录的事实。迁移期的读取顺序是：日志里的记录 → 侧车（改动前写入的会话，`src/session-engine-store.ts:147-217`）→ 由 preset 推导的答案（`src/engine-of-session.ts:71-85`，这条兜底同时负责把"未记录"如实报成 legacy 而不是猜测）。侧车只服务迁移期的老会话，可以在后续版本里退役。

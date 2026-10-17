@@ -12,7 +12,7 @@
  * engines arrive at the same gate; an engine whose own permission switch already
  * bounds the tool can still override the fold through its profile's `approve`.
  *
- * @module dsh-loop-engine/driver-acp/approval
+ * @module dsh-loop-engine-allinone/driver-acp/approval
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'

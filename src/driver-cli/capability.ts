@@ -13,7 +13,7 @@
  * the user's next action named, not a silent drop. Dropping an image and sending
  * the text alone would look to the user like the engine read the picture.
  *
- * @module dsh-loop-engine/driver-cli/capability
+ * @module dsh-loop-engine-allinone/driver-cli/capability
  */
 
 import type { UserMessage } from '@deepseek-ai/dsh-session'

@@ -11,7 +11,7 @@
  * for the published surface (`KimiProcess`) aliases these rather than restating
  * them, so a change to the seam cannot reach one engine and miss another.
  *
- * @module dsh-loop-engine/driver-acp/transport
+ * @module dsh-loop-engine-allinone/driver-acp/transport
  */
 
 import type { Readable, Writable } from 'node:stream'

@@ -8,7 +8,7 @@
  * never imports a host package, so it cannot probe the generation like the node
  * half does.
  * Export discipline: packages/client/AGENTS.md.
- * @module dsh-loop-engine/client
+ * @module dsh-loop-engine-allinone/client
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'

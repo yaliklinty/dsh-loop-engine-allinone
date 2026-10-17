@@ -2,7 +2,7 @@
 
 > **目标**：让四个托管引擎（claude-code / codex / pi / kimi）不只是拿到 dsh 选中的**模型名**，而是真正跑到 **dsh 配置的那个模型端点**上——用 dsh 的 `baseURL` + 凭据 + 模型 id 去对话，而不是各 CLI 自己那份 provider 配置。
 >
-> **范围**：本提案是**调研 + 可行性判定 + 方案**，不改任何源码。落地主体在 `dsh-loop-engine`（`src/engine-*/` 的 spawn/env 组装、`src/driver-core/` 的新读取接缝），**不需要改主仓**（`deepseek-harness/` 只读）。
+> **范围**：本提案是**调研 + 可行性判定 + 方案**，不改任何源码。落地主体在 `dsh-loop-engine-allinone`（`src/engine-*/` 的 spawn/env 组装、`src/driver-core/` 的新读取接缝），**不需要改主仓**（`deepseek-harness/` 只读）。
 >
 > **与既有提案的关系**：`per-session-model-for-hosted-engines.md`（下文简称「前篇」）解决的是"**模型名**怎么从会话选择送到引擎"（已落地：`src/driver-core/session-model.ts`，四个驱动每 step 消费）。本提案解决它的**后半截**：拿到模型名之后，引擎**用什么端点、什么凭据**去调这个模型。两篇正交，可以叠加。
 >
@@ -12,7 +12,7 @@
 
 ## 0.5 状态：已实现（0.1.5-rc5）
 
-本提案的方案已在 `dsh-loop-engine` 落地，**未改主仓**。落点与本提案 §5 的差异如实记在下面：
+本提案的方案已在 `dsh-loop-engine-allinone` 落地，**未改主仓**。落点与本提案 §5 的差异如实记在下面：
 
 - **共享解析**：`src/driver-core/model-handover.ts` 的 `resolveModelHandover(ctx, override)` 返回 `{ provider, model, baseURL, api, apiKey } | undefined`。签名比 §5.1 的草案收窄为**收 `override`（`sessionModelOverrideOf` 的结果）而不是 `session`**，这样每个驱动仍是一处读、一处判。
 - **映射规则（比草案更严）**：provider → settings 地址**不再硬编 `llm-pi-ai` / `llm-deepseek`**，而是读 llm 注册表自己的**可配置 provider 目录**（`ctx.llm.listConfigurableProviders()`，`LlmConfigurableProvider.settingsNs` + `settingsPath`）。注册表/directory 缺席、或没有这条 provider → **不注入 + warn 一次**。profile 还必须给出非空 `baseURL` 与 `api`，否则同样不注入（草案没要求 `api` 必填、拿不准时倾向回退；落地取"缺 `api` 就不注入"，因为不猜协议）。

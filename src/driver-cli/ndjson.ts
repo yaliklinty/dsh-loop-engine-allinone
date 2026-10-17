@@ -17,7 +17,7 @@
  *  - **A blank line is not a document.** Engines interleave progress lines and
  *    keep-alives; an empty line is skipped rather than reported as malformed.
  *
- * @module dsh-loop-engine/driver-cli/ndjson
+ * @module dsh-loop-engine-allinone/driver-cli/ndjson
  */
 
 import type { Readable, Writable } from 'node:stream'

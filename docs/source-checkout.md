@@ -1,6 +1,6 @@
 # 源码启动 harness 时给 profile 补 `file:` shim
 
-**适用场景**：harness 从**源码 checkout** 启动（`cd deepseek-harness && pnpm dsh web`），而 `dsh-loop-engine` 是**打包安装**的（npm 或 tarball，`lib/` 里只有构建产物）。用 **`link:` 本地链接**安装插件时不需要这一步（见文末）。
+**适用场景**：harness 从**源码 checkout** 启动（`cd deepseek-harness && pnpm dsh web`），而 `dsh-loop-engine-allinone` 是**打包安装**的（npm 或 tarball，`lib/` 里只有构建产物）。用 **`link:` 本地链接**安装插件时不需要这一步（见文末）。
 
 发布版 dsh（`npx @deepseek-ai/dsh`）也不需要。
 

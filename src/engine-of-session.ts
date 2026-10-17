@@ -39,7 +39,7 @@
  * observation is a read-only lease: it is released immediately through `using`,
  * takes no write handle, and holds no write lock.
  *
- * @module dsh-loop-engine/engine-of-session
+ * @module dsh-loop-engine-allinone/engine-of-session
  */
 
 import type { Context } from '@deepseek-ai/cordis'

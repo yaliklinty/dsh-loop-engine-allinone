@@ -6,7 +6,7 @@
  * name the read-only path they live at; this module turns that service into the
  * resolver the transcript renders placeholders with.
  *
- * @module dsh-loop-engine/driver-core/image-access
+ * @module dsh-loop-engine-allinone/driver-core/image-access
  */
 
 import type { Context } from '@deepseek-ai/cordis'

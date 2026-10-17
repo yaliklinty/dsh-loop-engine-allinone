@@ -27,7 +27,7 @@
  * lands in the log* (messages, tool calls, results, streams), and the subclass
  * owns *what the engine said*.
  *
- * @module dsh-loop-engine/driver-cli/cli-agent
+ * @module dsh-loop-engine-allinone/driver-cli/cli-agent
  */
 
 import type {

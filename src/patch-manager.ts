@@ -38,7 +38,7 @@
  * All functions here are pure string transforms — file I/O and durability live
  * in the plugin's apply.
  *
- * @module dsh-loop-engine/patch-manager
+ * @module dsh-loop-engine-allinone/patch-manager
  */
 
 import type { LoopEngineId } from './settings.ts'

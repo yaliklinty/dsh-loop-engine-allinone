@@ -52,7 +52,7 @@
  *    outcome carrying `reload` tells the browser half to reload the page, because
  *    the switch was made to land by releasing the session's agent.
  *
- * @module dsh-loop-engine/engine-remote
+ * @module dsh-loop-engine-allinone/engine-remote
  */
 
 import type { Context } from '@deepseek-ai/cordis'

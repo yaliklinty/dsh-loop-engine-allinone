@@ -15,7 +15,7 @@
  * other's menus, and the whole surface disappears with the agent's scope — no
  * plugin-side bookkeeping, no leak across an engine switch.
  *
- * @module dsh-loop-engine/engine-surface
+ * @module dsh-loop-engine-allinone/engine-surface
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'

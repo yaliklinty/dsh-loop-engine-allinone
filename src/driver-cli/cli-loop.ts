@@ -15,7 +15,7 @@
  * a profile without the subprocess service fails THAT session loud instead of
  * stalling the whole plugin at boot.
  *
- * @module dsh-loop-engine/driver-cli/cli-loop
+ * @module dsh-loop-engine-allinone/driver-cli/cli-loop
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -23,7 +23,7 @@
  * "the plugin dropped an environment variable". `tests/engine-hermes/process.spec.ts`
  * pins it.
  *
- * @module dsh-loop-engine/engine-hermes/process
+ * @module dsh-loop-engine-allinone/engine-hermes/process
  */
 
 import { existsSync } from 'node:fs'

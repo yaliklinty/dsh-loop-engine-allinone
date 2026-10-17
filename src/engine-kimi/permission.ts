@@ -12,7 +12,7 @@
  * bounds the tool — the ACP approval is the host's gate, and the dsh
  * `approval/policy` knob is its signal.
  *
- * @module dsh-loop-engine/engine-kimi/permission
+ * @module dsh-loop-engine-allinone/engine-kimi/permission
  */
 
 import type { PermissionEvent } from '../driver-core/permission-knobs.ts'

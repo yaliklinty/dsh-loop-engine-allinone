@@ -37,7 +37,7 @@
  * declares one, but its absence does NOT refuse the handover — see
  * {@link resolveModelHandover} and {@link SHIPPED_ROUTE_APIS}.
  *
- * @module dsh-loop-engine/driver-core/model-handover
+ * @module dsh-loop-engine-allinone/driver-core/model-handover
  */
 
 import type { Context } from '@deepseek-ai/cordis'

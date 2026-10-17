@@ -28,7 +28,7 @@
  * used to be hardcoded in the shared client, which is exactly the protocol-drift
  * risk three engines on one skeleton must not inherit.
  *
- * @module dsh-loop-engine/driver-acp/profile
+ * @module dsh-loop-engine-allinone/driver-acp/profile
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'

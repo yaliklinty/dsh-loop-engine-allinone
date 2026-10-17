@@ -15,7 +15,7 @@
  * omitted, so Kimi falls back to its own `kimi` default against dsh's base URL
  * and fails loud on the request if that endpoint does not speak it.
  *
- * @module dsh-loop-engine/engine-kimi/model-handover
+ * @module dsh-loop-engine-allinone/engine-kimi/model-handover
  */
 
 import type { DshModelHandover } from '../driver-core/model-handover.ts'

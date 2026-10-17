@@ -29,7 +29,7 @@
  * `session/request_permission` itself (denying under an `ask` policy, since the
  * unattended runtime has no human to ask).
  *
- * @module dsh-loop-engine/engine-grok/profile
+ * @module dsh-loop-engine-allinone/engine-grok/profile
  */
 
 import { acpDefaultApproval } from '../driver-acp/approval.ts'

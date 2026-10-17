@@ -2,7 +2,7 @@
  * Loop engine namespace literals: the strings both halves agree on, in a
  * module with no runtime imports so the browser bundle can import them without
  * dragging `dsh-settings` (a host-side service) into the client artifact.
- * @module dsh-loop-engine/namespace
+ * @module dsh-loop-engine-allinone/namespace
  */
 
 /**

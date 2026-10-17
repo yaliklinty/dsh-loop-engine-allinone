@@ -84,7 +84,7 @@ src/engine-codex/
 
 ### 4.1 分工
 
-- **`client.ts`（传输层）**：负责进程生命周期与 JSON-RPC 2.0 帧。`AppServerClient.create()` spawn 子进程（`src/engine-codex/appserver/client.ts:88-129`）、立即发 `initialize` 握手（`clientInfo.name = 'dsh-loop-engine'`，`capabilities.experimentalApi = true`，`src/engine-codex/appserver/client.ts:147-157`）。请求用自增 id 记入 `pending` Map，stdout 按行解析：带 `id` 和 `method` 的是入站请求（`answerRequest` 写回应答），只有 `id` 的是响应（按 id 撮合 resolve/reject），只有 `method` 的是通知（转给当前 notification handler），非 JSON 行直接忽略（`src/engine-codex/appserver/client.ts:202-239`）。
+- **`client.ts`（传输层）**：负责进程生命周期与 JSON-RPC 2.0 帧。`AppServerClient.create()` spawn 子进程（`src/engine-codex/appserver/client.ts:88-129`）、立即发 `initialize` 握手（`clientInfo.name = 'dsh-loop-engine-allinone'`，`capabilities.experimentalApi = true`，`src/engine-codex/appserver/client.ts:147-157`）。请求用自增 id 记入 `pending` Map，stdout 按行解析：带 `id` 和 `method` 的是入站请求（`answerRequest` 写回应答），只有 `id` 的是响应（按 id 撮合 resolve/reject），只有 `method` 的是通知（转给当前 notification handler），非 JSON 行直接忽略（`src/engine-codex/appserver/client.ts:202-239`）。
 - **`thread.ts`（会话层）**：`AppServerThread.create` 发 `thread/start` 拿 threadId（`src/engine-codex/appserver/thread.ts:49-52`）；`turn()` 是异步生成器，把 app-server 通知翻译成封闭的 `AppServerEvent` 联合类型（`src/engine-codex/appserver/thread.ts:25-35`）供 agent 消费。
 
 ### 4.2 客户端生命周期

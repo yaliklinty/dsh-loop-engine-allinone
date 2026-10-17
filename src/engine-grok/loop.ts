@@ -11,7 +11,7 @@
  * the registry row) and the `authenticate`-then-`session/new` handshake its own
  * ACP server requires.
  *
- * @module dsh-loop-engine/engine-grok
+ * @module dsh-loop-engine-allinone/engine-grok
  */
 
 import type { Context } from '@deepseek-ai/cordis'

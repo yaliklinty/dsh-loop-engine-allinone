@@ -58,7 +58,7 @@
  * has no schema registry, so a contribution is plain data (see
  * `LOOP_ENGINE_REMOTE_CONTRIBUTION`).
  *
- * @module dsh-loop-engine/client/session-engine
+ * @module dsh-loop-engine-allinone/client/session-engine
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -343,7 +343,7 @@ export interface EngineRemoteHost {
 }
 
 /** The plugin's npm package name, as the contribution identifies itself. */
-export const LOOP_ENGINE_PACKAGE = 'dsh-loop-engine'
+export const LOOP_ENGINE_PACKAGE = 'dsh-loop-engine-allinone'
 
 /**
  * Read one session's three-state engine answer off an untrusted value.

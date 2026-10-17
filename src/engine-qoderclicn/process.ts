@@ -27,7 +27,7 @@
  *    see `src/driver-cli/stream-json.ts` for why dropping is the right answer
  *    rather than an omission.
  *
- * @module dsh-loop-engine/engine-qoderclicn/process
+ * @module dsh-loop-engine-allinone/engine-qoderclicn/process
  */
 
 import { existsSync } from 'node:fs'

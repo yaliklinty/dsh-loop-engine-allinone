@@ -13,7 +13,7 @@
  * internally appears nowhere in the transcript. That is a faithful record of
  * what the engine reported.
  *
- * @module dsh-loop-engine/engine-hermes/agent
+ * @module dsh-loop-engine-allinone/engine-hermes/agent
  */
 
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'

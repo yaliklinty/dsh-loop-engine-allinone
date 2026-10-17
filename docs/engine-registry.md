@@ -298,7 +298,7 @@ export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: strin
 ## 4. 加完之后必须做的验证
 
 ```sh
-cd src/dsh-loop-engine
+cd src/dsh-loop-engine-allinone
 
 # 1) 类型 + 全量测试（注册表的全量 Record 会在这里把所有漏掉的地方抖出来）
 node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit

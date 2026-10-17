@@ -27,7 +27,7 @@
  * future notification — is DROPPED rather than raised. A CLI that grows a new
  * notification must not break a working driver.
  *
- * @module dsh-loop-engine/driver-cli/stream-json
+ * @module dsh-loop-engine-allinone/driver-cli/stream-json
  */
 
 import type { CliFrame, CliUsage } from './frames.ts'

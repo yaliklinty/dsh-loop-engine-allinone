@@ -28,7 +28,7 @@
  * confinement — which is also what makes the approval question answerable: the
  * reverse-RPC permission gate stays the single place a human's policy is applied.
  *
- * @module dsh-loop-engine/driver-acp/capabilities
+ * @module dsh-loop-engine-allinone/driver-acp/capabilities
  */
 
 import type { Readable, Writable } from 'node:stream'

@@ -16,7 +16,7 @@
  * text } }` for a tool card, `{ type: 'text', text }` for a message chunk — and a
  * block type this build does not know is ignored rather than guessed at.
  *
- * @module dsh-loop-engine/driver-acp/mapping
+ * @module dsh-loop-engine-allinone/driver-acp/mapping
  */
 
 import type { ToolResultMessage } from '@deepseek-ai/dsh-llm'

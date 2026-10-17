@@ -18,7 +18,7 @@
  * the invariant every engine keeps even when the engine's own protocol also
  * receives the bytes ({@link stepImages}).
  *
- * @module dsh-loop-engine/driver-core/prompt
+ * @module dsh-loop-engine-allinone/driver-core/prompt
  */
 
 import type {

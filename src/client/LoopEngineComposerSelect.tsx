@@ -66,7 +66,7 @@
  *
  * Styling is token-driven inline styles like the badge and section (the
  * client-module bundle is esbuild-built without a CSS loader).
- * @module dsh-loop-engine/client/composer
+ * @module dsh-loop-engine-allinone/client/composer
  */
 
 import { useRef, useState, type CSSProperties, type JSX } from 'react'

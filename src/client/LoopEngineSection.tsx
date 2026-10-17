@@ -10,7 +10,7 @@
  * the confirmation through `Modal`. The client-module bundle is esbuild-built
  * without a CSS loader, so the section shell uses token-based inline styles
  * instead of a CSS module.
- * @module dsh-loop-engine/client
+ * @module dsh-loop-engine-allinone/client
  */
 
 import { useId, useRef, useState, type CSSProperties, type JSX } from 'react'

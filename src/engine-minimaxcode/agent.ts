@@ -7,7 +7,7 @@
  * imports no host service so it can be exercised by `scripts/probe/smoke-acp.ts`
  * against the real CLI.
  *
- * @module dsh-loop-engine/engine-minimaxcode/agent
+ * @module dsh-loop-engine-allinone/engine-minimaxcode/agent
  */
 
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'

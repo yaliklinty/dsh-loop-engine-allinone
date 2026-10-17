@@ -26,7 +26,7 @@
  * session event, not by the tool row, so a driver appends that event for the
  * plan tool it recognizes.
  *
- * @module dsh-loop-engine/driver-core/hosted-tool-vocabulary
+ * @module dsh-loop-engine-allinone/driver-core/hosted-tool-vocabulary
  */
 
 /** A hosted loop engine id — the settings engine union without `in-process`. */

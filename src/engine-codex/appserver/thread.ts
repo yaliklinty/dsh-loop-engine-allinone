@@ -3,7 +3,7 @@
  * and its turn-level streaming, producing dsh-native events from the
  * app-server's JSON-RPC notifications.
  *
- * @module dsh-loop-engine/engine-codex/appserver/thread
+ * @module dsh-loop-engine-allinone/engine-codex/appserver/thread
  */
 
 import type { AppServerClient } from './client.ts'

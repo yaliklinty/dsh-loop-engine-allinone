@@ -1,4 +1,4 @@
-# dsh-loop-engine
+# dsh-loop-engine-allinone
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Harness: 0.1.5 / 0.1.7 / 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#version-compatibility)
@@ -88,12 +88,12 @@ engines' ACP and JSON-RPC drivers as their templates).
 ## Install
 
 ```sh
-# From this repository (the npm package name `dsh-loop-engine` belongs to
+# From this repository (the npm package name `dsh-loop-engine-allinone` belongs to
 # upstream, so installing from git names the fork explicitly):
-dsh plugin --profile web add yaliklinty/dsh-loop-engine
+dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
 
 # From a local checkout:
-dsh plugin --profile web add /path/to/dsh-loop-engine
+dsh plugin --profile web add /path/to/dsh-loop-engine-allinone
 ```
 
 Boot `dsh web` once (the router retries for a bounded window while the base bundle still holds the agent-factory slot), then open **Settings → Loop engine**.
@@ -108,7 +108,7 @@ Boot `dsh web` once (the router retries for a bounded window while the base bund
       profile: desktop
   ```
   `profile` defaults to `web`, so without it the plugin writes its managed block into `<home>/profiles/web/cordis.patch.yml` while the running profile never reads it: the plugin mounts, but the base `agent-loop` row is never disabled, so its router cannot take the factory slot and no hosted engine is reachable. (Found by installing into the Desktop app.)
-- **Uninstall** is `dsh plugin --profile web remove dsh-loop-engine` **plus deleting that managed block** — the block outlives the plugin, and while it is present the profile has no agent factory, so no session can be created.
+- **Uninstall** is `dsh plugin --profile web remove dsh-loop-engine-allinone` **plus deleting that managed block** — the block outlives the plugin, and while it is present the profile has no agent factory, so no session can be created.
 - **pnpm 10+** may block dependency build scripts (`ERR_PNPM_IGNORED_BUILDS`, naming `esbuild`, `@google/genai`, `protobufjs`). Run `pnpm approve-builds` (or add an `allowBuilds` entry) and retry; only the installing project can grant this.
 - **Booting the harness from its source checkout** additionally needs the profile's harness peers bridged with `file:` shims — otherwise session resume fails with `agent-presets: refusing to compose an unscoped context`. Steps in [docs/source-checkout.md](docs/source-checkout.md).
 

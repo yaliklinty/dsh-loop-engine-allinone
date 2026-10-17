@@ -26,7 +26,7 @@ foldSurface(event: SessionFormatEvent): void {
 
 ## 为什么会产出这种日志
 
-会话的 surface 头由 harness loop 在**它自己的第一步**写下（`packages/core/agent-loop/src/agent.ts:399`，`systemPrompt.project` → `session.append('system/message', …)`）。**任何不经过 harness loop 的 agent 工厂都不会写它。**本部署里那条工厂是 `dsh-loop-engine` 的托管引擎驱动：外部 CLI 自带系统提示，驱动只写 `user/message` / `assistant/message` / `tool/*`。
+会话的 surface 头由 harness loop 在**它自己的第一步**写下（`packages/core/agent-loop/src/agent.ts:399`，`systemPrompt.project` → `session.append('system/message', …)`）。**任何不经过 harness loop 的 agent 工厂都不会写它。**本部署里那条工厂是 `dsh-loop-engine-allinone` 的托管引擎驱动：外部 CLI 自带系统提示，驱动只写 `user/message` / `assistant/message` / `tool/*`。
 
 于是这条因果链成立：
 
@@ -67,7 +67,7 @@ foldSurface(event: SessionFormatEvent): void {
 
 ## 考虑过并否决的替代方案
 
-**插件侧补头**：`dsh-loop-engine` 已在自己的四个驱动里，于会话首个 step、且仅当尚无任何 surface 事件时，补一条**空 content** 的 `system/message` 头（`src/driver-core/system-head.ts`）。这能保证 0.1.7 上**新建**的托管会话带上受保护的头，但它**救不了已存在的日志**——迁移发生在一个已经写死的文件上。凡是"会话先于修复创建"的场景，只能由迁移器自己修复。故本提案仍需落地。
+**插件侧补头**：`dsh-loop-engine-allinone` 已在自己的四个驱动里，于会话首个 step、且仅当尚无任何 surface 事件时，补一条**空 content** 的 `system/message` 头（`src/driver-core/system-head.ts`）。这能保证 0.1.7 上**新建**的托管会话带上受保护的头，但它**救不了已存在的日志**——迁移发生在一个已经写死的文件上。凡是"会话先于修复创建"的场景，只能由迁移器自己修复。故本提案仍需落地。
 
 ## 验证方式
 

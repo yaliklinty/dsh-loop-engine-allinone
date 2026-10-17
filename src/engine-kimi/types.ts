@@ -13,7 +13,7 @@
  * published name: kimi, grok and MiniMax Code resolve the same four facts, so the
  * shape lives once in `driver-acp/profile.ts` instead of three times here.
  *
- * @module dsh-loop-engine/engine-kimi/types
+ * @module dsh-loop-engine-allinone/engine-kimi/types
  */
 
 import type { AcpResolvedConfig } from '../driver-acp/profile.ts'

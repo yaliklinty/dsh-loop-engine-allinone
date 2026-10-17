@@ -30,7 +30,7 @@
  * never chose. Whatever the engine still asks for arrives as the reverse-RPC
  * `session/request_permission`, answered by the shared fold.
  *
- * @module dsh-loop-engine/engine-minimaxcode/profile
+ * @module dsh-loop-engine-allinone/engine-minimaxcode/profile
  */
 
 import { acpDefaultApproval } from '../driver-acp/approval.ts'

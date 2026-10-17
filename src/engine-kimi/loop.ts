@@ -11,7 +11,7 @@
  * boundary — and the sandbox stance follows the session's durable permission knobs
  * as the subprocess provider resolves them (default read-only).
  *
- * @module dsh-loop-engine/engine-kimi
+ * @module dsh-loop-engine-allinone/engine-kimi
  */
 
 import type { Context } from '@deepseek-ai/cordis'

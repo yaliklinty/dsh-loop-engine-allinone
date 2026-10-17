@@ -24,7 +24,7 @@
  * sources at different scales, and normalizing them would either distort the
  * vendor's proportions or force a re-trace for no gain.
  *
- * @module dsh-loop-engine/client/engine-marks
+ * @module dsh-loop-engine-allinone/client/engine-marks
  */
 
 import type { HostedEngineId } from '../engine-registry.ts'

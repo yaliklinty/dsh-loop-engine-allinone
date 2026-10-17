@@ -7,7 +7,7 @@
  * spawned through the dsh subprocess seam — the only available privilege
  * boundary — and its `--tools` are pruned to the resolved sandbox stance.
  *
- * @module dsh-loop-engine/engine-pi
+ * @module dsh-loop-engine-allinone/engine-pi
  */
 
 import { readFileSync } from 'node:fs'

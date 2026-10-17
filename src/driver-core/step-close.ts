@@ -14,7 +14,7 @@
  * It is deliberately a closer, not a repair of history: it fixes the step being
  * closed and nothing else.
  *
- * @module dsh-loop-engine/driver-core/step-close
+ * @module dsh-loop-engine-allinone/driver-core/step-close
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'

@@ -10,7 +10,7 @@
  * one protocol fact the probe could not reach (a signed-in host was unavailable),
  * and `./frames.ts` for how the mapper stays correct under both worlds.
  *
- * @module dsh-loop-engine/engine-agy/agent
+ * @module dsh-loop-engine-allinone/engine-agy/agent
  */
 
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'

@@ -20,7 +20,7 @@
  * half is what turns a refusal into copy, so the codes it may read have to be
  * knowable without importing the host's router.
  *
- * @module dsh-loop-engine/agent-preset-ids
+ * @module dsh-loop-engine-allinone/agent-preset-ids
  */
 
 // The roster itself lives in `./engine-registry.ts` — also zero-import, and the

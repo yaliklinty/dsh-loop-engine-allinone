@@ -22,7 +22,7 @@
  * drops the rest — which is why the per-engine config projections live here
  * rather than in the entry's schema.
  *
- * @module dsh-loop-engine/engine-drivers
+ * @module dsh-loop-engine-allinone/engine-drivers
  */
 
 import type { Context } from '@deepseek-ai/cordis'

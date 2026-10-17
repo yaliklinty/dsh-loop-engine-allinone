@@ -72,7 +72,7 @@ async function mountInvariant(throwOnFail = false): Promise<{ registry: FakeInva
 describe('loop-engine invariant companion', () => {
   it('registers under the package name', async () => {
     const { registry, dispose } = await mountInvariant()
-    expect(registry.registered).toEqual(['dsh-loop-engine'])
+    expect(registry.registered).toEqual(['dsh-loop-engine-allinone'])
     await dispose()
   })
 

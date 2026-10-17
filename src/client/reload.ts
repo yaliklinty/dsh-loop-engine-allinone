@@ -40,7 +40,7 @@
  * reload is the action a user would take themselves, and it is the one this
  * plugin can justify.
  *
- * @module dsh-loop-engine/client/reload
+ * @module dsh-loop-engine-allinone/client/reload
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -66,7 +66,7 @@ export interface ReloadPage {
  * Namespaced by package: tab storage is shared with everything else the page
  * runs, and one key per concern is all this feature needs.
  */
-export const RELOAD_RETURN_KEY = 'dsh-loop-engine:reload-session'
+export const RELOAD_RETURN_KEY = 'dsh-loop-engine-allinone:reload-session'
 
 /** The live page, read off the globals. Missing ones simply mean "no page". */
 export function browserPage(): ReloadPage {

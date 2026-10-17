@@ -52,7 +52,7 @@
  * makes "session A on Codex, session B on Kimi, concurrently" expressible in a
  * harness that admits exactly one AgentFactory.
  *
- * @module dsh-loop-engine/preset
+ * @module dsh-loop-engine-allinone/preset
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'

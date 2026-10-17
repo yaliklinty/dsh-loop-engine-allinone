@@ -33,7 +33,7 @@
  * does, not of what the CLI could do. Upgrading it to the app-server protocol is
  * the recorded next step (`docs/engine-registry.md` §6, TODO).
  *
- * @module dsh-loop-engine/engine-zcode/process
+ * @module dsh-loop-engine-allinone/engine-zcode/process
  */
 
 import { existsSync } from 'node:fs'

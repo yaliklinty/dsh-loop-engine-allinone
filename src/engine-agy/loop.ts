@@ -10,7 +10,7 @@
  * user environment and finds it itself, which is what makes a session run on the
  * user's own subscription rather than on any credential this plugin holds.
  *
- * @module dsh-loop-engine/engine-agy
+ * @module dsh-loop-engine-allinone/engine-agy
  */
 
 import type { Context } from '@deepseek-ai/cordis'

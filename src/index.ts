@@ -40,7 +40,7 @@
  * chat composer, and when it involves the harness loop it releases that session's
  * agent and reloads the page — `router-loop.ts` `move`, `client/reload.ts`.)
  *
- * @module dsh-loop-engine
+ * @module dsh-loop-engine-allinone
  */
 
 import { readFileSync } from 'node:fs'

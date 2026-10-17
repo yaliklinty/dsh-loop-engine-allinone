@@ -10,7 +10,7 @@
  * dsh subprocess sandbox the whole child is spawned under (default read-only)
  * plus the mode mapped in `./process.ts`.
  *
- * @module dsh-loop-engine/engine-qoderclicn
+ * @module dsh-loop-engine-allinone/engine-qoderclicn
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -22,7 +22,7 @@
  * The discovery algorithm itself lives in {@link AgentsMdSkillProvider}; this
  * module supplies only Pi's locations and ranks.
  *
- * @module dsh-loop-engine/engine-pi/skills
+ * @module dsh-loop-engine-allinone/engine-pi/skills
  */
 
 import { homedir } from 'node:os'

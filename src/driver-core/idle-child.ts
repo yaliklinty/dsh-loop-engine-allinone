@@ -19,7 +19,7 @@
  * with no way back in that page's lifetime (`router-loop.ts` `move`). Closing
  * the child leaves the agent, the session, and the page exactly where they are.
  *
- * @module dsh-loop-engine/driver-core/idle-child
+ * @module dsh-loop-engine-allinone/driver-core/idle-child
  */
 
 /** An armed-on-idle countdown that closes one child process. */

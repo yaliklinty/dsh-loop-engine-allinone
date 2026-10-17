@@ -4,7 +4,7 @@
 
 ## 1. 共享层定位
 
-dsh-loop-engine 的四个托管引擎驱动（`src/engine-claude`、`src/engine-codex`、`src/engine-pi`、`src/engine-kimi`）面向四种完全不同的外部进程：
+dsh-loop-engine-allinone 的四个托管引擎驱动（`src/engine-claude`、`src/engine-codex`、`src/engine-pi`、`src/engine-kimi`）面向四种完全不同的外部进程：
 
 - **claude**：Claude Agent SDK 的 `query()`，自带权限回调与技能目录；
 - **codex**：Codex app-server JSON-RPC，权限是线程启动时声明的 `sandboxMode + approvalPolicy` 对；

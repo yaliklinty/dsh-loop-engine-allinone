@@ -15,7 +15,7 @@
  * shape v4 rejects as `tool/result … has no advertised tool lifecycle`), and
  * {@link StepTools.pending} is what a step must close before it ends.
  *
- * @module dsh-loop-engine/driver-core/step-tools
+ * @module dsh-loop-engine-allinone/driver-core/step-tools
  */
 
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'

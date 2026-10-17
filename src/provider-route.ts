@@ -35,7 +35,7 @@
  * selection is one of these labels has it replaced by the same authority before
  * the host installs it (same module, `guardFor`).
  *
- * @module dsh-loop-engine/provider-route
+ * @module dsh-loop-engine-allinone/provider-route
  */
 
 import type {

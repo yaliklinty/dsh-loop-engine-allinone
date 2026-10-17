@@ -15,7 +15,7 @@
  * re-upload its whole history every step. Older images stay in the transcript
  * as path-bearing placeholders, which the engine's own file tool can still read.
  *
- * @module dsh-loop-engine/driver-core/step-images
+ * @module dsh-loop-engine-allinone/driver-core/step-images
  */
 
 import { readFile } from 'node:fs/promises'

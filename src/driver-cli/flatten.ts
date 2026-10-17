@@ -19,7 +19,7 @@
  *  - an object with a `content` member is unwrapped, because that is the
  *    wrapper several CLIs put around their real payload.
  *
- * @module dsh-loop-engine/driver-cli/flatten
+ * @module dsh-loop-engine-allinone/driver-cli/flatten
  */
 
 /**

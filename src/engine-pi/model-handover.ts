@@ -25,7 +25,7 @@
  * reaches here. What does reach here is written in pi's own spelling
  * ({@link PI_API_ALIASES}) instead of dsh's raw string.
  *
- * @module dsh-loop-engine/engine-pi/model-handover
+ * @module dsh-loop-engine-allinone/engine-pi/model-handover
  */
 
 import { createHash } from 'node:crypto'
@@ -35,7 +35,7 @@ import { join } from 'node:path'
 import type { DshModelHandover } from '../driver-core/model-handover.ts'
 
 /** Root under the OS temp dir holding one plugin-owned agent directory per endpoint. */
-const AGENT_ROOT = join(tmpdir(), 'dsh-loop-engine-pi-agent')
+const AGENT_ROOT = join(tmpdir(), 'dsh-loop-engine-allinone-pi-agent')
 
 /** Directories already materialized this process, so a per-step read never re-writes one. */
 const materialized = new Set<string>()

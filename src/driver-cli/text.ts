@@ -19,7 +19,7 @@
  * output is still reported as a failure, because an engine that dies mid-answer
  * has not answered.
  *
- * @module dsh-loop-engine/driver-cli/text
+ * @module dsh-loop-engine-allinone/driver-cli/text
  */
 
 import type { CliTransport } from './transport.ts'

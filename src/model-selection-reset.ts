@@ -85,7 +85,7 @@
  * over a selection this plugin cannot name. The write is skipped with ONE
  * warning, and the session keeps whatever its log records.
  *
- * @module dsh-loop-engine/model-selection-reset
+ * @module dsh-loop-engine-allinone/model-selection-reset
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -18,7 +18,7 @@
  * answers them in-vocabulary instead of failing them with a protocol error that
  * the model reads as a broken tool.
  *
- * @module dsh-loop-engine/engine-codex/permission
+ * @module dsh-loop-engine-allinone/engine-codex/permission
  */
 
 import type { PermissionEvent } from '../driver-core/permission-knobs.ts'

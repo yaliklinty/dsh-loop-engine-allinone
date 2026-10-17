@@ -16,7 +16,7 @@
  * the focus guard inside `reflectTurnStatusEngine`, and the reflection follows
  * the cache's answer so a switch repaints the row.
  *
- * @module dsh-loop-engine/client/use-session-engine
+ * @module dsh-loop-engine-allinone/client/use-session-engine
  */
 
 import { useEffect, useState } from 'react'

@@ -1,6 +1,6 @@
 /**
  * Loop engine settings page copy (Chinese product copy; comments in English).
- * @module dsh-loop-engine/client/locales
+ * @module dsh-loop-engine-allinone/client/locales
  */
 
 import { type LoopEngineId, type LoopEngineRefusalCode, type SessionEngine } from '../agent-preset-ids.ts'

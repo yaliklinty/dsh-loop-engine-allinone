@@ -114,7 +114,7 @@
  * glyph keeps animating. In-process sessions keep the stock reduced-motion
  * behaviour on every line.
  *
- * @module dsh-loop-engine/client/turn-status
+ * @module dsh-loop-engine-allinone/client/turn-status
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -160,7 +160,7 @@ const RUNNING_ROW = '[data-chat-running]'
 const LIVE_ATTR = 'data-loop-engine-live'
 
 /** Owning plugin id, stamped on the injected tag for identification. */
-const PLUGIN_ID = 'dsh-loop-engine'
+const PLUGIN_ID = 'dsh-loop-engine-allinone'
 
 /**
  * The harness's own indicator on the 0.2.0 running row.

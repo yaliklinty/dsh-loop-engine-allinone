@@ -1,13 +1,13 @@
-# dsh-loop-engine
+# dsh-loop-engine-allinone
 
-[![npm version](https://img.shields.io/npm/v/dsh-loop-engine?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine)
+[![npm version](https://img.shields.io/npm/v/dsh-loop-engine-allinone?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine-allinone)
 
 像选模型一样选 **dsh web** 的 agent 循环引擎——**按会话**选:内置的 `in-process`(默认),或四个托管引擎 `claude-code`、`codex`、`pi`、`kimi`。会话之间互不影响:一个对话跑 Codex,另一个可以同时跑 Kimi。只要会话打开且空闲,任何时候都能换引擎——两个托管引擎之间是**原地换手**,有一边是 `in-process` 时会让**页面重新载入**(`dsh web` 进程本身**不重启**)。以上**无需改动主仓库**。
 
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-loop-engine
+dsh plugin --profile web add dsh-loop-engine-allinone
 ```
 
 启动一次 `dsh web`(路由器会在有界窗口内重试,等基础 bundle 让出 factory 槽位),然后打开 **Settings → Loop engine**。
@@ -22,7 +22,7 @@ dsh plugin --profile web add dsh-loop-engine
       profile: desktop
   ```
   `profile` 默认是 `web`,不写的话插件会把受管块写进 `<home>/profiles/web/cordis.patch.yml`,而正在跑的那个 profile 永远不会读它:插件挂着,但基础 `agent-loop` 行没被禁,路由器拿不到 factory 槽位,任何托管引擎都不可达。(这是装进桌面版时踩出来的。)
-- **卸载**是 `dsh plugin --profile web remove dsh-loop-engine` **再加上删掉那段受管理块**——块会比插件活得久,而它还在时 profile 里没有任何 agent factory,会话一条也建不出来。
+- **卸载**是 `dsh plugin --profile web remove dsh-loop-engine-allinone` **再加上删掉那段受管理块**——块会比插件活得久,而它还在时 profile 里没有任何 agent factory,会话一条也建不出来。
 - **pnpm 10+** 可能拦下依赖的 build script(`ERR_PNPM_IGNORED_BUILDS`,列出 `esbuild`、`@google/genai`、`protobufjs`)。执行 `pnpm approve-builds`(或加一条 `allowBuilds`)后重试;只有安装方能授予这个权限。
 - **用源码启动 harness** 时还要多做一步:用 `file:` shim 把 profile 的 harness peer 包桥接到 checkout 源码,否则恢复会话会报 `agent-presets: refusing to compose an unscoped context`。步骤见 [docs/source-checkout.md](docs/source-checkout.md)。
 

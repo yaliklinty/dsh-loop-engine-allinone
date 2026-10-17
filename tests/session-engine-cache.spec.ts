@@ -1218,7 +1218,7 @@ describe('the reload return', () => {
 
 describe('the Remote contribution the browser half mounts', () => {
   it('declares both endpoints, the argument name, and the strict codecs the mount requires', () => {
-    expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.package).toBe('dsh-loop-engine')
+    expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.package).toBe('dsh-loop-engine-allinone')
     expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.descriptors.map(descriptor => descriptor.method))
       .toEqual([LOOP_ENGINE_REMOTE_METHOD, LOOP_ENGINE_REMOTE_SELECT_METHOD])
 

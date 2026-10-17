@@ -26,7 +26,7 @@
  * request lands on `<baseURL>/responses`, which an Anthropic Messages or Chat
  * Completions endpoint does not serve.
  *
- * @module dsh-loop-engine/engine-codex/model-handover
+ * @module dsh-loop-engine-allinone/engine-codex/model-handover
  */
 
 import type { DshModelHandover } from '../driver-core/model-handover.ts'

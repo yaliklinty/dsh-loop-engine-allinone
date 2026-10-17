@@ -17,7 +17,7 @@
  * request) is simply not part of it: an adapter drops what it cannot express
  * rather than inventing a frame the sink would have to ignore.
  *
- * @module dsh-loop-engine/driver-cli/frames
+ * @module dsh-loop-engine-allinone/driver-cli/frames
  */
 
 /** One tool call the engine announced, before its result is known. */

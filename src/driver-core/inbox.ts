@@ -9,7 +9,7 @@
  * what the web client's conversation reducer and session resume both read, so
  * the semantics match the removed class exactly.
  *
- * @module dsh-loop-engine/driver-core/inbox
+ * @module dsh-loop-engine-allinone/driver-core/inbox
  */
 
 import type { Inbox, InboxTarget } from '@deepseek-ai/dsh-agent'

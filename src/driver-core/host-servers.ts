@@ -9,7 +9,7 @@
  * Keeping the shapes here means one definition shared by every consumer and no
  * peer dependency that a headless composition does not need.
  *
- * @module dsh-loop-engine/driver-core/host-servers
+ * @module dsh-loop-engine-allinone/driver-core/host-servers
  */
 
 import type { CommandDefinition } from '../commands.ts'

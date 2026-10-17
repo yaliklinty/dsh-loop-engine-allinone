@@ -48,7 +48,7 @@
  * {@link SessionEngineReport} for why "what runs now" and "what the record says"
  * are two facts that must travel separately.
  *
- * @module dsh-loop-engine/router-loop
+ * @module dsh-loop-engine-allinone/router-loop
  */
 
 import type { Context } from '@deepseek-ai/cordis'

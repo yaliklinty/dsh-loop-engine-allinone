@@ -11,7 +11,7 @@
  * transport types, kept as aliases rather than restated: a change to the seam
  * cannot then reach one engine and miss another.
  *
- * @module dsh-loop-engine/engine-kimi/process
+ * @module dsh-loop-engine-allinone/engine-kimi/process
  */
 
 import { existsSync } from 'node:fs'

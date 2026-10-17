@@ -27,7 +27,7 @@
  * gets is the value the host would install for the session — and it is taken
  * fresh on every step, because a session's model can change mid-conversation.
  *
- * @module dsh-loop-engine/driver-core/session-model
+ * @module dsh-loop-engine-allinone/driver-core/session-model
  */
 
 import type { Context } from '@deepseek-ai/cordis'

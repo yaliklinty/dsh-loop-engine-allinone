@@ -11,7 +11,7 @@ import { LOOP_ENGINE_REMOTE_CONTRIBUTION } from '../../src/client/session-engine
 
 describe('the loop-engine Remote contribution', () => {
   it('declares a package identity', () => {
-    expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.package).toBe('dsh-loop-engine')
+    expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.package).toBe('dsh-loop-engine-allinone')
     expect(LOOP_ENGINE_REMOTE_CONTRIBUTION.descriptors.length).toBeGreaterThan(0)
   })
 

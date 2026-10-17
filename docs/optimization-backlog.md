@@ -1,4 +1,4 @@
-# dsh-loop-engine 优化清单（Optimization Backlog）
+# dsh-loop-engine-allinone 优化清单（Optimization Backlog）
 
 面向**将来接手本插件的人**。本文把这一长串迭代里累积下来的、尚未真机验证的项、已知取舍、行为上还不诚实/不彻底的地方、工程债，以及两条依赖主仓的提案，收拢成**一份可逐条执行的清单**。每条都是**独立可执行、独立可验证**的一个小批，编号 `BL-xx` 供引用。
 
@@ -314,7 +314,7 @@ node node_modules/@openai/codex/bin/codex.js app-server \
 **影响**：容器级约定（尤其是 release 流程与只读约束）的一次误改不可追溯。
 
 **修法草案（可选）**：
-- 把 `AGENTS.md` 纳入两个子仓之一（例如 `dsh-loop-engine/docs/` 下备份一份并注明容器级才是权威），或
+- 把 `AGENTS.md` 纳入两个子仓之一（例如 `dsh-loop-engine-allinone/docs/` 下备份一份并注明容器级才是权威），或
 - 在容器根初始化一个仅跟踪 `AGENTS.md`/`RELEASE-CHECKLIST.md` 的仓（改变容器结构，需用户同意），或
 - 接受现状，文档里注明「容器级文件无版本管理，改动请同步备份」。
 

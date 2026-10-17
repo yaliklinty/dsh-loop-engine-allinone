@@ -43,7 +43,7 @@
  * Nothing else: the settings schema, the preset ids, the option lists and the
  * glyph table all read this table.
  *
- * @module dsh-loop-engine/engine-registry
+ * @module dsh-loop-engine-allinone/engine-registry
  */
 
 /**

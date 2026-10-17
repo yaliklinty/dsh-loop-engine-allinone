@@ -13,7 +13,7 @@
  * `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` points at the app's own copy. The driver
  * supplies the discovered default; a deployment's explicit `env` wins.
  *
- * @module dsh-loop-engine/engine-zcode/agent
+ * @module dsh-loop-engine-allinone/engine-zcode/agent
  */
 
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'

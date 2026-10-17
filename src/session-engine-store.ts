@@ -39,7 +39,7 @@
  *    a deployment cannot notice, and a stale entry for a deleted session is
  *    simply never asked about.
  *
- * @module dsh-loop-engine/session-engine-store
+ * @module dsh-loop-engine-allinone/session-engine-store
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'

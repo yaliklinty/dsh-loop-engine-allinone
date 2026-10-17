@@ -21,7 +21,7 @@
  *     honours (`MCODE_REGION` is inert here); it is named by the registry row and
  *     resolved by `./loop.ts`, never spelled in this file.
  *
- * @module dsh-loop-engine/engine-minimaxcode/process
+ * @module dsh-loop-engine-allinone/engine-minimaxcode/process
  */
 
 import { homedir } from 'node:os'

@@ -8,7 +8,7 @@
  * touch the fiber state, the session id type, and an AbortController — so the
  * engine modules share them verbatim.
  *
- * @module dsh-loop-engine/driver-core/ownership
+ * @module dsh-loop-engine-allinone/driver-core/ownership
  */
 
 import type { Context } from '@deepseek-ai/cordis'

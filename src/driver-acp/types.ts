@@ -21,7 +21,7 @@
  * modelled for the OUTGOING side — the bytes a dsh step delivers as an ACP
  * image block.
  *
- * @module dsh-loop-engine/driver-acp/types
+ * @module dsh-loop-engine-allinone/driver-acp/types
  */
 
 /** A text content block in an ACP update (the observed kimi shape). */

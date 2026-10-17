@@ -12,7 +12,7 @@
  * streams; deciding what a line MEANS is the adapter's job
  * (`./ndjson.ts`, `./text.ts`).
  *
- * @module dsh-loop-engine/driver-cli/transport
+ * @module dsh-loop-engine-allinone/driver-cli/transport
  */
 
 import type { Readable, Writable } from 'node:stream'

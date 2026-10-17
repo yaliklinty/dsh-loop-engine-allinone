@@ -217,7 +217,7 @@ try {
   results.initialize = await send('initialize', {
     protocolVersion: 1,
     clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
-    clientInfo: { name: 'dsh-loop-engine-probe', version: '1.0.0' },
+    clientInfo: { name: 'dsh-loop-engine-allinone-probe', version: '1.0.0' },
   })
   results.newSession = await send('session/new', { cwd, mcpServers: [] })
   if (typeof args.authenticate === 'string') {

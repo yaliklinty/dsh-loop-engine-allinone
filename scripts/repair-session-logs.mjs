@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file One-off data repair for V3 and V4 session logs written by an older
- * `dsh-loop-engine` hosted-driver build.
+ * `dsh-loop-engine-allinone` hosted-driver build.
  *
  * A hosted engine (claude-code / codex / pi / kimi) drives a session by writing
  * the durable session log itself. Old driver builds wrote transcripts the

@@ -31,7 +31,7 @@
  *   - their own configuration resolution;
  *   - {@link HostedEngineRuntime.buildAgent}.
  *
- * @module dsh-loop-engine/driver-core/hosted-engine-runtime
+ * @module dsh-loop-engine-allinone/driver-core/hosted-engine-runtime
  */
 
 import type { Context } from '@deepseek-ai/cordis'

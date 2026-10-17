@@ -8,7 +8,7 @@
  * the profile (the dialect) and the executable resolver, both of which that
  * engine's own `process.ts`/`agent.ts` own.
  *
- * @module dsh-loop-engine/driver-acp/runtime
+ * @module dsh-loop-engine-allinone/driver-acp/runtime
  */
 
 import type { Context } from '@deepseek-ai/cordis'

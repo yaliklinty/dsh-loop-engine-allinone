@@ -19,7 +19,7 @@
  * approval knobs (an `ask` policy degrades to denial, since the unattended
  * runtime has no human to ask).
  *
- * @module dsh-loop-engine/driver-acp/agent
+ * @module dsh-loop-engine-allinone/driver-acp/agent
  */
 
 import type {

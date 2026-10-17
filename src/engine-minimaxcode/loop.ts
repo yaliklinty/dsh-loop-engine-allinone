@@ -15,7 +15,7 @@
  * Everything below the dialect is the shared ACP runtime
  * (`driver-acp/runtime.ts`).
  *
- * @module dsh-loop-engine/engine-minimaxcode
+ * @module dsh-loop-engine-allinone/engine-minimaxcode
  */
 
 import type { Context } from '@deepseek-ai/cordis'

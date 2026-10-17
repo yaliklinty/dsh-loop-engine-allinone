@@ -13,7 +13,7 @@
  *     or it finds the extension-less shell script npm also writes (which the OS
  *     cannot execute either).
  *
- * @module dsh-loop-engine/driver-acp/executable
+ * @module dsh-loop-engine-allinone/driver-acp/executable
  */
 
 import { existsSync } from 'node:fs'

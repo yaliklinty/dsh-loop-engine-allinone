@@ -15,7 +15,7 @@
  *     handled through the shared executable helper rather than by spawning the
  *     bare name.
  *
- * @module dsh-loop-engine/engine-grok/process
+ * @module dsh-loop-engine-allinone/engine-grok/process
  */
 
 import { existsSync } from 'node:fs'

@@ -6,7 +6,7 @@
 
 ## 动机
 
-仓外插件 `dsh-loop-engine` 用**一个路由器**占住进程里唯一的 AgentFactory 槽位，把每个会话分派给四个托管引擎（`claude-code` / `codex` / `pi` / `kimi`）之一或 harness 自带的进程内 loop。它的核心功能是**在一条已经开始的会话上换引擎**——用户就在对话页里点一下换。harness 自己的 preset 通道做不到这件事：`AgentPresets.select()` 对已开始的会话直接以 `agent-preset/locked` 拒绝（`packages/preset/agent-presets/src/index.ts:709-726`）。
+仓外插件 `dsh-loop-engine-allinone` 用**一个路由器**占住进程里唯一的 AgentFactory 槽位，把每个会话分派给四个托管引擎（`claude-code` / `codex` / `pi` / `kimi`）之一或 harness 自带的进程内 loop。它的核心功能是**在一条已经开始的会话上换引擎**——用户就在对话页里点一下换。harness 自己的 preset 通道做不到这件事：`AgentPresets.select()` 对已开始的会话直接以 `agent-preset/locked` 拒绝（`packages/preset/agent-presets/src/index.ts:709-726`）。
 
 插件曾经的做法是：写下自己的逐会话记录，然后 `dispose()` 掉这条会话的 agent，让宿主的下一次 resolve 用新引擎重建它。这条路**会破坏活着的会话**：harness 的 `AgentHandle.dispose()` 在停完机器之后还会 `detachSession()`（`packages/core/agent-loop/src/index.ts:664` 取得、`:610` 调用），把 Session 从 `ctx.sessions` 摘掉并发出一条 `session/disposed`（`packages/core/session/src/index.ts:1064-1074`）。宿主把这条事件变成 `api-session/removed`（`packages/api/session-controller/src/index.ts:149-151`），浏览器那半据此把该会话从会话列表里删掉、把"当前会话"清成 `undefined`——用户看到输入框变成"会话不可用"，或者整个对话面退回"选择一个工作区开始"。更糟的是客户端那侧的这个标记只被写 `true`、没有复位路径（`packages/api/session-controller/src/client/sessions/session.ts:571-575`、`:807`），所以在那个页面的生命周期里这条会话再也回不来。
 
@@ -72,7 +72,7 @@ interface SessionHandover {
 }
 ```
 
-对 `AgentLoop` 来说这只是把已在闭包里的 `detachSession` 与 `handle` 暴露出来，并把 dispose 拆成"停机器 + 摘 agent"与"释放会话"两步。`dsh-loop-engine` 已经自己实现了这一对语义（`src/driver-core/hosted-engine-runtime.ts` 的 `retire` / `SessionLifetime`、`src/driver-core/session-lifetime.ts`），可以作为参考形状。
+对 `AgentLoop` 来说这只是把已在闭包里的 `detachSession` 与 `handle` 暴露出来，并把 dispose 拆成"停机器 + 摘 agent"与"释放会话"两步。`dsh-loop-engine-allinone` 已经自己实现了这一对语义（`src/driver-core/hosted-engine-runtime.ts` 的 `retire` / `SessionLifetime`、`src/driver-core/session-lifetime.ts`），可以作为参考形状。
 
 ### 方案 B —— 让 `AgentFactory` 能在一份已交给它的会话上发布（解 hosted → in-process）
 
@@ -108,8 +108,8 @@ interface AgentFactory {
 
 ## 风险与待定问题
 
-- **`retire()` 之后的窗口**：agent 已从 `ctx.agents` 摘除、继任者尚未发布，此刻到达的一轮输入会走宿主的 resolve → resume 路径，对一条仍在 store 里的会话拿不到写句柄而失败。`dsh-loop-engine` 目前的处理是让这个窗口尽量短（旧机器 `whenIdle()` + `scope.dispose()` 之后立刻发布继任者），并把"继任者建不起来"的后果收敛成"释放这条会话、下次打开按记录重建"。若主仓提供方案 A/B，这个窗口是否应该由宿主的 resolve 变成"等待中的 join"来闭合，需要在实现时定。
-- **`parentAgent`**：把一条**子会话**换出去时，谁继承它的 owner 关系（`AgentRegistry.enter(agent, owner)` 的第二个参数）需要明确。`dsh-loop-engine` 目前直接拒绝 subagent 会话（`selectEngine` 的第一道门），但如果接缝落地，这条限制可以放宽。
+- **`retire()` 之后的窗口**：agent 已从 `ctx.agents` 摘除、继任者尚未发布，此刻到达的一轮输入会走宿主的 resolve → resume 路径，对一条仍在 store 里的会话拿不到写句柄而失败。`dsh-loop-engine-allinone` 目前的处理是让这个窗口尽量短（旧机器 `whenIdle()` + `scope.dispose()` 之后立刻发布继任者），并把"继任者建不起来"的后果收敛成"释放这条会话、下次打开按记录重建"。若主仓提供方案 A/B，这个窗口是否应该由宿主的 resolve 变成"等待中的 join"来闭合，需要在实现时定。
+- **`parentAgent`**：把一条**子会话**换出去时，谁继承它的 owner 关系（`AgentRegistry.enter(agent, owner)` 的第二个参数）需要明确。`dsh-loop-engine-allinone` 目前直接拒绝 subagent 会话（`selectEngine` 的第一道门），但如果接缝落地，这条限制可以放宽。
 - **`session/disposed` 的语义**：原地换手让"会话离开 registry"与"agent 离开 registry"彻底分开，这是好事（客户端本来也只该看前者），但主仓若有任何一处把两者当作同时发生（例如"agent 没了就顺手关掉会话"），需要复查。
 - **换手前那段窗口里的"模型选择"**：今天的做法是**切换那一刻**就把会话的模型选择写回部署默认（`src/model-selection-reset.ts`，见"落地后插件会有什么变化"）。所以在接缝落地之前，"这条会话的选择已经是部署默认、引擎还是旧的托管引擎"这段窗口是**有意**存在的：窗口里活 agent 是托管引擎、它并不读这条选择（唯一读它的 pi 驱动只把它当 `--model` 候选，不认识的模型直接丢掉），而进程内那一侧接管时读到的正是它——这正是这个顺序的目的。若接缝落地，这次重置应该挪到交接的那一刻发生。
 
@@ -121,4 +121,4 @@ interface AgentFactory {
 
 ## 落地后插件会有什么变化
 
-`dsh-loop-engine` 会把 `move` 里的"与 in-process 之间：释放这条会话 + 让页面重载"（`src/router-loop.ts:448-453`）换成真正的原地换手：结果形状里的 `reload` 标志、客户端的重载与"回到那条会话"那半边（`src/client/reload.ts`）、以及 `docs/per-session-engine.md` §5.2 的整条流程都不再需要。接缝落地后报告也不再需要第二个字段（`pending`），chip / composer 的「切到 X · 尚未接管」标注与 `engineReportOfSession` 里那个"活 agent 与记录不同"的分支都可以删掉——报告只剩 `engine`。同样不再需要的是**"模型选择先落盘、引擎后接管"这半个分裂**：今天切回 `in-process` 时，插件必须在切换那一刻就追加一条 `model/selection`，把这条会话的选择从引擎的 provider 标签改回部署默认模型（`src/model-selection-reset.ts`，理由见 `docs/architecture.md` §3.6/§3.7 与 `docs/per-session-engine.md` §5.2），因为引擎本身要等到重载之后的那一次构建才接管。接缝落地后"下一次构建"这个概念就不存在了，这次重置可以放在交接那一刻做——写的事件、幂等判据与跳过条件都不用改。
+`dsh-loop-engine-allinone` 会把 `move` 里的"与 in-process 之间：释放这条会话 + 让页面重载"（`src/router-loop.ts:448-453`）换成真正的原地换手：结果形状里的 `reload` 标志、客户端的重载与"回到那条会话"那半边（`src/client/reload.ts`）、以及 `docs/per-session-engine.md` §5.2 的整条流程都不再需要。接缝落地后报告也不再需要第二个字段（`pending`），chip / composer 的「切到 X · 尚未接管」标注与 `engineReportOfSession` 里那个"活 agent 与记录不同"的分支都可以删掉——报告只剩 `engine`。同样不再需要的是**"模型选择先落盘、引擎后接管"这半个分裂**：今天切回 `in-process` 时，插件必须在切换那一刻就追加一条 `model/selection`，把这条会话的选择从引擎的 provider 标签改回部署默认模型（`src/model-selection-reset.ts`，理由见 `docs/architecture.md` §3.6/§3.7 与 `docs/per-session-engine.md` §5.2），因为引擎本身要等到重载之后的那一次构建才接管。接缝落地后"下一次构建"这个概念就不存在了，这次重置可以放在交接那一刻做——写的事件、幂等判据与跳过条件都不用改。

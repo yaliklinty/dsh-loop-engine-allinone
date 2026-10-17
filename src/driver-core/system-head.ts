@@ -26,7 +26,7 @@
  * carrying history) is left exactly as it is. A mid-surface system head would be
  * refused by the SAME v4 rule and is never produced here.
  *
- * @module dsh-loop-engine/driver-core/system-head
+ * @module dsh-loop-engine-allinone/driver-core/system-head
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'

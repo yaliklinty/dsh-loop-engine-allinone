@@ -27,7 +27,7 @@
  * (`readOutput` is incremental, `done` settles at close, `kill` stops it), so the
  * bridge is a thin adapter over one execution.
  *
- * @module dsh-loop-engine/driver-acp/terminal
+ * @module dsh-loop-engine-allinone/driver-acp/terminal
  */
 
 import type { AcpTerminal, AcpTerminalExit, AcpTerminalSnapshot, AcpTerminalSpawnOptions } from './capabilities.ts'

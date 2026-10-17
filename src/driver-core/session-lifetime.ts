@@ -23,7 +23,7 @@
  * Neither step needs a memo of its own: `SessionHandle.close()` is idempotent by
  * contract, and the detacher `SessionsService.enter` returns is single-shot.
  *
- * @module dsh-loop-engine/driver-core/session-lifetime
+ * @module dsh-loop-engine-allinone/driver-core/session-lifetime
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'
