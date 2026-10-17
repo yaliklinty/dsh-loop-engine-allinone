@@ -317,6 +317,20 @@ export const ENGINE_REGISTRY = {
     loginHint: 'run `codex login`, or set CODEX_API_KEY, or point `codexBin` at a signed-in install',
     authPaths: ['.codex/auth.json'],
     localeKey: 'engineCodex',
+    // Read out of the bundled CLI binary (0.149.1), which carries the ids its
+    // `thread/start` accepts; the driver passes the picked id straight through as
+    // `model`. Only the codex-family ids are listed: the binary also mentions
+    // `gpt-4.1`/`gpt-5.6` in contexts this build did not verify, and a wrong id
+    // fails loudly at the engine rather than silently falling back.
+    models: [
+      { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+      { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
+      { id: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' },
+      { id: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
+      { id: 'gpt-5.4', label: 'GPT-5.4' },
+      { id: 'gpt-5.2', label: 'GPT-5.2' },
+      { id: 'gpt-5.1', label: 'GPT-5.1' },
+    ],
     capabilities: {
       streaming: true,
       protocol: 'jsonrpc',

@@ -665,7 +665,10 @@ describe('a session whose log selects a legacy per-engine provider label', () =>
     const session = legacySession(app, 'legacy-label-rewrite')
     const reset = new ModelSelectionReset(app.ctx, () => {})
 
-    expect(reset.resetFor(session, 'codex')).toBe(true)
+    // `kimi` rather than `codex`: an engine that declares a model catalog gets a
+    // route of its OWN (so codex no longer demonstrates the shared route), while
+    // kimi keeps the shared `external` label.
+    expect(reset.resetFor(session, 'kimi')).toBe(true)
     expect(selections(session).map(event => event.data))
       .toEqual([{ provider: ENGINE_LABEL, model: HOSTED_DEFAULT_MODEL }])
   })

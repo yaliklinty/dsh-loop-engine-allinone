@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Harness: 0.1.5 | 0.1.7 | 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#版本兼容性)
 
-**dsh-loop-engine-allinone** 是专为 [DeepSeek Harness](https://github.com/deepseek-ai) (`dsh web`) 打造的 Agent 循环引擎全功能切换插件。支持**按会话独立切换** 10 家主流外部引擎与 Harness 原生 `in-process` 循环。
+**dsh-loop-engine-allinone** 是专为 [DeepSeek Harness](https://github.com/deepseek-ai)（`dsh`）打造的 Agent 循环引擎全功能切换插件。支持**按会话独立切换** 10 家主流外部引擎与 Harness 原生 `in-process` 循环。
 
 各会话完全隔离互不干扰：一个窗口运行 Codex，另一个窗口可同时运行 Kimi Code 或 Antigravity。托管引擎之间支持**无缝原地热换**；切换至原生 `in-process` 时会自动刷新页面重新挂载（无需重启 `dsh web` 后端进程）。**全程无需修改 DeepSeek Harness 主仓库源码**。
 
@@ -28,38 +28,26 @@
 
 ---
 
-## 支持引擎一览
-
-| 引擎名称 | 运行模式 / 协议 | 本机依赖与环境准备 | 专属模型 / 区域支持 |
-|---|---|---|---|
-| **Claude Code** | 捆绑 SDK / `ndjson` | 安装 Claude Code CLI 并登录（或使用 SDK 内置二进制） | 共享 `external` |
-| **Codex** | 捆绑二进制 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` | 共享 `external` |
-| **Pi** | 捆绑二进制 / `jsonrpc` | 配置 `~/.pi/agent/auth.json` 或对应 API Key | 共享 `external` |
-| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | 共享 `external` |
-| **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 | 支持 Gemini / Claude 深度思考模型 |
-| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI 并开通 GLM Coding Plan 订阅 | 共享 `external` |
-| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 | 共享 `external` |
-| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并配置认证 (`hermes setup`) | 共享 `external` |
-| **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并完成登录（ACP 需有效账号授权） | Grok 4.7 |
-| **MiniMax Code** | 外部 CLI / `acp` | 全局安装 `@minimax-ai/code`，登录并切换至 Token Plan | MiniMax M3/M2.7 系列（支持 `cn`/`en` 区域） |
-
-> **提示**：外部 CLI 引擎（`bundled: false`）直接调度本机已安装的工具，插件本身不捆绑、不替用户安装或登录外部 CLI。请确保对应命令行已在系统中安装就绪。
-
----
-
 ## 安装说明
 
 通过 `dsh plugin` 命令行直接安装：
 
 ```sh
-# 通过 GitHub 安装
-dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
-
-# 或从本地目录安装
-dsh plugin --profile web add /path/to/dsh-loop-engine-allinone
+# 从 npm 安装（推荐）
+dsh plugin --profile web add dsh-loop-engine-allinone
 ```
 
-启动 `dsh web`，打开 **Settings → Loop engine** 即可进行引擎管理与默认配置。
+然后启动一次 web profile，打开 **Settings → Loop engine**：
+
+```sh
+dsh web
+```
+
+> `dsh` 是 harness 的命令行程序；`dsh web` 启动它的 **web profile**——本插件的引擎选择器与设置页就在那个界面里。
+
+装到 `web` 以外的 profile（桌面版的 `desktop`、`headless` 部署、改过名的 profile）时，
+要把 `--profile web` 换成对应名字，**并且**在组合条目里写 `profile: <名字>`。
+只做前一半是本插件最容易犯的错：插件挂上了，却一个引擎都跑不起来。详见下方安装须知。
 
 ### 安装注意事项
 
@@ -74,6 +62,29 @@ dsh plugin --profile web add /path/to/dsh-loop-engine-allinone
 - **卸载插件**：执行 `dsh plugin --profile web remove dsh-loop-engine-allinone`，并手动清理 `cordis.patch.yml` 中残留的 `loop-engine` 受管块。
 - **pnpm 10+ 构建拦截**：若遇到 `ERR_PNPM_IGNORED_BUILDS`（提示 `esbuild`、`@google/genai` 等构建被忽略），执行 `pnpm approve-builds` 允许即可。
 - **源码模式运行 Harness**：若通过源码启动 Harness，需按照 [docs/source-checkout.md](docs/source-checkout.md) 说明配置 `file:` shim 桥接依赖包。
+
+---
+
+---
+
+## 支持引擎一览
+
+| 引擎名称 | 运行模式 / 协议 | 本机依赖与环境准备 | 专属模型 / 区域支持 |
+|---|---|---|---|
+| **Claude Code** | 捆绑 SDK / `ndjson` | 安装 Claude Code CLI 并登录（或使用 SDK 内置二进制） | 共享 `external` |
+| **Codex** | 捆绑二进制 / `jsonrpc` | 执行 `codex login` 或配置 `CODEX_API_KEY` | GPT-5.x Codex 系列 |
+| **Pi** | 捆绑二进制 / `jsonrpc` | 配置 `~/.pi/agent/auth.json` 或对应 API Key | 共享 `external` |
+| **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（位于 PATH 或配置 `kimiBin`） | 共享 `external` |
+| **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 | 支持 Gemini / Claude 深度思考模型 |
+| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI 并开通 GLM Coding Plan 订阅 | 共享 `external` |
+| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 | 共享 `external` |
+| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并配置认证 (`hermes setup`) | 共享 `external` |
+| **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并完成登录（ACP 需有效账号授权） | Grok 4.7 |
+| **MiniMax Code** | 外部 CLI / `acp` | 全局安装 `@minimax-ai/code`，登录并切换至 Token Plan | MiniMax M3/M2.7 系列（支持 `cn`/`en` 区域） |
+
+> **提示**：外部 CLI 引擎（`bundled: false`）直接调度本机已安装的工具，插件本身不捆绑、不替用户安装或登录外部 CLI。请确保对应命令行已在系统中安装就绪。
+
+---
 
 ---
 

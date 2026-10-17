@@ -5,7 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Harness: 0.1.5 | 0.1.7 | 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#version-compatibility)
 
-**dsh-loop-engine-allinone** is an all-in-one agent loop engine switcher for [DeepSeek Harness](https://github.com/deepseek-ai) (`dsh web`). It enables per-session engine switching across **10 hosted engines** (Claude Code, Codex, Pi, Kimi Code, Antigravity, ZCode, Qoder CN, Hermes Agent, Grok Build, MiniMax Code) alongside the built-in `in-process` loop.
+**dsh-loop-engine-allinone** is an all-in-one agent loop engine switcher for **[DeepSeek Harness](https://github.com/deepseek-ai)** (`dsh`). It enables per-session engine switching across **10 hosted engines** (Claude Code, Codex, Pi, Kimi Code, Antigravity, ZCode, Qoder CN, Hermes Agent, Grok Build, MiniMax Code) alongside the built-in `in-process` loop.
+
+> `dsh` is the harness CLI. `dsh web` boots its **web profile**, which is the UI this plugin's engine picker and settings page live in.
 
 Sessions are fully independent: run Codex in one chat while another runs Kimi Code or Antigravity simultaneously. Handover between two hosted engines happens seamlessly in place; switching to or from the native `in-process` engine performs an in-browser reload without restarting the backend process. All without modifying the DeepSeek Harness core codebase.
 
@@ -23,43 +25,30 @@ Sessions are fully independent: run Codex in one chat while another runs Kimi Co
 | **Adding New Engines** | Modify 5 separate files | **1 registry row + 1 driver** |
 | **ACP Protocol** | 1 engine (Kimi) | **3 engines** (Kimi, Grok, MiniMax) on a shared ACP skeleton |
 | **CLI Drivers** | Ad-hoc implementations | Standardized `driver-cli/` & `driver-acp/` runtimes |
-| **Model Selection** | Global default only | **Per-engine subscription catalogs** (Antigravity, Grok, MiniMax) |
+| **Model Selection** | Global default only | **Per-engine subscription catalogs** (Antigravity, Codex, Grok, MiniMax) |
 | **UI Integration** | Standard labels | **Custom branded marks & status badges** for all 10 engines |
-
----
-
-## Supported Engines
-
-| Engine | Type / Protocol | Host Requirements & Authentication | Custom Models / Region |
-|---|---|---|---|
-| **Claude Code** | Bundled SDK / `ndjson` | Claude CLI installed and logged in (or bundled binary via SDK) | Shared `external` |
-| **Codex** | Bundled / `jsonrpc` | `codex login` or `CODEX_API_KEY` | Shared `external` |
-| **Pi** | Bundled / `jsonrpc` | `~/.pi/agent/auth.json` or provider API key | Shared `external` |
-| **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) | Shared `external` |
-| **Antigravity** | External CLI / `ndjson` | `agy` CLI installed and authenticated via Google | Gemini & Claude thinking models |
-| **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed with active GLM Coding Plan | Shared `external` |
-| **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated | Shared `external` |
-| **Hermes Agent** | External CLI / `text` | `hermes` CLI installed and configured (`hermes setup`) | Shared `external` |
-| **Grok Build** | External CLI / `acp` | `grok` CLI installed (`grok login`); requires active xAI account | Grok 4.7 |
-| **MiniMax Code** | External CLI / `acp` | `npm i -g @minimax-ai/code`, `mcode login`, and `mcode provider use token-plan` | MiniMax M3/M2.7 series (`cn`/`en` regions) |
-
-> **Note**: For external CLI engines (`bundled: false`), the plugin spawns your locally installed binaries; it does not download or authenticate them automatically. Please install and log in on your host machine beforehand.
 
 ---
 
 ## Installation
 
-Install directly via `dsh plugin`:
-
 ```sh
-# Install from GitHub
-dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
-
-# Or install from a local checkout
-dsh plugin --profile web add /path/to/dsh-loop-engine-allinone
+# From npm (recommended)
+dsh plugin --profile web add dsh-loop-engine-allinone
 ```
 
-Start `dsh web`, navigate to **Settings → Loop engine**, and configure your preferred default engine.
+Then boot the web profile once and open **Settings → Loop engine**:
+
+```sh
+dsh web
+```
+
+Installing into a profile other than `web` (the Desktop app's `desktop`, a
+`headless` deployment, a renamed profile) means naming that profile instead:
+`dsh plugin --profile desktop add dsh-loop-engine-allinone`, **and** setting
+`profile: desktop` in the composition entry — see the notes below, because
+forgetting the second half is the one mistake that leaves the plugin mounted but
+unable to run any engine.
 
 ### Installation Notes
 
@@ -74,6 +63,29 @@ Start `dsh web`, navigate to **Settings → Loop engine**, and configure your pr
 - **Uninstallation**: Run `dsh plugin --profile web remove dsh-loop-engine-allinone`, then remove the managed `loop-engine` block from `cordis.patch.yml`.
 - **pnpm 10+**: If dependency build scripts are blocked (`ERR_PNPM_IGNORED_BUILDS` mentioning `esbuild`, `@google/genai`, etc.), run `pnpm approve-builds`.
 - **Harness from Source**: If launching the harness directly from a source checkout, bridge peer dependencies using `file:` shims as described in [docs/source-checkout.md](docs/source-checkout.md).
+
+---
+
+---
+
+## Supported Engines
+
+| Engine | Type / Protocol | Host Requirements & Authentication | Custom Models / Region |
+|---|---|---|---|
+| **Claude Code** | Bundled SDK / `ndjson` | Claude CLI installed and logged in (or bundled binary via SDK) | Shared `external` |
+| **Codex** | Bundled / `jsonrpc` | `codex login` or `CODEX_API_KEY` | GPT-5.x Codex family |
+| **Pi** | Bundled / `jsonrpc` | `~/.pi/agent/auth.json` or provider API key | Shared `external` |
+| **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) | Shared `external` |
+| **Antigravity** | External CLI / `ndjson` | `agy` CLI installed and authenticated via Google | Gemini & Claude thinking models |
+| **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed with active GLM Coding Plan | Shared `external` |
+| **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated | Shared `external` |
+| **Hermes Agent** | External CLI / `text` | `hermes` CLI installed and configured (`hermes setup`) | Shared `external` |
+| **Grok Build** | External CLI / `acp` | `grok` CLI installed (`grok login`); requires active xAI account | Grok 4.7 |
+| **MiniMax Code** | External CLI / `acp` | `npm i -g @minimax-ai/code`, `mcode login`, and `mcode provider use token-plan` | MiniMax M3/M2.7 series (`cn`/`en` regions) |
+
+> **Note**: For external CLI engines (`bundled: false`), the plugin spawns your locally installed binaries; it does not download or authenticate them automatically. Please install and log in on your host machine beforehand.
+
+---
 
 ---
 
@@ -123,8 +135,9 @@ Custom settings can be configured under your profile's composition entry:
   - *Note*: Engine switching is permitted only when the current session is idle.
 - **Header Badge**: Shows the engine actively powering the current session. Can be toggled via *Show the engine badge in the conversation header*.
 - **Model Selection**:
-  - Engines with dedicated catalogs (**Antigravity**, **Grok Build**, **MiniMax Code**) display their subscription-included models in the model picker.
-  - Other hosted engines expose a unified `external` model group.
+  - Engines with dedicated catalogs (**Antigravity**, **Codex**, **Grok Build**, **MiniMax Code**) display their subscription-included models in the model picker, and picking one passes that id to the engine.
+  - Other hosted engines share one `external` group holding a single `default`, which means "let the engine decide". A shared group is not a limitation on what you can run — it is the menu collapsing engines whose catalogs this build has not measured. Declaring a catalog (one `models` row in the registry) gives an engine its own group.
+  - Picking a **real dsh model** instead hands the engine that model's endpoint and credential as well; whether the engine can serve it is the engine's business, and a refusal is reported rather than swallowed.
   - Native dsh commands (`/export`, `/feedback`, `/permission`) and context auto-compaction remain fully functional.
 
 ---
