@@ -1,91 +1,77 @@
 /**
- * The engine marks: every hosted engine has its OWN, and only `in-process`
- * carries the DeepSeek fish.
+ * The engine marks: every hosted engine has its OWN vendor mark, and only
+ * `in-process` carries the DeepSeek fish.
  *
- * This is a regression pin with a specific history: four engines were added to
+ * This is a regression pin with a specific history. Four engines were added to
  * the registry while the mark switch still knew four, so `agy`, `zcode`,
- * `qoderclicn` and `hermes` all fell through `default` and rendered the
- * harness's own fish beside their names. The plugin was claiming those engines
- * were DeepSeek's.
+ * `qoderclicn` and `hermes` all fell through `default` and rendered the harness's
+ * own fish beside their names — the plugin was claiming four vendors' CLIs were
+ * DeepSeek's. Then, once each had a hand-drawn stand-in, the marks turned out not
+ * to resemble the real ones, so they were replaced with paths traced or measured
+ * from the vendors' own artwork.
  *
- * The composer component cannot be imported here — it pulls
- * `@deepseek-ai/dsh-client-ui-primitives`, which resolves React through its own
- * package path and is not aliased by the node test config — so this pins the
- * SWITCH at the source level, the same way `tests/agent-preset-ids.spec.ts` pins
- * a module's import shape. The assertion is exhaustive over the roster rather
- * than a list of the marks somebody remembered to add.
+ * The data now lives in its own zero-import module (`./engine-marks.ts`), so the
+ * assertions below are REAL imports. The composer component itself cannot be
+ * imported here: it pulls `@deepseek-ai/dsh-client-ui-primitives`, whose React
+ * resolution escapes the node test alias.
  *
  * @module tests/client/engine-glyph
  */
 
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
+import { ENGINE_MARKS } from '../../src/client/engine-marks.ts'
 import { HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
 
-/** The carriage-return character, spelled out to keep this file escape-free. */
+/** The carriage-return character, so this file needs no escape sequences. */
 const CR = String.fromCharCode(13)
 
-/**
- * The composer module's source, read once, with line endings normalized.
- *
- * The normalization is not cosmetic: the checkout is CRLF, so the structural
- * searches below (which look for a line break then a brace) would silently miss
- * every boundary and the assertions would fail with a confusing negative index.
- */
-async function composerSource(): Promise<string> {
-  const text = await readFile(new URL('../../src/client/LoopEngineComposerSelect.tsx', import.meta.url), 'utf8')
-  return text.split(CR).join('')
-}
+describe('ENGINE_MARKS', () => {
+  it('covers exactly the hosted roster', () => {
+    expect(Object.keys(ENGINE_MARKS).sort()).toEqual([...HOSTED_ENGINE_IDS].sort())
+  })
 
-/**
- * The body of `engineGlyph`'s switch.
- *
- * Cut from the function's opening brace to the closing one at column 0, so a
- * `case` mentioned anywhere else in the file cannot satisfy the assertion.
- * @param text - the module source with normalized line endings.
- * @returns the switch body.
- */
-function switchBody(text: string): string {
-  const start = text.indexOf('export function engineGlyph(')
-  expect(start, 'engineGlyph must exist and be exported for this pin').toBeGreaterThan(-1)
-  const open = text.indexOf('{', text.indexOf(')', start))
-  const close = text.indexOf('\n}\n', open)
-  expect(close, 'engineGlyph must end at column 0').toBeGreaterThan(open)
-  return text.slice(open, close)
-}
+  it('leaves `in-process` out, so the fish is the only in-process mark', () => {
+    expect(Object.keys(ENGINE_MARKS)).not.toContain('in-process')
+  })
 
-describe('engineGlyph', () => {
-  it('has a case of its own for every hosted engine', async () => {
-    const body = switchBody(await composerSource())
+  it('gives every engine real path data and a viewBox', () => {
     for (const engine of HOSTED_ENGINE_IDS) {
-      expect(body, engine).toContain(`case '${engine}':`)
+      const mark = ENGINE_MARKS[engine]
+      expect(mark.d.startsWith('M'), engine).toBe(true)
+      expect(mark.d.length, engine).toBeGreaterThan(40)
+      expect(mark.viewBox, engine).toMatch(/^-?\d+(\.\d+)? -?\d+(\.\d+)? \d+(\.\d+)? \d+(\.\d+)?$/)
+      // A path that never draws a curve or a corner is a placeholder, not a mark.
+      expect(/[LCHVAZ]/.test(mark.d), engine).toBe(true)
     }
   })
 
-  it('falls through to the DeepSeek fish for in-process ONLY', async () => {
-    // `default:` is the only branch that may render the harness's own mark: every
-    // hosted engine must return before reaching it.
-    const body = switchBody(await composerSource())
-    const defaults = body.split('\n').filter(line => line.trim().startsWith('default:'))
-    expect(defaults).toHaveLength(1)
-    const defaultBranch = body.slice(body.indexOf('default:'))
-    expect(defaultBranch).toContain('<FishLogo')
-
-    // And no hosted engine's own arm may name the fish either.
-    for (const engine of HOSTED_ENGINE_IDS) {
-      const from = body.indexOf(`case '${engine}':`)
-      const rest = body.slice(from + 1)
-      const next = rest.search(/\n {4}(?:case |default:)/)
-      const arm = next === -1 ? rest : rest.slice(0, next + 1)
-      expect(arm, engine).not.toContain('<FishLogo')
-    }
-  })
-
-  it('gives no two engines the same drawing', async () => {
-    // A copy-pasted arm would make two engines indistinguishable on the trigger.
-    const body = switchBody(await composerSource())
-    const paths = [...body.matchAll(/d="([^"]{20,})"/g)].map(match => match[1]!)
-    expect(paths.length).toBeGreaterThanOrEqual(HOSTED_ENGINE_IDS.length)
+  it('gives no two engines the same drawing', () => {
+    const paths = HOSTED_ENGINE_IDS.map(engine => ENGINE_MARKS[engine].d)
     expect(new Set(paths).size).toBe(paths.length)
+  })
+
+  it('names a fill rule only where the shape needs one', () => {
+    for (const engine of HOSTED_ENGINE_IDS) {
+      expect([undefined, 'nonzero', 'evenodd'], engine).toContain(ENGINE_MARKS[engine].fillRule)
+    }
+  })
+})
+
+describe('the composer’s mark renderer', () => {
+  it('reserves the DeepSeek fish for in-process', async () => {
+    // The one invariant that needs the component's own text: `FishLogo` may sit
+    // behind the `in-process` guard and nowhere else.
+    const raw = await readFile(new URL('../../src/client/LoopEngineComposerSelect.tsx', import.meta.url), 'utf8')
+    const text = raw.split(CR).join('')
+    const body = text.slice(text.indexOf('export function engineGlyph('))
+    const markAt = body.indexOf('const mark = ENGINE_MARKS')
+    expect(markAt, 'the renderer must read its marks from the data module').toBeGreaterThan(-1)
+    const guard = body.slice(0, markAt)
+    expect(guard).toContain("engine === 'in-process'")
+    expect(guard).toContain('<FishLogo')
+    // Everything after the guard renders the data module, so no other engine can
+    // reach the fish.
+    expect(body.slice(markAt)).not.toContain('<FishLogo')
   })
 })

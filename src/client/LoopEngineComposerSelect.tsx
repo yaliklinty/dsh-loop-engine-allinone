@@ -71,6 +71,7 @@
 
 import { useRef, useState, type CSSProperties, type JSX } from 'react'
 import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
+import { ENGINE_MARKS } from './engine-marks.ts'
 import {
   Button,
   FishLogo,
@@ -192,91 +193,31 @@ function defaultFace(fallback: LoopEngineId): TriggerFace {
 }
 
 /**
- * Official mark per engine, tinted by `currentColor` so it follows the trigger
- * and menu text. The composer bundle is esbuild-built without a CSS loader, so
- * these are inline SVGs with each source's own viewBox (scaled to a `size`px
- * square by the renderer).
+ * One engine's mark, tinted by `currentColor` so it follows the trigger and menu
+ * text. The composer bundle is esbuild-built without a CSS loader, so these are
+ * inline SVGs.
  *
- * The four original engines carry their vendors' own marks (the dsh fish for the
- * harness loop, the Simple Icons Claude Code mark, OpenAI's blossom, pi.dev's
- * logo, and Kimi's "K"). The four engines added by the registry fork have no
- * vendor path this build can verify, so they carry a MONOGRAM instead — the
- * engine's own initial or emblem, in a distinct colour. That is a deliberate
- * choice over inventing a logo: a wrong-but-confident mark would claim a brand
- * identity this plugin cannot vouch for, while a monogram is honest and still
- * tells the eight engines apart at a glance. Swapping in official paths later is
- * a one-case change per engine.
+ * The paths live in `./engine-marks.ts` as DATA, not here: they come from each
+ * vendor's own artwork (traced or measured — see that module), and putting them
+ * in a data module is what lets a test assert that every registered engine has a
+ * mark. That assertion matters: when four engines were added, all four fell
+ * through to `default` and rendered the harness's DeepSeek fish beside their
+ * names.
+ *
+ * `in-process` is the one session kind that really is DeepSeek's, so it is the
+ * one that keeps the fish.
+ * @param engine - the engine whose mark to draw.
+ * @param size - edge length in CSS pixels.
+ * @returns the mark, as an inline SVG.
  */
 export function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
-  switch (engine) {
-    case 'claude-code':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path fill="currentColor" d="M21 10.5h3v3h-3v3h-1.5v3H18v-3h-1.5v3H15v-3H9v3H7.5v-3H6v3H4.5v-3H3v-3H0v-3h3v-6h18Zm-15 0h1.5v-3H6Zm10.5 0H18v-3h-1.5z" />
-        </svg>
-      )
-    case 'codex':
-      return (
-        <svg width={size} height={size} viewBox="0 0 256 260" fill="none" aria-hidden>
-          <path fill="currentColor" d="M239.183914,106.202783 C245.054304,88.5242096 243.02228,69.1733805 233.607599,53.0998864 C219.451678,28.4588021 190.999703,15.7836129 163.213007,21.739505 C147.554077,4.32145883 123.794909,-3.42398554 100.87901,1.41873898 C77.9631105,6.26146349 59.3690093,22.9572536 52.0959621,45.2214219 C33.8436494,48.9644867 18.0901721,60.392749 8.86672513,76.5818033 C-5.443491,101.182962 -2.19544431,132.215255 16.8986662,153.320094 C11.0060865,170.990656 13.0197283,190.343991 22.4238231,206.422991 C36.5975553,231.072344 65.0680342,243.746566 92.8695738,237.783372 C105.235639,251.708249 123.001113,259.630942 141.623968,259.52692 C170.105359,259.552169 195.337611,241.165718 204.037777,214.045661 C222.28734,210.296356 238.038489,198.869783 247.267014,182.68528 C261.404453,158.127515 258.142494,127.262775 239.183914,106.202783 L239.183914,106.202783 Z M141.623968,242.541207 C130.255682,242.559177 119.243876,238.574642 110.519381,231.286197 L112.054146,230.416496 L163.724595,200.590881 C166.340648,199.056444 167.954321,196.256818 167.970781,193.224005 L167.970781,120.373788 L189.815614,133.010026 C190.034132,133.121423 190.186235,133.330564 190.224885,133.572774 L190.224885,193.940229 C190.168603,220.758427 168.442166,242.484864 141.623968,242.541207 Z M37.1575749,197.93062 C31.456498,188.086359 29.4094818,176.546984 31.3766237,165.342426 L32.9113895,166.263285 L84.6329973,196.088901 C87.2389349,197.618207 90.4682717,197.618207 93.0742093,196.088901 L156.255402,159.663793 L156.255402,184.885111 C156.243557,185.149771 156.111725,185.394602 155.89729,185.550176 L103.561776,215.733903 C80.3054953,229.131632 50.5924954,221.165435 37.1575749,197.93062 Z M23.5493181,85.3811273 C29.2899861,75.4733097 38.3511911,67.9162648 49.1287482,64.0478825 L49.1287482,125.438515 C49.0891492,128.459425 50.6965386,131.262556 53.3237748,132.754232 L116.198014,169.025864 L94.3531808,181.662102 C94.1132325,181.789434 93.8257461,181.789434 93.5857979,181.662102 L41.3526015,151.529534 C18.1419426,138.076098 10.1817681,108.385562 23.5493181,85.125333 L23.5493181,85.3811273 Z M203.0146,127.075598 L139.935725,90.4458545 L161.7294,77.8607748 C161.969348,77.7334434 162.256834,77.7334434 162.496783,77.8607748 L214.729979,108.044502 C231.032329,117.451747 240.437294,135.426109 238.871504,154.182739 C237.305714,172.939368 225.050719,189.105572 207.414262,195.67963 L207.414262,134.288998 C207.322521,131.276867 205.650697,128.535853 203.0146,127.075598 Z M224.757116,94.3850867 L223.22235,93.4642272 L171.60306,63.3828173 C168.981293,61.8443751 165.732456,61.8443751 163.110689,63.3828173 L99.9806554,99.8079259 L99.9806554,74.5866077 C99.9533004,74.3254088 100.071095,74.0701869 100.287609,73.9215426 L152.520805,43.7889738 C168.863098,34.3743518 189.174256,35.2529043 204.642579,46.0434841 C220.110903,56.8340638 227.949269,75.5923959 224.757116,94.1804513 L224.757116,94.3850867 Z M88.0606409,139.097931 L66.2158076,126.512851 C65.9950399,126.379091 65.8450965,126.154176 65.8065367,125.898945 L65.8065367,65.684966 C65.8314495,46.8285367 76.7500605,29.6846032 93.8270852,21.6883055 C110.90411,13.6920079 131.063833,16.2835462 145.5632,28.338998 L144.028434,29.2086986 L92.3579852,59.0343142 C89.7419327,60.5687513 88.1282597,63.3683767 88.1117998,66.4011901 L88.0606409,139.097931 Z M99.9294965,113.5185 L128.06687,97.3011417 L156.255402,113.5185 L156.255402,145.953218 L128.169187,162.170577 L99.9806554,145.953218 L99.9294965,113.5185 Z" />
-        </svg>
-      )
-    case 'pi':
-      return (
-        <svg width={size} height={size} viewBox="0 0 800 800" fill="none" aria-hidden>
-          <path fill="currentColor" fillRule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z" />
-          <path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z" />
-        </svg>
-      )
-    case 'kimi':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path fill="currentColor" d="M6 3h2.6v6.5L14.4 3h3.4l-5.6 7.4L17.8 21h-3.4l-5.9-8v8H6z" />
-        </svg>
-      )
-    // ── Monogram marks for the engines added by the registry fork ──────────
-    // Antigravity: a four-point sparkle, the AI-family emblem, distinct from
-    // Claude's six-point asterisk.
-    case 'agy':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path fill="currentColor" d="M12 1.5 14.4 9.6 22.5 12 14.4 14.4 12 22.5 9.6 14.4 1.5 12 9.6 9.6Z" />
-        </svg>
-      )
-    // ZCode: a "Z", which is also the mark its own vendor leans on.
-    case 'zcode':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path fill="currentColor" d="M4 4h16v3.1L9.3 17H20v3H4v-3.1L14.7 7H4z" />
-        </svg>
-      )
-    // Qoder: a "Q" — ring plus its tail.
-    case 'qoderclicn':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            fill="currentColor"
-            fillRule="evenodd"
-            d="M11 2a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z"
-          />
-          <path fill="currentColor" d="M15.2 15.2 20.8 20.8 19.1 22.5 13.5 16.9Z" />
-        </svg>
-      )
-    // Hermes: the Greek psi (Ψ), the emblem its vendor uses.
-    case 'hermes':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            fill="currentColor"
-            d="M6.4 3h2.6v6.3a3 3 0 0 0 6 0V3h2.6v6.3a5.6 5.6 0 0 1-4.3 5.45V21h-2.6v-6.25A5.6 5.6 0 0 1 6.4 9.3z"
-          />
-        </svg>
-      )
-    default:
-      // `in-process` only: the harness's own loop, which is the one session kind
-      // that really is DeepSeek's.
-      return <FishLogo size={size} />
-  }
+  if (engine === 'in-process') return <FishLogo size={size} />
+  const mark = ENGINE_MARKS[engine]
+  return (
+    <svg width={size} height={size} viewBox={mark.viewBox} fill="none" aria-hidden>
+      <path fill="currentColor" fillRule={mark.fillRule ?? 'nonzero'} d={mark.d} />
+    </svg>
+  )
 }
 
 /**

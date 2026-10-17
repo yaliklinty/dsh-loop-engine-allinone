@@ -284,8 +284,10 @@ export const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]>
   // `le-flicker`, `le-drift`): `le-braille` and `le-moon` step `content`, so
   // handing one of those to a monogram would replace the letter every frame.
   ['agy', {
-    // Antigravity: the four-point sparkle, in Google blue.
-    colour: '#4285f4', tint: '#a8c4fb', glyph: '✦', extras: [],
+    // Antigravity: the arch from its own app icon, in the blue that icon leads
+    // with. The row glyph is a CHARACTER — a `::before` cannot carry a path — so
+    // it is the letter the arch reads as.
+    colour: '#4285f4', tint: '#a8c4fb', glyph: 'A', extras: ['font-weight: 700'],
     animation: 'le-bloom 1.8s ease-in-out infinite',
   }],
   ['zcode', {
@@ -295,9 +297,10 @@ export const ENGINE_PAINT: ReadonlyArray<readonly [HostedEngineId, EnginePaint]>
     animation: 'le-flicker 1.9s steps(1, end) infinite',
   }],
   ['qoderclicn', {
-    // Qoder CN: a "Q", in magenta so it never sits next to Codex's slate or
-    // Antigravity's blue.
-    colour: '#db2777', tint: '#f4a8c8', glyph: 'Q', extras: ['font-weight: 700'],
+    // Qoder CN: its mark is a green disc split by a white crescent, so the colour
+    // is the vendor's own green rather than a hue picked for contrast. The glyph
+    // is the vendor's initial.
+    colour: '#16a34a', tint: '#a7e8bd', glyph: 'Q', extras: ['font-weight: 700'],
     animation: 'le-pulse 1.6s ease-in-out infinite',
   }],
   ['hermes', {
