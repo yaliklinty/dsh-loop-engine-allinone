@@ -8,6 +8,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.5.0]
+
+### Added
+
+- **Codex declares its model catalog**, so the model menu gives it a group of its
+  own instead of the shared `external` one. The ids were read out of the bundled
+  0.149.1 CLI binary — they are what `thread/start`'s `model` accepts, which the
+  driver passes straight through.
+
+### Changed
+
+- **Installation is the first section of both READMEs.** It used to sit below a
+  ten-row requirements table, which put a gate in front of the one thing a reader
+  wants first. The requirements table is reference, so it now follows.
+- The **local-checkout install command is gone**: it told a stranger to run
+  `dsh plugin add /path/to/dsh-loop-engine-allinone`, a path nobody has. npm is the
+  documented path.
+- **`dsh web` was written as if it were the harness's name.** `dsh` is the CLI and
+  `web` is one of its profiles; that is now said once, where a reader meets it.
+- The model-menu section explains what a **shared** group means: it is the menu
+  collapsing engines whose catalogs this build has not measured, not a restriction
+  on what an engine can run. A `models` row gives an engine its own group.
+
+### Notes
+
+- **Pi deliberately has no declared catalog.** It refreshes its model list at
+  runtime (`pi update --models`) from each provider, so any list shipped here would
+  be stale by design. Kimi and ZCode have none either: neither was installed on the
+  machine this release was measured on, so nothing could be observed.
+
 ## [0.4.1]
 
 ### Added
