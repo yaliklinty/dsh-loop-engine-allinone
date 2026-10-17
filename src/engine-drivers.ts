@@ -135,7 +135,9 @@ function pinnedBin(
   binConfigKey: string | undefined,
   legacy: string | undefined = undefined,
 ): string | undefined {
+  /* v8 ignore start -- every registry row declares a binConfigKey, so this is a type-level backstop, not a reachable state */
   if (binConfigKey === undefined) return undefined
+  /* v8 ignore stop */
   const value = config.bins?.[binConfigKey]
   if (value !== undefined && value !== '') return value
   return legacy === undefined || legacy === '' ? undefined : legacy
@@ -149,7 +151,9 @@ function pinnedBin(
  * @returns the pinned region, or undefined when the deployment pinned none.
  */
 function pinnedRegion(config: EngineDriverConfig, regionConfigKey: string | undefined): string | undefined {
+  /* v8 ignore start -- only MiniMax Code declares a region, and its configKey is fixed; a row without one is a type-level backstop */
   if (regionConfigKey === undefined) return undefined
+  /* v8 ignore stop */
   const value = config.regions?.[regionConfigKey]
   return value === undefined || value === '' ? undefined : value
 }
