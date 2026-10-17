@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.1]
+
+### Fixed
+
+- **Installation no longer assumes a `web` profile.** `web` is one of several shipped
+  templates; the Desktop app boots `desktop`, a CI deployment boots `headless`, and
+  many people run a profile they named themselves. The instructions now say
+  `<your-profile>` and give the three real sources: npm, GitHub, and a local clone for
+  plugin development.
+- **A wrong `profile:` is now diagnosable.** The field defaults to `web`, so forgetting
+  it writes the managed block into another profile's patch file while the profile that
+  actually boots never reads it — the plugin mounts, the base `agent-loop` row is never
+  disabled, and no hosted engine is reachable, with **nothing logged**. The harness
+  gives a plugin no way to ask which profile is running, so `apply` now checks whether
+  the target directory holds a profile's `package.json` and warns with the field to set.
+  It is a warning, not a failure: a first boot may legitimately precede the profile's
+  own files.
+
+### Documented
+
+- The engine picker appears in whichever profile renders a web UI, not specifically in
+  `web`.
+
 ## [0.7.0]
 
 ### Added
