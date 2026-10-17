@@ -88,8 +88,9 @@ engines' ACP and JSON-RPC drivers as their templates).
 ## Install
 
 ```sh
-# From this repository (the fork; the npm package name is the upstream's):
-dsh plugin --profile web add <owner>/dsh-loop-engine
+# From this repository (the npm package name `dsh-loop-engine` belongs to
+# upstream, so installing from git names the fork explicitly):
+dsh plugin --profile web add yaliklinty/dsh-loop-engine
 
 # From a local checkout:
 dsh plugin --profile web add /path/to/dsh-loop-engine

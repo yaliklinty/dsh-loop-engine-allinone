@@ -7,7 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<your-account>/dsh-loop-engine.git"
+    "url": "git+https://github.com/yaliklinty/dsh-loop-engine.git"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -130,9 +130,9 @@
     "vitest": "^4.1.8"
   },
   "bugs": {
-    "url": "https://github.com/<your-account>/dsh-loop-engine/issues"
+    "url": "https://github.com/yaliklinty/dsh-loop-engine/issues"
   },
-  "homepage": "https://github.com/<your-account>/dsh-loop-engine#readme",
+  "homepage": "https://github.com/yaliklinty/dsh-loop-engine#readme",
   "author": "dsh-loop-engine fork contributors",
   "keywords": [
     "deepseek-harness",
