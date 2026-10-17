@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.3]
+
+### Fixed
+
+- **ZCode's path probe only worked on the author's machine.** The resolver and the
+  probe script both hardcoded `D:\Programs\ZCode\...` (and the probe also
+  `D:\Programs
+pm-global`), so on any other host the "well-known location" check
+  silently never matched and a user with ZCode installed somewhere normal was told it
+  was not installed. Both now derive candidates from the environment:
+  `%ZCODE_HOME%` → `%LOCALAPPDATA%\Programs\ZCode` → `%ProgramFiles%\ZCode`, and
+  the probe's npm prefixes from the running npm configuration and the standard
+  per-machine layouts.
+- A test run's probe output directory (`probe-out/`) was picked up by `git add -A`.
+  Removed, and ignored from now on.
+
+### Added
+
+- **`ZCODE_HOME` is documented**, with a `zcodeBin` key in the configuration example.
+  ZCode ships as a desktop bundle rather than a plain executable, so a manual install
+  outside an installer-written root needs one of the two to be found — and the README
+  previously mentioned neither, which is why the gap went unnoticed.
+
 ## [0.7.2]
 
 ### Changed
