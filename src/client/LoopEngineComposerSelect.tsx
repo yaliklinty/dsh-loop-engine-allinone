@@ -71,7 +71,7 @@
 
 import { useRef, useState, type CSSProperties, type JSX } from 'react'
 import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
-import { ENGINE_MARKS } from './engine-marks.ts'
+import { ENGINE_MARKS, markPaint } from './engine-marks.ts'
 import {
   Button,
   FishLogo,
@@ -213,9 +213,21 @@ function defaultFace(fallback: LoopEngineId): TriggerFace {
 export function engineGlyph(engine: LoopEngineId, size = 16): JSX.Element {
   if (engine === 'in-process') return <FishLogo size={size} />
   const mark = ENGINE_MARKS[engine]
+  const paint = markPaint(mark, 'currentColor')
   return (
     <svg width={size} height={size} viewBox={mark.viewBox} fill="none" aria-hidden>
-      <path fill="currentColor" fillRule={mark.fillRule ?? 'nonzero'} d={mark.d} />
+      {paint.mode === 'fill'
+        ? <path fill={paint.colour} fillRule={mark.fillRule ?? 'nonzero'} d={mark.d} />
+        : (
+            <path
+              fill="none"
+              stroke={paint.colour}
+              strokeWidth={paint.width}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              d={mark.d}
+            />
+          )}
       {/* A two-tone brand mark (Kimi's blue dot) paints its accent in its own
           colour; everything else follows the surface's text colour. */}
       {mark.accent === undefined ? null : <path fill={mark.accent.fill} d={mark.accent.d} />}

@@ -12,7 +12,7 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { ENGINE_MARKS } from '../../src/client/engine-marks.ts'
+import { ENGINE_MARKS, markPaint } from '../../src/client/engine-marks.ts'
 import type { HostedEngineId } from '../../src/engine-registry.ts'
 
 const engine = (process.argv[2] ?? 'hermes') as HostedEngineId
@@ -24,8 +24,14 @@ if (original === undefined) {
 
 const mark = ENGINE_MARKS[engine]
 const accent = mark.accent === undefined ? '' : `<path fill="${mark.accent.fill}" d="${mark.accent.d}"/>`
-const svg = (size: number, colour: string): string => `<svg width=${size} height=${size} viewBox="${mark.viewBox}" fill="none">`
-  + `<path fill="${colour}" fill-rule="${mark.fillRule ?? 'nonzero'}" d="${mark.d}"/>${accent}</svg>`
+const svg = (size: number, colour: string): string => {
+  const paint = markPaint(mark, colour)
+  const body = paint.mode === 'fill'
+    ? `<path fill="${paint.colour}" fill-rule="${mark.fillRule ?? 'nonzero'}" d="${mark.d}"/>`
+    : `<path fill="none" stroke="${paint.colour}" stroke-width="${paint.width}"`
+      + ` stroke-linejoin="round" stroke-linecap="round" d="${mark.d}"/>`
+  return `<svg width=${size} height=${size} viewBox="${mark.viewBox}" fill="none">${body}${accent}</svg>`
+}
 
 const src = 'file:///' + original.split(String.fromCharCode(92)).join('/')
 const sweep = (colour: string): string => [150, 64, 32, 20, 16].map(size => svg(size, colour)).join('')

@@ -11,7 +11,7 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { ENGINE_MARKS } from '../../src/client/engine-marks.ts'
+import { ENGINE_MARKS, markPaint } from '../../src/client/engine-marks.ts'
 import { HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
 
 const ENGINE_LABELS: Record<string, string> = {
@@ -28,9 +28,13 @@ const ENGINE_LABELS: Record<string, string> = {
 /** One mark at a given size, exactly as the picker builds it. */
 function mark(engine: keyof typeof ENGINE_MARKS, size: number, colour: string): string {
   const m = ENGINE_MARKS[engine]
+  const paint = markPaint(m, colour)
   const accent = m.accent === undefined ? '' : `<path fill="${m.accent.fill}" d="${m.accent.d}"/>`
-  return `<svg width=${size} height=${size} viewBox="${m.viewBox}" fill="none">`
-    + `<path fill="${colour}" fill-rule="${m.fillRule ?? 'nonzero'}" d="${m.d}"/>${accent}</svg>`
+  const body = paint.mode === 'fill'
+    ? `<path fill="${paint.colour}" fill-rule="${m.fillRule ?? 'nonzero'}" d="${m.d}"/>`
+    : `<path fill="none" stroke="${paint.colour}" stroke-width="${paint.width}"`
+      + ` stroke-linejoin="round" stroke-linecap="round" d="${m.d}"/>`
+  return `<svg width=${size} height=${size} viewBox="${m.viewBox}" fill="none">${body}${accent}</svg>`
 }
 
 // A menu-like list (light surface) plus a size sweep, which is what decides
