@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.4.1]
+
+### Added
+
+- A language switch in both READMEs (`English · 简体中文`). GitHub only renders
+  `README.md`, so the pair is linked rather than auto-detected.
+
+### Fixed
+
+- `README.zh.md` was a translation of the UPSTREAM plugin: four hosted engines, no
+  registry chapter, nothing about grok/minimaxcode or the ACP capability bridges. It
+  is rewritten from the English README section by section (same nine sections, same
+  order).
+- `tsconfig.json` no longer extends a `../deepseek-harness/` checkout that only
+  exists in the author's working tree, and `vitest.config.ts` applies its harness
+  aliases only when that checkout is present. Before this, a fresh clone could not
+  run `node build.mjs` (TS5083) or `vitest run` (32 suites could not resolve
+  `@deepseek-ai/cordis`).
+
 ## [0.4.0]
 
 ### Added
