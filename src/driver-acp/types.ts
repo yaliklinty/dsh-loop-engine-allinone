@@ -12,7 +12,7 @@
  *
  * The shapes below were READ from live frames, not from the specification, and
  * each engine's own deltas are recorded where they matter
- * (`docs/engine-registry.md`, `output/协议探测报告.md`): kimi nests tool content
+ * (`docs/engine-registry.md`): kimi nests tool content
  * as `{ type: 'content', content: { type: 'text' } }`, all three carry text
  * chunks as `content: { type: 'text', text }`, and a model is selected through
  * a DIFFERENT method per engine (`session/set_model` on kimi,

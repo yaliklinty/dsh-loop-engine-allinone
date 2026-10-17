@@ -17,8 +17,8 @@
  * ## Usage
  *
  * ```sh
- * node scripts/probe/acp-handshake.mjs --bin mcode --argv acp --out ../../output/probes
- * node scripts/probe/acp-handshake.mjs --bin grok  --argv agent,stdio --out ../../output/probes
+ * node scripts/probe/acp-handshake.mjs --bin mcode --argv acp --out ./probe-out
+ * node scripts/probe/acp-handshake.mjs --bin grok  --argv agent,stdio --out ./probe-out
  * node scripts/probe/acp-handshake.mjs --bin grok --argv agent,--always-approve,stdio --prompt "say PONG"
  * ```
  *

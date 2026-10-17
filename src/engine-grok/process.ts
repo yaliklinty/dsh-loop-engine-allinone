@@ -3,7 +3,7 @@
  * starts its ACP server.
  *
  * Measured and documented facts this file encodes (see
- * `data/vendor-docs/grok/15-agent-mode.md` and `output/probes/`):
+ * Grok's shipped user guide, and the frames `scripts/probe/acp-handshake.mjs` dumps):
  *
  *   - the ACP server is `grok agent [options] stdio` — agent options go AFTER
  *     `agent` and BEFORE the mode name, so `grok agent stdio` is the bare form;

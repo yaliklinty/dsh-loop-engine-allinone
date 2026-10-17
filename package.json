@@ -1,11 +1,14 @@
 {
   "name": "dsh-loop-engine",
-  "description": "Web-switchable agent loop engine selection for the DeepSeek Harness - out-of-tree plugin with a data-driven engine registry and a pluggable external-CLI driver layer (Claude Code / Codex / Pi / Kimi Code / Antigravity / ZCode / Qoder CN / Hermes). Fork of @kuun993's original, zero main-repo changes",
-  "version": "0.3.0",
+  "description": "Web-switchable agent loop engine selection for the DeepSeek Harness - out-of-tree plugin with a data-driven engine registry and a pluggable driver layer. Ten engines: Claude Code / Codex / Pi / Kimi Code / Antigravity / ZCode / Qoder CN / Hermes / Grok Build / MiniMax Code. Fork of kuun993/dsh-loop-engine.",
+  "version": "0.4.0",
   "publishConfig": {
     "access": "public"
   },
-  "repository": "github:kuun993/dsh-loop-engine",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<your-account>/dsh-loop-engine.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -30,7 +33,12 @@
     "lib/invariant.js",
     "lib/client.js",
     "lib/types/**/*.d.ts",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LICENSE"
   ],
   "license": "MIT",
   "engines": {
@@ -120,5 +128,24 @@
     "vite": "^7.0.0",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.8"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/<your-account>/dsh-loop-engine/issues"
+  },
+  "homepage": "https://github.com/<your-account>/dsh-loop-engine#readme",
+  "author": "dsh-loop-engine fork contributors",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "agent-loop",
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "kimi",
+    "antigravity",
+    "grok",
+    "minimax",
+    "acp"
+  ]
 }

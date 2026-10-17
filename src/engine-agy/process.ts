@@ -25,7 +25,7 @@
  * timed out"}}` — the host's Google credential had expired — so the streaming
  * vocabulary was recorded as UNKNOWN rather than guessed. Re-probing after the
  * host signed in produced the whole protocol (`docs/probes/agy.md`, raw captures
- * in the fork's `output/probes/`), and this module and `./frames.ts` are written
+ * with `scripts/probe/probe.mjs agy`), and this module and `./frames.ts` are written
  * against it. The three findings that shape the code:
  *
  * 1. **`--print` takes an OPTIONAL value**, so a bare `--print` makes the NEXT

@@ -2,7 +2,7 @@
  * The Antigravity frame mapper, pinned against REAL captured frames.
  *
  * Every payload below is copied from a live run on a signed-in host (raw
- * captures: the fork's `output/probes/agy.raw.txt`, plus the tool-turn capture
+ * captures: `scripts/probe/probe.mjs agy`, plus the tool-turn capture
  * recorded in `docs/probes/agy.md`). That matters more here than anywhere else in
  * the suite: the first version of this mapper was written while the host's
  * credential was expired, so only the `result` envelope had ever been observed

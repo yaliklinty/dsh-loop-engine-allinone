@@ -444,7 +444,7 @@ async function probe(id, outDir) {
 
 const argv = process.argv.slice(2)
 const outIndex = argv.indexOf('--out')
-const outDir = resolve(outIndex === -1 ? 'output/probes' : argv[outIndex + 1] ?? 'output/probes')
+const outDir = resolve(outIndex === -1 ? 'probe-out' : argv[outIndex + 1] ?? 'probe-out')
 const names = argv.filter((value, index) => !value.startsWith('--') && index !== outIndex + 1)
 const targets = names.length > 0 ? names : Object.keys(ENGINES)
 

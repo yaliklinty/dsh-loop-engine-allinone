@@ -286,7 +286,7 @@ export class AcpClient {
    * Part of the ACP flow rather than an engine extension: an agent that requires
    * authentication refuses `session/new` until the client answers with the method
    * id it published (`grok agent stdio` does exactly that — measured on this
-   * host, see `output/probes/`).
+   * host; reproduce it with `scripts/probe/acp-handshake.mjs`).
    * @param methodId - one `authMethods[].id` from the initialize result.
    * @returns the agent's response to `authenticate`.
    */

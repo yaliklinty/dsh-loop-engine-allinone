@@ -2,7 +2,7 @@
  * Grok Build's dialect: the executable, the argv, and the auth-gated handshake.
  *
  * Every assertion here is a MEASURED fact about the real CLI (frames in
- * `output/probes/grok.acp.md`), which is why the fixtures look the way they do:
+ * `scripts/probe/acp-handshake.mjs --bin grok --argv agent,stdio`), which is why the fixtures look the way they do:
  * `session/new` refusing an unauthenticated client with `-32000 Authentication
  * required / "no auth method id provided"`, `authenticate` validating its method
  * id (`-32602 unsupported auth method: …`), and `promptCapabilities.image: false`.

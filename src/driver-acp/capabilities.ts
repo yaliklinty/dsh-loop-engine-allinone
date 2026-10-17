@@ -8,7 +8,7 @@
  *
  * This module is the measured list, not the specification's full menu. Two
  * engines were driven with real tasks and every reverse RPC they issued was
- * recorded (`data/acp-scratch/*-tools.acp.raw.txt`, `grok-full.acp.raw.txt`):
+ * recorded with `scripts/probe/acp-handshake.mjs` against the real CLIs:
  *
  *   - `session/request_permission` — already implemented since the kimi driver;
  *   - `fs/read_text_file` — Grok Build asks the client to read a file for it;

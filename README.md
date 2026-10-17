@@ -1,18 +1,32 @@
 # dsh-loop-engine
 
-[![npm version](https://img.shields.io/npm/v/dsh-loop-engine?color=cb3837)](https://www.npmjs.com/package/dsh-loop-engine)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Harness: 0.1.5 / 0.1.7 / 0.2.0](https://img.shields.io/badge/harness-0.1.5%20%7C%200.1.7%20%7C%200.2.0-6f42c1)](#version-compatibility)
 
 Pick **dsh web**'s agent loop engine **per session** — the built-in `in-process` loop (the default), or one of the hosted engines `claude-code` / `codex` / `pi` / `kimi` / `agy` / `zcode` / `qoderclicn` / `hermes` / `grok` / `minimaxcode`. Sessions are independent: one chat can run Codex while another runs Kimi. Any open, idle session can move engines — between two hosted engines the handover is **in place**, and a move involving `in-process` **reloads the page** (the `dsh web` process never restarts). Nothing in the main repository changes.
 
-> **This is a fork.** It adds a data-driven engine registry and a pluggable CLI
-> driver layer, so that adding an engine is a registry row plus a driver instead
-> of edits in five places. The four original engines' protocol code is untouched.
-> See [docs/engine-registry.md](docs/engine-registry.md) for the "add an engine"
-> recipe — including §2 step 6, which is the **entire** recipe for an ACP engine
-> now that three of them share one skeleton (`driver-acp/`: the JSON-RPC client,
-> the `session/update` mapping and the turn/step machine). An ACP engine is a
-> profile plus four small files; `kimi` was migrated onto that skeleton without a
-> behavior change, and its suite is the regression pin.
+> **A fork of [`kuun993/dsh-loop-engine`](https://github.com/kuun993/dsh-loop-engine).**
+> The upstream plugin already switched engines per session. This fork's contribution
+> is an **architecture** — a single data-driven engine registry plus a pluggable
+> driver layer — and the six engines that architecture made cheap to add.
+>
+> | | upstream | this fork |
+> |---|---|---|
+> | engine roster | hardcoded in five places | **one registry table**; everything else derives |
+> | adding an engine | edit five files | **one registry row + one driver** |
+> | engines | 4 | **10** |
+> | ACP engines | 1 (kimi) | **3** (kimi, grok, minimaxcode) sharing one skeleton |
+> | external-CLI drivers | per-engine | `driver-cli/` + `driver-acp/` |
+>
+> The four original engines' protocol code is untouched. `kimi` was migrated onto
+> the shared ACP skeleton **without a behavior change**, and its unchanged test
+> suite is the regression pin.
+>
+> Two things worth knowing before you add an engine:
+> - [`docs/engine-registry.md`](docs/engine-registry.md) §2 step 6 is the **entire**
+>   recipe for an ACP engine: a profile plus four small files.
+> - **Probe first.** Every protocol claim in this repository came from real frames
+>   (`scripts/probe/`), never from a specification. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Engine marks
 
@@ -74,7 +88,11 @@ engines' ACP and JSON-RPC drivers as their templates).
 ## Install
 
 ```sh
-dsh plugin --profile web add dsh-loop-engine
+# From this repository (the fork; the npm package name is the upstream's):
+dsh plugin --profile web add <owner>/dsh-loop-engine
+
+# From a local checkout:
+dsh plugin --profile web add /path/to/dsh-loop-engine
 ```
 
 Boot `dsh web` once (the router retries for a bounded window while the base bundle still holds the agent-factory slot), then open **Settings → Loop engine**.

@@ -310,8 +310,8 @@ grep -o 'require("[^"]*")' lib/client.js | sort -u
 #   期望：react / react/jsx-runtime / dsh-client-store / dsh-client-ui-primitives
 #   冒出 node:* / dsh-settings / dsh-agent-presets ⇒ 有 host 包漏进 client 产物
 
-# 3) 协议探测（先探再写；报告进 output/probes/）
-node scripts/probe/probe.mjs myengine --out ../../output/probes
+# 3) 协议探测（先探再写；报告落在你指定的目录）
+node scripts/probe/probe.mjs myengine --out ./probe-out
 
 # 4a) ACP 引擎的驱动侧端到端（真 CLI，跑的是**驱动自己的** profile）
 node node_modules/tsx/dist/cli.mjs scripts/probe/smoke-acp.ts minimaxcode

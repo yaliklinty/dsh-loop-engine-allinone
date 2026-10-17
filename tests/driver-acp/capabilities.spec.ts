@@ -12,7 +12,7 @@
  *      engine bypasses the sandbox", and the refusal path (no shell service) is
  *      asserted rather than assumed.
  *
- * The measured facts behind the method list are in `output/probes/grok-full.acp.*`:
+ * The measured facts behind the method list come from `scripts/probe/acp-handshake.mjs`:
  * grok asks for `fs/read_text_file`, `terminal/create` and
  * `session/request_permission`; MiniMax Code asks for none.
  *

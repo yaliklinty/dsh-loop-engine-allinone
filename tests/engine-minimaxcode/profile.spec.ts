@@ -1,8 +1,8 @@
 /**
  * MiniMax Code's dialect: the executable, the region, and the config-option calls.
  *
- * The assertions are MEASURED facts (frames in `output/probes/minimaxcode.acp.md`
- * and the region controls in `data/acp-scratch/`), and the two that matter most are
+ * The assertions are MEASURED facts (frames from `scripts/probe/acp-handshake.mjs --bin mcode --argv acp`
+ * and the region controls established by running the same probe under each region), and the two that matter most are
  * the ones a plausible-looking implementation gets WRONG:
  *
  *   - the region travels in `MAVIS_REGION`, not `MCODE_REGION` (the latter is inert

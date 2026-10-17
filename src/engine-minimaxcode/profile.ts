@@ -2,7 +2,7 @@
  * MiniMax Code's ACP dialect: the shared ACP body with mcode's own handshake.
  *
  * Measured against MiniMax Code 0.6.12 on this fork's reference host (raw frames
- * in `output/probes/`), and the reason each hook below exists:
+ * with `scripts/probe/acp-handshake.mjs`), and the reason each hook below exists:
  *
  *   1. `initialize` answers `protocolVersion: 1`, advertises NO auth method (the
  *      CLI reads its own `~/.minimax/auth/prod/<region>/…` state and its
