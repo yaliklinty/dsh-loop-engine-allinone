@@ -81,27 +81,25 @@ export function firstAuthMethodId(initializeResult: unknown): string | undefined
 }
 
 /**
- * Select Grok's model through `session/set_config_option`, trying the spelling the
- * vendor documents first.
+ * Select Grok's model through `session/set_config_option`, with the BARE value.
  *
- * Grok's guide shows the wrapped form (`value: { value: 'grok-4.6' }`), while the
- * bare form is what MiniMax Code was measured to accept. Since the signed-in
- * answer could not be measured on this host (no account), the driver does what the
- * documentation says and falls back on the protocol's own "invalid params"
- * rejection — an engine that prefers the bare value answers `-32602`, which is a
- * decidable signal rather than a guess.
+ * MEASURED after signing in (this supersedes the earlier guess): Grok accepts
+ * `value: 'grok-4.7'` and REJECTS the `{ value }` wrapper its own documentation
+ * shows, with `-32602 "data did not match any variant of untagged enum
+ * SessionConfigOptionValue"`. So there is no fallback to try: the wrapper is
+ * simply wrong for this engine, and both ACP engines that speak
+ * `set_config_option` (this one and MiniMax Code) take the bare form.
+ *
+ * A model id the engine does not know is refused with `-32602 "unknown model
+ * id"`, which is the honest loud failure: the registry's `models` list is a
+ * declaration, and a stale entry must surface at the engine rather than be
+ * silently replaced by its default.
  * @param client - the connected ACP client.
  * @param sessionId - the ACP session.
  * @param model - the model id to select.
  */
 export async function selectGrokModel(client: AcpClient, sessionId: string, model: string): Promise<void> {
-  try {
-    await client.setConfigOptionValue(sessionId, GROK_MODEL_CONFIG_ID, model)
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (!/invalid params|-32602/i.test(message)) throw error
-    await client.setConfigOption(sessionId, GROK_MODEL_CONFIG_ID, model)
-  }
+  await client.setConfigOption(sessionId, GROK_MODEL_CONFIG_ID, model)
 }
 
 /** Grok Build's ACP dialect, as the shared driver reads it. */

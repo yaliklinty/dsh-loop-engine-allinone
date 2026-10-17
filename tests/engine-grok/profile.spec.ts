@@ -178,28 +178,32 @@ describe("grok's ACP dialect", () => {
     expect(second.calls.newSession[0]).toEqual(['D:/w', {}])
   })
 
-  it('selects its model through set_config_option, documented spelling first', async () => {
-    const wrapped = fakeClient()
-    await selectGrokModel(wrapped.client, 'sess', 'grok-4.6')
-    expect(wrapped.calls.setConfigOptionValue).toEqual([['sess', GROK_MODEL_CONFIG_ID, 'grok-4.6']])
+  it('selects its model with the BARE value, which is the measured spelling', async () => {
+    // Measured AFTER signing in: the `{ value }` wrapper the vendor documents is
+    // REJECTED with `-32602 data did not match any variant of untagged enum
+    // SessionConfigOptionValue`, while the bare string is ACCEPTED. So there is
+    // no "documented first, fall back" dance — the wrapper is simply wrong here.
+    const { client, calls } = fakeClient()
+    await selectGrokModel(client, 'sess', 'grok-4.7')
+    expect(calls.setConfigOption).toEqual([['sess', GROK_MODEL_CONFIG_ID, 'grok-4.7']])
     expect(GROK_MODEL_CONFIG_ID).toBe('model')
   })
 
-  it('falls back to the bare value when the engine answers invalid params', async () => {
+  it('never sends the rejected wrapper, not even as a first attempt', async () => {
     const { client, calls } = fakeClient()
-    // MiniMax Code was measured to reject the wrapper; grok's own preference could
-    // not be measured without an account, so the driver follows the vendor's
-    // documentation and falls back on the protocol's decidable rejection.
-    ;(client as unknown as { setConfigOptionValue: () => Promise<never> }).setConfigOptionValue =
-      vi.fn(async () => { throw new Error('Invalid params') })
-    await selectGrokModel(client, 'sess', 'grok-4.5')
-    expect(calls.setConfigOption).toEqual([['sess', GROK_MODEL_CONFIG_ID, 'grok-4.5']])
+    await selectGrokModel(client, 'sess', 'grok-4.7')
+    // One call, and it is the bare one: an engine that answers `-32602` to the
+    // wrapper would otherwise burn a request per step on every step.
+    expect(calls.setConfigOptionValue).toEqual([])
+    expect(calls.setConfigOption.length).toBe(1)
   })
 
-  it('propagates any other model-selection failure', async () => {
+  it('propagates a model id the engine does not know', async () => {
+    // Measured: a stale registry entry fails with `-32602 unknown model id`. That
+    // must reach the user rather than being replaced by the engine's default.
     const { client } = fakeClient()
-    ;(client as unknown as { setConfigOptionValue: () => Promise<never> }).setConfigOptionValue =
-      vi.fn(async () => { throw new Error('Method not found') })
-    await expect(selectGrokModel(client, 'sess', 'grok-4.5')).rejects.toThrow('Method not found')
+    ;(client as unknown as { setConfigOption: () => Promise<never> }).setConfigOption =
+      vi.fn(async () => { throw new Error('Invalid params: unknown model id') })
+    await expect(selectGrokModel(client, 'sess', 'grok-4.6')).rejects.toThrow(/unknown model id/)
   })
 })

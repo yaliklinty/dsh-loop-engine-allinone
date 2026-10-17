@@ -77,7 +77,7 @@ const toolDone = (id: string, output: string): Record<string, unknown> => ({
 
 /** The two engines under test, with the dialect calls each is expected to make. */
 const ENGINES = {
-  grok: { loop: GrokLoop, bin: '/opt/grok', model: 'grok-4.6' },
+  grok: { loop: GrokLoop, bin: '/opt/grok', model: 'grok-4.7' },
   minimaxcode: { loop: MinimaxcodeLoop, bin: '/opt/mcode/cli.js', model: 'm:minimax:MiniMax-M3:v:thinking' },
 } as const
 
@@ -191,7 +191,10 @@ describe.each(Object.entries(ENGINES))('%s driving a session', (engine, spec) =>
 
       // Model selection uses THIS engine's dialect.
       if (engine === 'grok') {
-        expect(mock.client.setConfigOptionValue).toHaveBeenCalledWith('sess_1', 'model', spec.model)
+        // MEASURED after signing in: the bare value is what this engine accepts;
+        // the `{ value }` wrapper is rejected `-32602`, so there is no fallback.
+        expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'model', spec.model)
+        expect(mock.client.setConfigOptionValue).not.toHaveBeenCalled()
         // Grok gates a session it has not been authenticated for.
         expect(mock.client.newSession).toHaveBeenCalledWith(process.cwd(), { _meta: { yoloMode: true } })
       } else {
@@ -215,7 +218,7 @@ describe.each(Object.entries(ENGINES))('%s driving a session', (engine, spec) =>
         // always states the mode the session's knobs imply.
         expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'permissionMode', 'auto')
       } else {
-        expect(mock.client.setConfigOptionValue).toHaveBeenCalledWith('sess_1', 'model', spec.model)
+        expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'model', spec.model)
         expect(mock.client.authenticate).not.toHaveBeenCalled()
       }
     } finally {

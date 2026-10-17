@@ -492,11 +492,16 @@ export const ENGINE_REGISTRY = {
     loginHint: 'run `grok` once and complete the sign-in it opens (or `grok login`), then retry',
     authPaths: ['.grok/auth.json'],
     localeKey: 'engineGrok',
-    // Measured with `grok models` on this host (unauthenticated is enough to
-    // list them): the CLI's own catalog, `grok-4.6` being its default.
+    // Measured from the SIGNED-IN agent's own `initialize` answer
+    // (`_meta.modelState`): the catalog it will actually serve, whose
+    // `currentModelId` is `grok-4.7`. This REPLACED an earlier list taken from
+    // the unauthenticated `grok models` command, which reported `grok-4.6` and
+    // `grok-4.5` — ids the ACP surface then rejected with `-32602 unknown model
+    // id`. The lesson is the fork's own rule: a catalog is read from the surface
+    // the driver talks to, not from a sibling command that may be reading a
+    // different source.
     models: [
-      { id: 'grok-4.6', label: 'Grok 4.6' },
-      { id: 'grok-4.5', label: 'Grok 4.5' },
+      { id: 'grok-4.7', label: 'Grok 4.7' },
     ],
     capabilities: {
       // Measured: `session/update` frames carry `agent_message_chunk` and
