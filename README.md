@@ -32,74 +32,65 @@ Sessions are fully independent: run Codex in one chat while another runs Kimi Co
 
 ## Installation
 
-`dsh plugin` installs into ONE profile, named with `--profile`. Use the profile you
-actually boot — `web`, `desktop`, `headless`, or one you created yourself. There is
-no default; **`web` is only a shipped template, not a requirement.**
-
-### From npm
-
 ```sh
-# Replace <your-profile> with the profile you boot, e.g. desktop or web.
-dsh plugin --profile <your-profile> add dsh-loop-engine-allinone
+dsh plugin --profile web add dsh-loop-engine-allinone
 ```
 
-### From GitHub
+Restart `dsh web`, then open **Settings → Loop engine**.
+
+### From GitHub instead of npm
 
 ```sh
-dsh plugin --profile <your-profile> add yaliklinty/dsh-loop-engine-allinone
+dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
 ```
 
 ### From a local clone
 
-Only if you are working on the plugin itself:
+Only when you are working on the plugin itself:
 
 ```sh
 git clone https://github.com/yaliklinty/dsh-loop-engine-allinone.git
-dsh plugin --profile <your-profile> add ./dsh-loop-engine-allinone
+dsh plugin --profile web add ./dsh-loop-engine-allinone
 ```
 
-### Then
+### Not on the `web` profile?
 
-1. Boot that profile once (`dsh --profile <your-profile>`, or `dsh web` for the web
-   template) so the installer's managed block takes effect.
-2. Open **Settings → Loop engine** and pick the default engine for new sessions.
+`web` is the profile the harness's own CLI documents (`dsh web` is short for
+`dsh --profile web`), so it is the right default. But the Desktop app boots
+`desktop`, a CI deployment may boot `headless`, and you may have made your own. In
+that case:
 
-### The one step people miss
+1. install with that profile's name — `dsh plugin --profile desktop add
+   dsh-loop-engine-allinone`;
+2. **and** set the same name in the composition entry:
 
-The composition entry must name the SAME profile you installed into. Add this to
-that profile's `cordis.patch.yml`:
+   ```yaml
+   - id: loop-engine
+     config:
+       profile: desktop
+   ```
 
-```yaml
-- id: loop-engine
-  config:
-    profile: <your-profile>
-```
-
-Without it the entry defaults to `web`, so the plugin writes its managed block into
-`profiles/web/cordis.patch.yml` while the profile you actually boot never reads it:
-the plugin mounts, but the base `agent-loop` row is never disabled, the router cannot
-take the agent-factory slot, and **no hosted engine is reachable**. Nothing errors —
-which is why this is the first thing to check when "the plugin is installed but
-nothing works".
-
-> **Installing into more than one profile** is fine: run the `add` once per profile
-> and give each its own `profile:` value.
+Step 2 is the one that bites. The field defaults to `web`, so omitting it makes the
+plugin write its managed block into `profiles/web/cordis.patch.yml` while the profile
+you actually boot never reads it: the plugin mounts, but the base `agent-loop` row is
+never disabled, the router cannot take the agent-factory slot, and **no hosted engine
+is reachable** — with nothing logged. This release also warns when it detects that
+shape, naming the field to set.
 
 ### Installation notes
 
 - The installer rewrites one managed block in the profile's `cordis.patch.yml`; every
   other byte you wrote there is preserved, so upgrading needs no hand edit.
-- **Uninstall**: `dsh plugin --profile <your-profile> remove dsh-loop-engine-allinone`,
-  **then delete the managed `loop-engine` block** from that profile's
-  `cordis.patch.yml`. The block outlives the plugin, and while it is present the
-  profile has no agent factory, so no session can be created.
+- **Uninstall**: `dsh plugin --profile web remove dsh-loop-engine-allinone`, **then
+  delete the managed `loop-engine` block** from that profile's `cordis.patch.yml`. The
+  block outlives the plugin, and while it is present the profile has no agent factory,
+  so no session can be created.
 - **pnpm 10+** may block dependency build scripts (`ERR_PNPM_IGNORED_BUILDS` naming
   `esbuild`, `@google/genai`, `protobufjs`). Run `pnpm approve-builds`, or add an
   `allowBuilds` entry, and retry — only the installing project can grant this.
 - **Harness from source**: bridge the profile's harness peers with `file:` shims, or
   session resume fails with `agent-presets: refusing to compose an unscoped context`.
   Steps in [docs/source-checkout.md](docs/source-checkout.md).
-
 
 ## Supported Engines
 

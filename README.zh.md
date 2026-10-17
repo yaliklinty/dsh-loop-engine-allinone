@@ -32,68 +32,59 @@
 
 ## 安装说明
 
-`dsh plugin` 只装进**一个** profile，名字由 `--profile` 指定。用你**实际启动的那个**——
-`web`、`desktop`、`headless`，或你自己建的 profile。**没有默认值；`web` 只是一个随附模板，
-不是必需项。**
-
-### 从 npm 安装
-
 ```sh
-# 把 <你的 profile> 换成你启动的那个，例如 desktop 或 web
-dsh plugin --profile <你的profile> add dsh-loop-engine-allinone
+dsh plugin --profile web add dsh-loop-engine-allinone
 ```
 
-### 从 GitHub 安装
+重启 `dsh web`，打开 **Settings → Loop engine**。
+
+### 想从 GitHub 装而不是 npm
 
 ```sh
-dsh plugin --profile <你的profile> add yaliklinty/dsh-loop-engine-allinone
+dsh plugin --profile web add yaliklinty/dsh-loop-engine-allinone
 ```
 
 ### 从本地克隆安装
 
-只在你**开发这个插件本身**时才需要：
+只在开发插件本身时才需要：
 
 ```sh
 git clone https://github.com/yaliklinty/dsh-loop-engine-allinone.git
-dsh plugin --profile <你的profile> add ./dsh-loop-engine-allinone
+dsh plugin --profile web add ./dsh-loop-engine-allinone
 ```
 
-### 然后
+### 不是 `web` profile？
 
-1. 启动一次那个 profile（`dsh --profile <你的profile>`；用 web 模板的话就是 `dsh web`），
-   让安装器写的受管块生效。
-2. 打开 **Settings → Loop engine**，选新会话默认用哪个引擎。
+`web` 是 harness 自己的 CLI 文档里用的那个 profile（`dsh web` 就是 `dsh --profile web`
+的简写），所以它是正确的默认值。但桌面版启动的是 `desktop`，CI 部署可能用 `headless`，
+你也可能自己建过一个。这种情况下：
 
-### 最容易漏的一步
+1. 用那个 profile 的名字安装 —— `dsh plugin --profile desktop add dsh-loop-engine-allinone`；
+2. **并且**在组合条目里写上同一个名字：
 
-组合条目里写的 profile 名，必须和**你装进去的那个**一致。在那个 profile 的
-`cordis.patch.yml` 里加：
+   ```yaml
+   - id: loop-engine
+     config:
+       profile: desktop
+   ```
 
-```yaml
-- id: loop-engine
-  config:
-    profile: <你的profile>
-```
-
-不写的话条目默认按 `web` 处理，于是插件把受管块写进 `profiles/web/cordis.patch.yml`，
-而你实际启动的 profile 永远读不到它：插件挂上了，但基础 `agent-loop` 行没被禁，
-路由器拿不到 agent factory 槽位，**任何托管引擎都不可达**。而且**不会报错**——
-所以「插件装了但什么都不工作」时，第一个该查的就是这里。
-
-> 想同时装进多个 profile 完全可以：每个 profile 各跑一次 `add`，各自写自己的 `profile:` 值。
+**第 2 步才是会咬人的地方。** 该字段默认是 `web`，漏写会让插件把受管块写进
+`profiles/web/cordis.patch.yml`，而你实际启动的 profile 永远读不到它：插件挂上了，
+但基础 `agent-loop` 行没被禁，路由器拿不到 agent factory 槽位，**任何托管引擎都不可达**
+——而且不报错。本版本会在检测到这种情形时告警，并指出该设哪个字段。
 
 ### 安装注意事项
 
 - 安装会重写该 profile `cordis.patch.yml` 里的一段受管块；你写的其它内容逐字节保留，升级不需要手工改。
-- **卸载**：`dsh plugin --profile <你的profile> remove dsh-loop-engine-allinone`，
-  **然后手动删掉**该 profile `cordis.patch.yml` 里的 `loop-engine` 受管块。
-  块会比插件活得久，而它还在时 profile 里没有任何 agent factory，会话一条也建不出来。
-- **pnpm 10+** 可能拦下依赖的 build script（`ERR_PNPM_IGNORED_BUILDS`，列出 `esbuild`、`@google/genai`、`protobufjs`）。
-  执行 `pnpm approve-builds`，或加一条 `allowBuilds`，然后重试——只有安装方能授予这个权限。
+- **卸载**：`dsh plugin --profile web remove dsh-loop-engine-allinone`，**然后手动删掉**
+  该 profile `cordis.patch.yml` 里的 `loop-engine` 受管块。块会比插件活得久，而它还在时
+  profile 里没有任何 agent factory，会话一条也建不出来。
+- **pnpm 10+** 可能拦下依赖的 build script（`ERR_PNPM_IGNORED_BUILDS`，列出 `esbuild`、
+  `@google/genai`、`protobufjs`）。执行 `pnpm approve-builds`，或加一条 `allowBuilds`，然后重试
+  ——只有安装方能授予这个权限。
 - **用源码启动 harness** 时，要用 `file:` shim 把 profile 的 harness peer 包桥接到 checkout 源码，
   否则恢复会话会报 `agent-presets: refusing to compose an unscoped context`。
   步骤见 [docs/source-checkout.md](docs/source-checkout.md)。
-
 
 ## 支持引擎一览
 
