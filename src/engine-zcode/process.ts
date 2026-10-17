@@ -37,6 +37,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { CliSpawnRequest } from '../driver-cli/transport.ts'
 
 /** Grace in milliseconds for ZCode process-tree termination. */
@@ -49,15 +50,53 @@ export const ZCODE_MODES = ['build', 'edit', 'plan', 'yolo'] as const
 export type ZcodeMode = (typeof ZCODE_MODES)[number]
 
 /**
- * The well-known Windows install location of the ZCode bundle.
+ * The install roots a ZCode desktop build may sit under, most specific first.
  *
- * The probe used exactly this path; it is the desktop app's bundled copy rather
- * than a user-level install.
+ * One list, used by both the CLI lookup and the provider-catalog lookup, so the two
+ * can never disagree about where an install is. No drive letter is assumed: the fork
+ * was written against one machine's `D:\Programs\ZCode`, and `%ZCODE_HOME%` is how an
+ * operator names a manual install like that one.
+ * @param env - the environment to read the roots from.
+ * @returns candidate roots.
  */
-function wellKnownZcode(): string | undefined {
-  if (process.platform !== 'win32') return undefined
-  const candidate = 'D:\Programs\ZCode\resources\glm\zcode.cjs'
-  return existsSync(candidate) ? candidate : undefined
+export function zcodeInstallRoots(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+  const roots: string[] = []
+  if (env.ZCODE_HOME !== undefined && env.ZCODE_HOME !== '') roots.push(env.ZCODE_HOME)
+  if (env.LOCALAPPDATA !== undefined && env.LOCALAPPDATA !== '') {
+    roots.push(join(env.LOCALAPPDATA, 'Programs', 'ZCode'))
+  }
+  if (process.platform === 'win32' && env.ProgramFiles !== undefined && env.ProgramFiles !== '') {
+    roots.push(join(env.ProgramFiles, 'ZCode'))
+  }
+  return roots
+}
+
+/**
+ * Every place a ZCode desktop install may keep its bundled CLI, in probe order.
+ *
+ * Derived from the environment rather than hardcoded: the fork was written against
+ * one machine's `D:\Programs\ZCode`, and shipping that literal meant the probe
+ * never matched anywhere else. `%LOCALAPPDATA%\Programs` is where the installer puts
+ * a per-user app, `%ProgramFiles%` where an all-users install goes, and
+ * `%ZCODE_HOME%` is the app's own override.
+ * @param env - the environment to read install roots from.
+ * @returns candidate paths for the bundled CLI, most specific first.
+ */
+export function zcodeCliCandidates(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+  return zcodeInstallRoots(env).map(root => join(root, 'resources', 'glm', 'zcode.cjs'))
+}
+
+/**
+ * The first ZCode bundle found in a plausible install location.
+ *
+ * @param env - the environment to probe.
+ * @returns the resolved script, or undefined when no install was found.
+ */
+function wellKnownZcode(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  for (const candidate of zcodeCliCandidates(env)) {
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
 }
 
 /**
@@ -87,10 +126,26 @@ export function zcodeArgvPrefix(configBin?: string): string[] {
  */
 export const ZCODE_PROVIDER_CONFIG_ENV = 'ZCODE_BUILTIN_PROVIDER_CONFIG_FILE'
 
-/** The bundled provider catalog inside the desktop app, when it exists. */
-export function zcodeBuiltinProviderConfig(): string | undefined {
-  const candidate = 'D:\Programs\ZCode\resources\config\provider\zcode-builtin.json'
-  return existsSync(candidate) ? candidate : undefined
+/**
+ * Every place a ZCode install may keep the provider catalog its bundle needs.
+ * @param env - the environment to read install roots from.
+ * @returns candidate paths, most specific first.
+ */
+export function zcodeProviderConfigCandidates(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+  return zcodeInstallRoots(env).map(root => join(root, 'resources', 'config', 'provider', 'zcode-builtin.json'))
+
+}
+
+/**
+ * The bundled provider catalog inside the desktop app, when it exists.
+ * @param env - the environment to probe.
+ * @returns the catalog path, or undefined when no install was found.
+ */
+export function zcodeBuiltinProviderConfig(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  for (const candidate of zcodeProviderConfigCandidates(env)) {
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
 }
 
 /**

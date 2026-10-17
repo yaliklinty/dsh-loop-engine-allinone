@@ -124,6 +124,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
       qoderclicnBin: 'D:/tools/qoderclicn.exe'
       grokBin: 'C:/Users/username/.grok/bin/grok.exe'
       minimaxcodeBin: 'D:/npm-global/node_modules/@minimax-ai/code/cli.js'
+      zcodeBin: 'D:/Programs/ZCode/resources/glm/zcode.cjs'
 
     # 2. 账号区域设置（可选，MiniMax Code 支持 'cn' 或 'en'）
     regions:

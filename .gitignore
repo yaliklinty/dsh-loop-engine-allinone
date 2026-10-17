@@ -21,3 +21,7 @@ tests/probe/
 /grok-home/
 /.grok/
 /.minimax/
+
+# The protocol probe's default output directory (scripts/probe/*.mjs).
+# Re-runnable at any time, and never part of the package.
+/probe-out/

@@ -130,6 +130,7 @@ Custom settings can be configured under your profile's composition entry:
       qoderclicnBin: 'D:/tools/qoderclicn.exe'
       grokBin: 'C:/Users/user/.grok/bin/grok.exe'
       minimaxcodeBin: 'D:/npm-global/node_modules/@minimax-ai/code/cli.js'
+      zcodeBin: 'D:/Programs/ZCode/resources/glm/zcode.cjs'
 
     # 2. Region override (optional - MiniMax Code supports 'cn' or 'en')
     regions:
@@ -148,6 +149,12 @@ Custom settings can be configured under your profile's composition entry:
     summarizerProvider: 'deepseek-official'
     summarizerModel: 'deepseek-flash'
 ```
+
+**ZCode's install location.** ZCode ships as a desktop bundle rather than a plain
+executable, so it is found by probing an install root: `%ZCODE_HOME%` first, then
+`%LOCALAPPDATA%\Programs\ZCode` and `%ProgramFiles%\ZCode`. A manual install
+anywhere else (`D:\Programs\ZCode`, say) is named either with the `ZCODE_HOME`
+environment variable or with `bins.zcodeBin` — nothing hardcodes a drive letter.
 
 ---
 

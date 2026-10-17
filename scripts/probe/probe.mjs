@@ -98,18 +98,52 @@ const LOCAL = process.env.LOCALAPPDATA ?? join(HOME, 'AppData', 'Local')
  * `npm i -g` writes the launcher shim into the prefix (`<prefix>/mcode.cmd`) and
  * the package into `<prefix>/node_modules`; the shim is not an executable Node can
  * start (see {@link launchPrefix}), so the package's own entrypoint is listed as a
- * candidate too. The host's configured prefix is named first — the same style the
- * ZCode entry uses for its desktop-app path — with npm's own Windows default
- * (`%APPDATA%\npm`) behind it so the probe still finds a package on a host that
- * moved npm's prefix elsewhere.
+ * candidate too. The prefixes come from the ENVIRONMENT, not from a literal path: a
+ * probe that only finds an engine on the author's machine reports "not installed"
+ * for something that is installed, which is the opposite of the honest failure this
+ * script exists to produce. `%APPDATA%\npm` is npm's own Windows default and covers
+ * a host that never moved its prefix.
  */
 const NPM_PREFIXES = [
-  'D:\\Programs\\npm-global',
+  // Whatever the running npm is configured with, when it can be asked cheaply.
+  process.env.npm_config_prefix,
+  // The common per-machine layouts, all derived.
+  join(process.env.ProgramFiles ?? 'C:\\Program Files', 'nodejs'),
+  process.env.ProgramFiles,
   join(process.env.APPDATA ?? join(HOME, 'AppData', 'Roaming'), 'npm'),
-]
+  join(HOME, '.npm-global'),
+].filter(prefix => typeof prefix === 'string' && prefix !== '')
 
 /** The npm package root for `@minimax-ai/code` under each known prefix. */
 const MCODE_PACKAGE_DIRS = NPM_PREFIXES.map(prefix => join(prefix, 'node_modules', '@minimax-ai', 'code'))
+
+/**
+ * Every plausible root of a ZCode desktop install, derived from the environment.
+ * @returns candidate install roots, most specific first.
+ */
+function zcodeRoots() {
+  const roots = [process.env.ZCODE_HOME]
+  if (process.env.LOCALAPPDATA !== undefined) roots.push(join(LOCAL, 'Programs', 'ZCode'))
+  if (process.platform === 'win32' && process.env.ProgramFiles !== undefined) {
+    roots.push(join(process.env.ProgramFiles, 'ZCode'))
+  }
+  return roots.filter(root => typeof root === 'string' && root !== '')
+}
+
+/**
+ * The provider-catalog env entry for the bundle, when a catalog can be found.
+ *
+ * Spread into a spec's `env`, so a host with no ZCode install simply contributes no
+ * entry instead of pointing the bundle at a path that does not exist.
+ * @returns zero or one environment entry.
+ */
+function zcodeProviderConfig() {
+  for (const root of zcodeRoots()) {
+    const candidate = join(root, 'resources', 'config', 'provider', 'zcode-builtin.json')
+    if (existsSync(candidate)) return { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: candidate }
+  }
+  return {}
+}
 
 /**
  * The engine catalogue this probe knows how to look for.
@@ -144,7 +178,7 @@ const ENGINES = {
     versionArgv: (bin) => [bin, '--version'],
   },
   zcode: {
-    paths: ['D:\\Programs\\ZCode\\resources\\glm\\zcode.cjs', join(LOCAL, 'Programs', 'ZCode', 'resources', 'glm', 'zcode.cjs')],
+    paths: zcodeRoots().map(root => join(root, 'resources', 'glm', 'zcode.cjs')),
     pathName: 'zcode',
     authPaths: [join(HOME, '.zcode', 'v2'), join(HOME, '.zcode', 'cli')],
     // A Node bundle, so it runs under the current node rather than directly.
@@ -152,7 +186,7 @@ const ENGINES = {
     env: {
       // Run outside the desktop app, the bundle cannot find its own provider
       // catalogue and refuses to start a turn without this.
-      ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: 'D:\\Programs\\ZCode\\resources\\config\\provider\\zcode-builtin.json',
+      ...zcodeProviderConfig(),
     },
     versionArgv: (bin) => (/\.(?:c|m)?js$/i.test(bin) ? [process.execPath, bin] : [bin]).concat(['version']),
   },

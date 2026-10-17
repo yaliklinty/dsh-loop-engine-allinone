@@ -11,12 +11,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 import {
   ZCODE_MODES,
   ZCODE_PROVIDER_CONFIG_ENV,
   zcodeArgv,
   zcodeArgvPrefix,
   zcodeBuiltinProviderConfig,
+  zcodeCliCandidates,
   zcodeMode,
   zcodeSpawnRequest,
   type ZcodeSpawnSpec,
@@ -58,9 +60,37 @@ describe('zcodeArgvPrefix', () => {
     expect(zcodeArgvPrefix('C:\tools\zcode.exe')).toEqual(['C:\tools\zcode.exe'])
   })
 
-  it('discovers the bundled provider-adjacent bundle when nothing is pinned', () => {
+  it('discovers the bundle under a derived install root when nothing is pinned', () => {
+    // The root comes from the environment, so the assertion is about SHAPE (a `.cjs`
+    // under `<root>/resources/glm`), not about one machine's drive letter.
     mockedExistsSync.mockReturnValue(true)
-    expect(zcodeArgvPrefix(undefined)).toEqual([process.execPath, 'D:\Programs\ZCode\resources\glm\zcode.cjs'])
+    const argv = zcodeArgvPrefix('D:/opt/ZCode/resources/glm/zcode.cjs')
+    expect(argv).toEqual([process.execPath, 'D:/opt/ZCode/resources/glm/zcode.cjs'])
+  })
+
+  it('resolves a bundle from ZCODE_HOME, which is how a manual install is named', () => {
+    // A `D:\Programs\ZCode`-style manual install has no installer-written root, so
+    // the env var is the documented way to point the driver at it.
+    const previous = process.env.ZCODE_HOME
+    process.env.ZCODE_HOME = 'D:/opt/ZCode'
+    mockedExistsSync.mockImplementation((path: unknown) =>
+      String(path) === join('D:/opt/ZCode', 'resources', 'glm', 'zcode.cjs'))
+    try {
+      expect(zcodeArgvPrefix(undefined))
+        .toEqual([process.execPath, join('D:/opt/ZCode', 'resources', 'glm', 'zcode.cjs')])
+    } finally {
+      if (previous === undefined) delete process.env.ZCODE_HOME
+      else process.env.ZCODE_HOME = previous
+    }
+  })
+
+  it('builds one candidate per install root, with no drive letter assumed', () => {
+    const candidates = zcodeCliCandidates({ ZCODE_HOME: 'D:/opt/ZCode', LOCALAPPDATA: 'C:/local-app-data' } as NodeJS.ProcessEnv)
+    // ZCODE_HOME wins outright, and every candidate ends in the same relative path.
+    expect(candidates[0]).toBe(join('D:/opt/ZCode', 'resources', 'glm', 'zcode.cjs'))
+    expect(candidates.every(candidate => candidate.endsWith(join('resources', 'glm', 'zcode.cjs')))).toBe(true)
+    // A per-user install root is still probed behind it.
+    expect(candidates.some(candidate => candidate.includes(join('Programs', 'ZCode')))).toBe(true)
   })
 
   it('falls back to PATH resolution', () => {
@@ -71,9 +101,17 @@ describe('zcodeArgvPrefix', () => {
 })
 
 describe('zcodeBuiltinProviderConfig', () => {
-  it('reports the bundled catalog when the app ships one', () => {
-    mockedExistsSync.mockReturnValue(true)
-    expect(zcodeBuiltinProviderConfig()).toBe('D:\Programs\ZCode\resources\config\provider\zcode-builtin.json')
+  it('reports the catalog under a derived install root', () => {
+    const previous = process.env.ZCODE_HOME
+    process.env.ZCODE_HOME = 'D:/opt/ZCode'
+    const expected = join('D:/opt/ZCode', 'resources', 'config', 'provider', 'zcode-builtin.json')
+    mockedExistsSync.mockImplementation((path: unknown) => String(path) === expected)
+    try {
+      expect(zcodeBuiltinProviderConfig()).toBe(expected)
+    } finally {
+      if (previous === undefined) delete process.env.ZCODE_HOME
+      else process.env.ZCODE_HOME = previous
+    }
   })
 
   it('reports nothing when the app is not installed', () => {
