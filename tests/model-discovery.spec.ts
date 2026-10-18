@@ -22,6 +22,19 @@ import {
 import { bootCatalog, catalogReport, discoverKimiCatalog, liveCatalog, recordDiscoveredCatalog } from '../src/model-registry.ts'
 import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
 
+/** Run `body` with `KIMI_CODE_HOME` pointing at a fresh scratch directory. */
+function withKimiHome(body: (home: string) => void): void {
+  const home = mkdtempSync(join(tmpdir(), 'kimi-home-'))
+  const previous = process.env.KIMI_CODE_HOME
+  process.env.KIMI_CODE_HOME = home
+  try {
+    body(home)
+  } finally {
+    if (previous === undefined) delete process.env.KIMI_CODE_HOME
+    else process.env.KIMI_CODE_HOME = previous
+  }
+}
+
 describe("parsing Kimi Code's config", () => {
   /** A config shaped like the one the Kimi Code app writes. */
   const CONFIG = `
@@ -192,15 +205,37 @@ describe('a config that declares no models', () => {
     // `discoverKimiCatalog` reads the app's own config. A config that exists but
     // lists no model table means "nothing to discover", NOT "this engine has no
     // models": returning an empty catalog would blank the menu.
-    const home = mkdtempSync(join(tmpdir(), 'kimi-home-'))
-    const previous = process.env.KIMI_CODE_HOME
-    process.env.KIMI_CODE_HOME = home
-    try {
+    withKimiHome((home) => {
       writeFileSync(join(home, 'config.toml'), 'default_model = "kimi-code/kimi-for-coding"\n', 'utf8')
       expect(discoverKimiCatalog()).toBeUndefined()
-    } finally {
-      if (previous === undefined) delete process.env.KIMI_CODE_HOME
-      else process.env.KIMI_CODE_HOME = previous
-    }
+    })
+  })
+
+  it('treats an unreadable file as "not installed", not as a failure', () => {
+    // The scratch home exists but has no config.toml — the shape CI has, and the
+    // shape a host that never ran Kimi Code has.
+    withKimiHome(() => {
+      expect(discoverKimiCatalog()).toBeUndefined()
+      expect(bootCatalog('kimi').origin).toBe('declared')
+    })
+  })
+})
+
+describe('a config that does declare models', () => {
+  it('boots from the file, and the route sees it without a restart', () => {
+    // The author's machine has a real `~/.kimi-code/config.toml`; CI does not.
+    // Relying on whichever host runs the suite left this arm uncovered in CI —
+    // which is what the coverage gate caught on the first green-looking push.
+    withKimiHome((home) => {
+      writeFileSync(join(home, 'config.toml'), '[models."kimi-code/k3"]\nmodel = "k3"\n', 'utf8')
+      expect(bootCatalog('kimi')).toEqual({
+        models: [{ id: 'k3', label: 'k3' }],
+        origin: 'discovered',
+      })
+      // boot recorded it, so the route registered at boot renders it now
+      expect(liveCatalog('kimi')).toEqual([{ id: 'k3', label: 'k3' }])
+      expect(catalogReport().find(entry => entry.engine === 'kimi'))
+        .toMatchObject({ origin: 'discovered', source: 'kimi-config' })
+    })
   })
 })
