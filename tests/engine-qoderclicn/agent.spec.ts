@@ -9,7 +9,7 @@
  *
  * The child is faked at the spawn capability — the assertions are about the
  * driver's decisions, not about a CLI. Real protocol captures live in
- * `output/协议探测报告.md`; the frame vocabulary itself is pinned by
+ * the fork's probe report; the frame vocabulary itself is pinned by
  * `tests/driver-cli/stream-json.spec.ts`.
  *
  * @module tests/engine-qoderclicn/agent

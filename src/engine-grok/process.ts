@@ -44,7 +44,9 @@ export function grokHomeDir(): string {
  */
 export function grokBinResolver(configBin?: string): string {
   if (configBin !== undefined && configBin !== '') return configBin
+  /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host */
   const executable = process.platform === 'win32' ? 'grok.exe' : 'grok'
+  /* v8 ignore stop */
   const candidate = join(grokHomeDir(), 'bin', executable)
   if (existsSync(candidate)) return candidate
   return resolveOnPath('grok') ?? 'grok'

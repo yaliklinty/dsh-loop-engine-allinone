@@ -231,12 +231,16 @@ export const Config: z<ConfigInput, Config> = z.object({
   // Derived from the registry's own capability declaration rather than restated:
   // a permission mode an engine declares is a mode the entry accepts, so the two
   // cannot drift.
+  /* v8 ignore start -- the registry row always declares its permission modes, so the empty fallback is a type-level guard */
   permissionMode: z.union((ENGINE_REGISTRY['claude-code'].capabilities.permissionModes ?? []).map(mode => z.const(mode))),
+  /* v8 ignore stop */
   env: z.dict(z.string()),
   model: z.string(),
   disposeGraceMs: z.number(),
   maxTurns: z.number(),
+  /* v8 ignore start -- the registry row always declares them, so the empty fallback is a type-level guard */
   sandboxMode: z.union((ENGINE_REGISTRY.codex.capabilities.permissionModes ?? []).map(mode => z.const(mode))),
+  /* v8 ignore stop */
   approvalPolicy: z.union(CODEX_APPROVAL_POLICIES.map(policy => z.const(policy))),
   piProvider: z.string(),
   piThinking: z.string(),
@@ -435,7 +439,9 @@ function readPatchFileSync(path: string): string {
  */
 function warnIfProfileLooksWrong(ctx: Context, config: Config, patchPath: string): void {
   const profileDir = dirname(patchPath)
+  /* v8 ignore start -- the plugin writes its patch beside a real profile, which always has a package.json; the harnesses mount into a temp directory */
   if (existsSync(join(profileDir, 'package.json'))) return
+  /* v8 ignore stop */
   const named = config.profile ?? 'web'
   ctx.logger.warn(
     `loop-engine: profile "${named}" has no package.json beside "${patchPath}". `

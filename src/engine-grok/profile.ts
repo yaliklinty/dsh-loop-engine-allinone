@@ -43,7 +43,9 @@ export const GROK_MODEL_CONFIG_ID = 'model'
 
 /** The registry's login instruction, used when the engine reports it needs auth. */
 export function grokLoginHint(): string {
+  /* v8 ignore start -- the grok row declares a loginHint, so the fallback is defensive */
   return descriptorOf('grok').loginHint ?? 'sign in to Grok, then retry'
+  /* v8 ignore stop */
 }
 
 /**

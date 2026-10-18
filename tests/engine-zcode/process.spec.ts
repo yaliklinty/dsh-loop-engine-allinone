@@ -19,6 +19,7 @@ import {
   zcodeArgvPrefix,
   zcodeBuiltinProviderConfig,
   zcodeCliCandidates,
+  zcodeInstallRoots,
   zcodeMode,
   zcodeSpawnRequest,
   type ZcodeSpawnSpec,
@@ -165,5 +166,28 @@ describe('zcodeSpawnRequest', () => {
     const request = zcodeSpawnRequest(spec({ signal }), undefined)
     expect(request.cwd).toBe('/work')
     expect(request.signal).toBe(signal)
+  })
+})
+
+describe('the install roots it probes', () => {
+  it('collects every root the environment names, in resolution order', () => {
+    // The desktop app installs under three different places depending on how it
+    // was obtained; probing all of them is what makes "found the bundled CLI"
+    // work without a pinned path.
+    const roots = zcodeInstallRoots({
+      ZCODE_HOME: 'D:/zhome',
+      LOCALAPPDATA: 'D:/somewhere/AppData/Local',
+      ProgramFiles: 'C:/Program Files',
+    } as never)
+    expect(roots[0]).toBe('D:/zhome')
+    expect(roots.some(root => root.includes('Programs'))).toBe(true)
+    expect(roots.some(root => root.includes('Program Files'))).toBe(true)
+  })
+
+  it('skips an empty or absent variable instead of probing a relative path', () => {
+    // An empty `ProgramFiles` would push `ZCode` relative to the CWD — a search
+    // outside the install tree.
+    const roots = zcodeInstallRoots({ ZCODE_HOME: '', LOCALAPPDATA: '', ProgramFiles: '' } as never)
+    expect(roots.every(root => root !== '' && root !== 'ZCode')).toBe(true)
   })
 })

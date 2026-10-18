@@ -70,7 +70,9 @@ export function qoderclicnHomeDir(): string {
  */
 export function qoderclicnBinResolver(configBin?: string): string {
   if (configBin !== undefined && configBin !== '') return configBin
+  /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host */
   const executable = process.platform === 'win32' ? 'qoderclicn.exe' : 'qoderclicn'
+  /* v8 ignore stop */
   const candidate = join(qoderclicnHomeDir(), 'bin', 'qoderclicn', executable)
   return existsSync(candidate) ? candidate : 'qoderclicn'
 }

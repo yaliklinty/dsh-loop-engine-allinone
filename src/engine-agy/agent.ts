@@ -125,7 +125,9 @@ export class AgyAgent extends CliHostedAgent {
         stdin: agyStdinPrompt(prompt),
         map: document => mapAgyDocument(document, accept, run),
       },
+      /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
       () => {},
+      /* v8 ignore stop */
     )
     if (result.parsed === 0) {
       accept({

@@ -130,3 +130,34 @@ describe('PiLoop construction', () => {
     }
   })
 })
+
+describe('a pinned Pi executable', () => {
+  it('spawns a real binary directly instead of under node', async () => {
+    // The BUNDLED entrypoint is a Node script, so it runs under the current node.
+    // A deployment that pinned a real binary (an npm shim, a packaged build) must
+    // be spawned as-is — running a binary through node would fail.
+    const spawn = vi.fn(() => fakeHandle())
+    const ctx = await loopCtx(spawn)
+    try {
+      const loop = new PiLoop(ctx, { bin: 'C:/tools/pi.exe' })
+      // `argv[0]` is the entrypoint the agent resolved; the loop only decides
+      // whether it runs under node.
+      loop.spawn({ argv: ['C:/tools/pi.exe', '--mode', 'rpc'], cwd: '/t', env: {} })
+      expect((spawn.mock.calls[0]![0] as { argv: string[] }).argv[0]).toBe('C:/tools/pi.exe')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('still runs a pinned JavaScript entrypoint through node', async () => {
+    const spawn = vi.fn(() => fakeHandle())
+    const ctx = await loopCtx(spawn)
+    try {
+      const loop = new PiLoop(ctx, { bin: 'C:/tools/cli.js' })
+      loop.spawn({ argv: ['C:/tools/cli.js', '--mode', 'rpc'], cwd: '/t', env: {} })
+      expect((spawn.mock.calls[0]![0] as { argv: string[] }).argv[0]).toBe(process.execPath)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})

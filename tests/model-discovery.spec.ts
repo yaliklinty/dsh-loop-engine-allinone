@@ -19,7 +19,7 @@ import {
   modelsFromAcpConfigOptions,
   parseKimiConfigModels,
 } from '../src/model-discovery.ts'
-import { bootCatalog, catalogReport, liveCatalog, recordDiscoveredCatalog } from '../src/model-registry.ts'
+import { bootCatalog, catalogReport, discoverKimiCatalog, liveCatalog, recordDiscoveredCatalog } from '../src/model-registry.ts'
 import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
 
 describe("parsing Kimi Code's config", () => {
@@ -169,5 +169,38 @@ describe('the live registry', () => {
       .map(([engine]) => engine)
     const reported = new Set(catalogReport().map(entry => entry.engine))
     for (const engine of declared) expect(reported.has(engine as never), engine).toBe(true)
+  })
+})
+
+describe('keys and catalogs with nothing to report', () => {
+  it('accepts a model key with no provider prefix', () => {
+    // `[models."flat"]` is a key with no `/`; the id is the key itself. Slicing
+    // at `indexOf('/') + 1` would return '' for it and drop the model.
+    expect(parseKimiConfigModels('[models."flat"]\nmodel = "flat"\n'))
+      .toEqual([{ id: 'flat', label: 'flat' }])
+  })
+
+  it('reports no discovered catalog when the config declares no model table', () => {
+    // A config without a `[models."…"]` table is not an empty catalog: it is no
+    // catalog, and the declared one must stay in force.
+    expect(parseKimiConfigModels('model = "kimi-k2"\n')).toEqual([])
+  })
+})
+
+describe('a config that declares no models', () => {
+  it('reports no discovered catalog rather than an empty one', () => {
+    // `discoverKimiCatalog` reads the app's own config. A config that exists but
+    // lists no model table means "nothing to discover", NOT "this engine has no
+    // models": returning an empty catalog would blank the menu.
+    const home = mkdtempSync(join(tmpdir(), 'kimi-home-'))
+    const previous = process.env.KIMI_CODE_HOME
+    process.env.KIMI_CODE_HOME = home
+    try {
+      writeFileSync(join(home, 'config.toml'), 'default_model = "kimi-code/kimi-for-coding"\n', 'utf8')
+      expect(discoverKimiCatalog()).toBeUndefined()
+    } finally {
+      if (previous === undefined) delete process.env.KIMI_CODE_HOME
+      else process.env.KIMI_CODE_HOME = previous
+    }
   })
 })

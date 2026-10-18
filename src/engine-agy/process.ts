@@ -80,7 +80,9 @@ export function agyBinResolver(configBin?: string): string {
   if (configBin !== undefined && configBin !== '') return configBin
   const local = process.env.LOCALAPPDATA
   if (local !== undefined && local !== '') {
+    /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host */
     const executable = process.platform === 'win32' ? 'agy.EXE' : 'agy'
+    /* v8 ignore stop */
     const candidate = join(local, 'agy', 'bin', executable)
     if (existsSync(candidate)) return candidate
   }

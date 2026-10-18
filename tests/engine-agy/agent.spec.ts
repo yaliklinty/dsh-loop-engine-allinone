@@ -2,7 +2,7 @@
  * The Antigravity driver end to end: a real session, a scripted `agy` child.
  *
  * Antigravity is the engine whose protocol was rewritten after a signed-in host
- * became available (`output/协议探测报告.md` §3), so its driver has more
+ * became available (captured by `scripts/probe/probe.mjs` and recorded in the fork's probe report, §3), so its driver has more
  * engine-specific decisions than the other three: the prompt travels on STDIN as
  * one NDJSON document (not in argv), the optional `--print` argument has to be
  * attached empty so it cannot swallow the next flag, and the permission switch is

@@ -22,10 +22,10 @@
       "branches": 100
     },
     "src/driver-acp/agent.ts": {
-      "lines": 98.56,
-      "statements": 98.46,
-      "functions": 98.18,
-      "branches": 97.06
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-acp/approval.ts": {
       "lines": 100,
@@ -40,16 +40,16 @@
       "branches": 100
     },
     "src/driver-acp/client.ts": {
-      "lines": 95.76,
-      "statements": 93.23,
-      "functions": 86.96,
-      "branches": 90.6
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-acp/executable.ts": {
       "lines": 100,
-      "statements": 93.1,
+      "statements": 100,
       "functions": 100,
-      "branches": 77.14
+      "branches": 100
     },
     "src/driver-acp/mapping.ts": {
       "lines": 100,
@@ -76,10 +76,10 @@
       "branches": 100
     },
     "src/driver-acp/terminal.ts": {
-      "lines": 92.86,
-      "statements": 90.32,
-      "functions": 88.89,
-      "branches": 83.33
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-acp/transport.ts": {
       "lines": 100,
@@ -100,22 +100,22 @@
       "branches": 100
     },
     "src/driver-cli/cli-agent.ts": {
-      "lines": 15.95,
-      "statements": 15.59,
-      "functions": 29.73,
-      "branches": 9.8
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-cli/cli-loop.ts": {
-      "lines": 66.67,
-      "statements": 66.67,
-      "functions": 50,
-      "branches": 50
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-cli/flatten.ts": {
       "lines": 100,
-      "statements": 94.74,
+      "statements": 100,
       "functions": 100,
-      "branches": 94.74
+      "branches": 100
     },
     "src/driver-cli/frames.ts": {
       "lines": 100,
@@ -125,27 +125,27 @@
     },
     "src/driver-cli/ndjson.ts": {
       "lines": 100,
-      "statements": 97.67,
+      "statements": 100,
       "functions": 100,
-      "branches": 87.5
+      "branches": 100
     },
     "src/driver-cli/session-sink.ts": {
-      "lines": 96.91,
-      "statements": 96.57,
-      "functions": 86.11,
-      "branches": 94.05
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/driver-cli/stream-json.ts": {
       "lines": 100,
-      "statements": 94.29,
+      "statements": 100,
       "functions": 100,
-      "branches": 91.75
+      "branches": 100
     },
     "src/driver-cli/text.ts": {
       "lines": 100,
-      "statements": 96.3,
+      "statements": 100,
       "functions": 100,
-      "branches": 92.31
+      "branches": 100
     },
     "src/driver-cli/transport.ts": {
       "lines": 100,
@@ -274,40 +274,40 @@
       "branches": 100
     },
     "src/engine-agy/agent.ts": {
-      "lines": 3.03,
-      "statements": 2.7,
-      "functions": 0,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-agy/frames.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 92.79
+      "branches": 100
     },
     "src/engine-agy/loop.ts": {
-      "lines": 57.14,
-      "statements": 57.14,
-      "functions": 40,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-agy/process.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 90.91
+      "branches": 100
     },
     "src/engine-claude/agent.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 99.49
+      "branches": 100
     },
     "src/engine-claude/loop.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 87.5
+      "branches": 100
     },
     "src/engine-claude/mapping.ts": {
       "lines": 100,
@@ -331,7 +331,7 @@
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 93.75
+      "branches": 100
     },
     "src/engine-claude/types.ts": {
       "lines": 100,
@@ -346,10 +346,10 @@
       "branches": 100
     },
     "src/engine-codex/appserver/client.ts": {
-      "lines": 98.59,
-      "statements": 98.68,
+      "lines": 100,
+      "statements": 100,
       "functions": 100,
-      "branches": 88.89
+      "branches": 100
     },
     "src/engine-codex/appserver/mapping.ts": {
       "lines": 100,
@@ -373,7 +373,7 @@
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 75
+      "branches": 100
     },
     "src/engine-codex/model-handover.ts": {
       "lines": 100,
@@ -400,10 +400,10 @@
       "branches": 100
     },
     "src/engine-drivers.ts": {
-      "lines": 56.25,
-      "statements": 54.29,
-      "functions": 53.85,
-      "branches": 46.09
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-grok/agent.ts": {
       "lines": 100,
@@ -419,33 +419,33 @@
     },
     "src/engine-grok/process.ts": {
       "lines": 100,
-      "statements": 90.91,
+      "statements": 100,
       "functions": 100,
-      "branches": 71.43
+      "branches": 100
     },
     "src/engine-grok/profile.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 93.75
+      "branches": 100
     },
     "src/engine-hermes/agent.ts": {
-      "lines": 24,
-      "statements": 22.22,
-      "functions": 50,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-hermes/loop.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 66.67
+      "branches": 100
     },
     "src/engine-hermes/process.ts": {
       "lines": 100,
-      "statements": 96,
+      "statements": 100,
       "functions": 100,
-      "branches": 89.29
+      "branches": 100
     },
     "src/engine-kimi/agent.ts": {
       "lines": 100,
@@ -511,13 +511,13 @@
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 90.91
+      "branches": 100
     },
     "src/engine-minimaxcode/process.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 93.33
+      "branches": 100
     },
     "src/engine-minimaxcode/profile.ts": {
       "lines": 100,
@@ -541,7 +541,7 @@
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 75
+      "branches": 100
     },
     "src/engine-pi/model-handover.ts": {
       "lines": 100,
@@ -586,22 +586,22 @@
       "branches": 100
     },
     "src/engine-qoderclicn/agent.ts": {
-      "lines": 2.94,
-      "statements": 2.7,
-      "functions": 0,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-qoderclicn/loop.ts": {
-      "lines": 40,
-      "statements": 40,
-      "functions": 0,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-qoderclicn/process.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 94.44
+      "branches": 100
     },
     "src/engine-registry.ts": {
       "lines": 100,
@@ -622,28 +622,28 @@
       "branches": 100
     },
     "src/engine-zcode/agent.ts": {
-      "lines": 4.17,
-      "statements": 3.7,
-      "functions": 0,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-zcode/loop.ts": {
-      "lines": 40,
-      "statements": 40,
-      "functions": 0,
-      "branches": 0
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
     },
     "src/engine-zcode/process.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 97.22
+      "branches": 100
     },
     "src/index.ts": {
       "lines": 100,
-      "statements": 99.57,
+      "statements": 100,
       "functions": 100,
-      "branches": 97.32
+      "branches": 100
     },
     "src/invariant.ts": {
       "lines": 100,
@@ -655,13 +655,13 @@
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 97.5
+      "branches": 100
     },
     "src/model-registry.ts": {
       "lines": 100,
       "statements": 100,
       "functions": 100,
-      "branches": 92.86
+      "branches": 100
     },
     "src/model-selection-reset.ts": {
       "lines": 100,

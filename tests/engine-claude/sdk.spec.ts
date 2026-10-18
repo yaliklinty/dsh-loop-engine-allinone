@@ -271,3 +271,18 @@ describe('permission-mode defaults', () => {
     expect(DEFAULT_PERMISSION_MODE).toBe('dontAsk')
   })
 })
+
+describe('unbinding the bundled engine', () => {
+  it('hands the SDK the pinned executable instead of its own copy', () => {
+    // The whole of the "run your own signed-in install" feature: the SDK spawns
+    // whatever path this names, and omitting it keeps the bundled copy — which is
+    // the behaviour every earlier release had.
+    const options = claudeQueryOptions(spec({ bin: 'C:/tools/claude.exe' }), new AbortController())
+    expect(options.pathToClaudeCodeExecutable).toBe('C:/tools/claude.exe')
+  })
+
+  it('omits the executable when the deployment pinned none', () => {
+    const options = claudeQueryOptions(spec(), new AbortController())
+    expect('pathToClaudeCodeExecutable' in options).toBe(false)
+  })
+})

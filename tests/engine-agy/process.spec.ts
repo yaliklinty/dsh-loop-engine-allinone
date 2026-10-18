@@ -185,3 +185,19 @@ describe('agySpawnRequest', () => {
     expect(request.signal).toBe(signal)
   })
 })
+
+describe('the installed-CLI probe', () => {
+  it('prefers the per-user install when it exists', () => {
+    // A desktop install puts `agy` under LOCALAPPDATA and does not always reach
+    // the PATH a profile inherits.
+    process.env.LOCALAPPDATA = 'C:/Users/x/AppData/Local'
+    mockedExistsSync.mockReturnValue(true)
+    expect(agyBinResolver()).toBe(join('C:/Users/x/AppData/Local', 'agy', 'bin', process.platform === 'win32' ? 'agy.EXE' : 'agy'))
+  })
+
+  it('falls back to the bare name when nothing is installed there', () => {
+    process.env.LOCALAPPDATA = 'C:/Users/x/AppData/Local'
+    mockedExistsSync.mockReturnValue(false)
+    expect(agyBinResolver()).toBe('agy')
+  })
+})

@@ -10,7 +10,7 @@
  * driver's decisions (argv, cwd, mode, the provider-catalog variable) and about
  * the durable transcript. Nothing here claims `zcode` really answered — that is
  * what `scripts/probe/smoke-*.ts` and the live runs recorded in
- * `output/协议探测报告.md` are for.
+ * the fork's probe report are for.
  *
  * @module tests/engine-zcode/agent
  */

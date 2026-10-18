@@ -487,3 +487,149 @@ describe('framing robustness and lifecycle', () => {
     expect(collected).toHaveLength(0)
   })
 })
+
+describe('the catalog a session frame publishes', () => {
+  it('keeps the model option it read out of session/new', async () => {
+    // `session/new` already carries the agent's catalog, so keeping it here costs
+    // nothing and is what spares a plugin release every time a vendor ships a
+    // model. A frame without a model option must leave the catalog untouched.
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process)
+    const init = client.initialize()
+    fake.push(`{"jsonrpc":"2.0","id":${INIT_ID},"result":{}}`)
+    await init
+
+    expect(client.discoveredModels()).toBeUndefined()
+    const next = client.newSession('/w')
+    fake.push(JSON.stringify({
+      jsonrpc: '2.0',
+      id: 2,
+      result: {
+        sessionId: 'sess_1',
+        configOptions: [{ id: 'model', options: [{ value: 'm:MiniMax-M3:v:thinking', name: 'M3 · thinking' }] }],
+      },
+    }))
+    await expect(next).resolves.toBe('sess_1')
+    expect(client.discoveredModels()).toEqual([{ id: 'm:MiniMax-M3:v:thinking', label: 'M3 · thinking' }])
+    client.dispose()
+  })
+})
+
+describe('writing after the client is sealed', () => {
+  it('drops a reverse answer once the client is disposed', async () => {
+    // A disposed client must not write to a channel whose process is gone; the
+    // sealed check is what keeps a late answer from throwing into the read loop.
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, { handlers: { readTextFile: async () => 'x' } })
+    client.dispose()
+    const before = fake.writes.length
+    await (client as unknown as {
+      handleCapability: (id: number, method: string, params: unknown) => Promise<void>
+    }).handleCapability(99, 'fs/read_text_file', { path: '/a' })
+    expect(fake.writes).toHaveLength(before)
+  })
+})
+
+describe('a capability that failed for a non-Error reason', () => {
+  it('reports a thrown string as its own text', async () => {
+    // A handler may reject with a plain value; reporting `[object Object]` would
+    // hide the reason from the agent's failed tool call.
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, {
+      handlers: { readTextFile: async () => { throw 'permission denied' } },
+    })
+    await (client as unknown as {
+      handleCapability: (id: number, method: string, params: unknown) => Promise<void>
+    }).handleCapability(7, 'fs/read_text_file', { path: '/a' })
+    const answer = JSON.parse(fake.writes.at(-1)!) as { error?: { message: string } }
+    expect(answer.error?.message).toBe('permission denied')
+  })
+})
+
+describe('a terminal request with optional fields', () => {
+  it('omits cwd and env when the agent named neither', async () => {
+    // ACP makes both optional; passing `undefined` through would send nulls the
+    // agent has to defend against.
+    const seen: Record<string, unknown>[] = []
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, {
+      handlers: {
+        spawnTerminal: async (_command: string, options: Record<string, unknown>) => {
+          seen.push(options)
+          return { snapshot: () => ({ output: '', exited: true }), waitForExit: async () => ({ exitCode: 0 }), release: () => {} }
+        },
+      },
+    })
+    await (client as unknown as {
+      handleCapability: (id: number, method: string, params: unknown) => Promise<void>
+    }).handleCapability(8, 'terminal/create', { command: 'ls' })
+    expect(seen[0]).toEqual({})
+  })
+})
+
+describe('a terminal request that names cwd and env', () => {
+  it('passes both through, so the agent’s own environment reaches the command', async () => {
+    const seen: Record<string, unknown>[] = []
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, {
+      handlers: {
+        spawnTerminal: async (_command: string, options: Record<string, unknown>) => {
+          seen.push(options)
+          return { snapshot: () => ({ output: '', exited: true }), waitForExit: async () => ({ exitCode: 0 }), release: () => {} }
+        },
+      },
+    })
+    await (client as unknown as {
+      handleCapability: (id: number, method: string, params: unknown) => Promise<void>
+    }).handleCapability(9, 'terminal/create', { command: 'ls', cwd: '/w', env: [{ name: 'A', value: '1' }] })
+    expect(seen[0]).toEqual({ cwd: '/w', env: { A: '1' } })
+  })
+})
+
+describe('a terminal that exited without an exit code', () => {
+  it('reports zero rather than omitting the field', async () => {
+    // ACP's `exitStatus.exitCode` is required when `exitStatus` is present, so a
+    // signal death has to be reported as 0 rather than as a missing number.
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, {
+      handlers: {
+        spawnTerminal: async () => ({
+          snapshot: () => ({ output: 'done', exited: true }),
+          waitForExit: async () => ({ exitCode: 0 }),
+          release: () => {},
+        }),
+      },
+    })
+    const ask = (client as unknown as {
+      capabilityResult: (method: string, params: unknown) => Promise<unknown>
+    }).capabilityResult.bind(client)
+    const created = await ask('terminal/create', { command: 'ls' }) as { terminalId: string }
+    const output = await ask('terminal/output', { terminalId: created.terminalId }) as {
+      exitStatus?: { exitCode: number }
+    }
+    expect(output.exitStatus).toEqual({ exitCode: 0 })
+  })
+})
+
+describe('a terminal that is still running', () => {
+  it('reports no exit status while the command has not exited', async () => {
+    // ACP only carries `exitStatus` once the command is done; sending one early
+    // would tell the agent the command finished when it has not.
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, {
+      handlers: {
+        spawnTerminal: async () => ({
+          snapshot: () => ({ output: 'partial', exited: false }),
+          waitForExit: async () => ({ exitCode: 0 }),
+          release: () => {},
+        }),
+      },
+    })
+    const ask = (client as unknown as {
+      capabilityResult: (method: string, params: unknown) => Promise<unknown>
+    }).capabilityResult.bind(client)
+    const created = await ask('terminal/create', { command: 'sleep 5' }) as { terminalId: string }
+    const output = await ask('terminal/output', { terminalId: created.terminalId }) as { exitStatus?: unknown }
+    expect(output).not.toHaveProperty('exitStatus')
+  })
+})

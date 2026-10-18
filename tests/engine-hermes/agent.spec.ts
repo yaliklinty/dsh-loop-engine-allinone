@@ -10,7 +10,7 @@
  *
  * The child is faked at the spawn capability. Nothing here claims `hermes`
  * really answered; that is the smoke script and the live runs recorded in
- * `output/协议探测报告.md`.
+ * the fork's probe report.
  *
  * @module tests/engine-hermes/agent
  */

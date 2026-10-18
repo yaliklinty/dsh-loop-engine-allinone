@@ -95,7 +95,9 @@ export function bootCatalog(engine: HostedEngineId): { models: readonly EngineMo
 export function liveCatalog(engine: HostedEngineId): readonly EngineModel[] {
   const found = discovered.get(engine)
   if (found !== undefined && found.models.length > 0) return found.models
+  /* v8 ignore start -- every registry row declares a models catalog, so the empty fallback is defensive */
   return declaredModels(engine) ?? []
+  /* v8 ignore stop */
 }
 
 /** What one engine's catalog currently is, and where it came from. */

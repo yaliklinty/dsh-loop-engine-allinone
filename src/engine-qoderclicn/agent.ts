@@ -118,7 +118,9 @@ export class QoderclicnAgent extends CliHostedAgent {
     const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
     const result = await runNdjson(
       { transport, map: document => mapDocument(document, accept, run) },
+      /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
       () => {},
+      /* v8 ignore stop */
     )
     // A child that printed NOTHING parseable did not speak the protocol: that is
     // a startup failure (a missing binary, an unsigned login, a flag the

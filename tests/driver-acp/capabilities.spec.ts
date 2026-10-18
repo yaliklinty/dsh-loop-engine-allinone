@@ -394,3 +394,112 @@ describe('terminal executions that end badly', () => {
     expect(terminal.snapshot()).not.toHaveProperty('exitCode')
   })
 })
+
+describe('the request methods the drivers call', () => {
+  /** A client over a fake process, plus the frames it wrote. */
+  function clientWith(handlers?: Record<string, unknown>): {
+    client: AcpClient
+    writes: string[]
+    push: (frame: unknown) => void
+  } {
+    const fake = fakeProcess()
+    const client = new AcpClient(fake.process, handlers === undefined ? {} : { handlers: handlers as never })
+    return { client, writes: fake.writes, push: fake.push }
+  }
+
+  /** Answer the next request the client wrote, by id. */
+  async function answer(writes: string[], push: (frame: unknown) => void, result: unknown): Promise<void> {
+    const id = (JSON.parse(writes.at(-1)!) as { id: number }).id
+    push({ jsonrpc: '2.0', id, result })
+    await queue()
+    await queue()
+  }
+
+  it('sends each dialect request with the field names the wire expects', async () => {
+    // These are thin wrappers, and that is exactly why they are worth pinning:
+    // one renamed field is an `-32602` at the agent, far from the caller.
+    const { client, writes, push } = clientWith()
+
+    const authenticate = client.authenticate('grok.com')
+    await queue()
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({ method: 'authenticate', params: { methodId: 'grok.com' } })
+    await answer(writes, push, {})
+    await authenticate
+
+    const load = client.loadSession('sess-1', '/work')
+    await queue()
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({
+      method: 'session/load',
+      params: { sessionId: 'sess-1', cwd: '/work', mcpServers: [] },
+    })
+    await answer(writes, push, {})
+    await load
+
+    const setOption = client.setConfigOption('sess-1', 'model', 'grok-4.7')
+    await queue()
+    // The BARE value: measured, the `{ value }` wrapper is rejected `-32602` on
+    // this dialect.
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({
+      method: 'session/set_config_option',
+      params: { sessionId: 'sess-1', configId: 'model', value: 'grok-4.7' },
+    })
+    await answer(writes, push, {})
+    await setOption
+
+    const setOptionValue = client.setConfigOptionValue('sess-1', 'model', 'grok-4.7')
+    await queue()
+    // The OTHER dialect, which wants the wrapper. Both exist because the two
+    // engines disagree and neither could be probed into the other's shape.
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({
+      method: 'session/set_config_option',
+      params: { sessionId: 'sess-1', configId: 'model', value: { value: 'grok-4.7' } },
+    })
+    await answer(writes, push, {})
+    await setOptionValue
+
+    const setMode = client.setMode('sess-1', 'auto')
+    await queue()
+    expect(JSON.parse(writes.at(-1)!)).toMatchObject({
+      method: 'session/set_mode',
+      params: { sessionId: 'sess-1', modeId: 'auto' },
+    })
+    await answer(writes, push, {})
+    await setMode
+  })
+
+  it('publishes no catalog until an engine has been asked', async () => {
+    // Before `session/new` the client knows nothing; reporting an empty list would
+    // look like "this engine has no models" instead of "not asked yet".
+    const { client } = clientWith()
+    expect(client.discoveredModels()).toBeUndefined()
+  })
+
+  it('refuses a capability method it has no handler for', async () => {
+    // Announcing nothing but still answering would make an agent plan a tool call
+    // that dies; the client must say it cannot.
+    const { client } = clientWith()
+    const ask = (client as unknown as {
+      capabilityResult: (method: string, params: unknown) => Promise<unknown>
+    }).capabilityResult.bind(client)
+    await expect(ask('fs/read_text_file', { path: '/a' }))
+      .rejects.toThrow(/does not read files/)
+    await expect(ask('terminal/create', { command: 'ls' }))
+      .rejects.toThrow(/does not run commands/)
+    await expect(ask('fs/write_text_file', { path: '/a' }))
+      .rejects.toThrow(/unsupported capability method/)
+  })
+
+  it('rejects a reverse request whose parameters do not name what it needs', async () => {
+    const { client } = clientWith({
+      readTextFile: async () => 'x',
+      spawnTerminal: async () => ({ snapshot: () => ({ output: '', exited: true }) }),
+    })
+    const ask = (client as unknown as {
+      capabilityResult: (method: string, params: unknown) => Promise<unknown>
+    }).capabilityResult.bind(client)
+    await expect(ask('fs/read_text_file', {})).rejects.toThrow(/needs a path/)
+    await expect(ask('terminal/create', {})).rejects.toThrow(/needs a command/)
+    await expect(ask('terminal/output', {})).rejects.toThrow(/names no terminal/)
+    await expect(ask('terminal/wait_for_exit', { terminalId: '' })).rejects.toThrow(/names no terminal/)
+  })
+})

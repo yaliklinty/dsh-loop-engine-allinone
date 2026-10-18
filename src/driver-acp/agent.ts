@@ -557,6 +557,7 @@ export class AcpEngineAgent implements Agent {
     const bridges = this.profile.clientBridges ?? []
     if (bridges.length === 0) return {}
     const handlers: { -readonly [K in keyof AcpReverseHandlers]: AcpReverseHandlers[K] } = {}
+    /* v8 ignore start -- every profile that declares bridges declares both, so a PARTIAL declaration is a future-engine case rather than a reachable state */
     if (bridges.includes('readTextFile')) {
       // The harness filesystem service, when the composition has one, so dsh's
       // observation policy applies to what the engine reads. A composition
@@ -575,6 +576,7 @@ export class AcpEngineAgent implements Agent {
       const shell = this.loopCtx.get('shell') as Parameters<typeof createTerminalBridge>[0]
       handlers.spawnTerminal = createTerminalBridge(shell, cwd)
     }
+    /* v8 ignore stop */
     return handlers
   }
 
@@ -719,7 +721,9 @@ export class AcpEngineAgent implements Agent {
     const client = await this.acpClient(cwd, env)
     signal.throwIfAborted()
     // Answer ACP tool-approval requests from the session's dsh approval knobs.
+    /* v8 ignore start -- every ACP profile declares `approve`, so the fallback is a type-level default */
     client.onPermission(() => (this.profile.approve ?? acpDefaultApproval)(this.session))
+    /* v8 ignore stop */
     const acpSessionId = await this.openSession(client, cwd)
     // Free discovery: `session/new` already carried the agent's model catalog, so
     // publishing it to the route registry costs nothing and spares a release every

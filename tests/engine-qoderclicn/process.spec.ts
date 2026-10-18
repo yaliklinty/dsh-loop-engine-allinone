@@ -135,3 +135,17 @@ describe('qoderclicnSpawnRequest', () => {
     expect(request.signal).toBe(signal)
   })
 })
+
+describe('the home-directory install', () => {
+  it('prefers the CLI its own install directory holds', () => {
+    // An installed Qoder CN puts its binary under `~/.qoder-cn/bin/…`; probing
+    // that is what makes the bundling toggle work without a pinned path.
+    mockedExistsSync.mockReturnValue(true)
+    expect(qoderclicnBinResolver()).toBe(join(qoderclicnHomeDir(), 'bin', 'qoderclicn', EXE))
+  })
+
+  it('falls back to the bare name when the install directory has no binary', () => {
+    mockedExistsSync.mockReturnValue(false)
+    expect(qoderclicnBinResolver()).toBe('qoderclicn')
+  })
+})

@@ -2084,3 +2084,26 @@ describe('ClaudeCodeAgent skill injection', () => {
     }
   })
 })
+
+describe('a pinned Claude Code executable', () => {
+  it('passes the deployment’s own binary to the query', async () => {
+    // Unbinding the bundled SDK copy is a supported option and the whole point of
+    // the feature: a deployment can run an install it signed in itself, whose
+    // credentials the bundled copy's login directory would not see.
+    const ctx = await harness({ bin: 'C:/tools/claude.exe' })
+    try {
+      queryMock.mockImplementation(() => stream([successResult()]))
+      const { agent } = await ctx.agents.create({
+        sessionId: SessionId('bin-s'),
+        meta: { cwd: process.cwd() },
+      })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(queryMock.mock.calls[0]?.[0].options).toMatchObject({
+        pathToClaudeCodeExecutable: 'C:/tools/claude.exe',
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})

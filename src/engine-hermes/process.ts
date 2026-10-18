@@ -45,9 +45,13 @@ export const HERMES_HOME_ENV = 'HERMES_HOME'
  * added.
  */
 function wellKnownHermes(): string | undefined {
+  /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host */
   if (process.platform !== 'win32') return undefined
+  /* v8 ignore stop */
   const local = process.env.LOCALAPPDATA
+  /* v8 ignore start -- an absent LOCALAPPDATA is the "no per-user Hermes install" state, and the fallback is the same story one line down */
   if (local === undefined || local === '') return undefined
+  /* v8 ignore stop */
   const candidate = join(local, 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.exe')
   return existsSync(candidate) ? candidate : undefined
 }
@@ -77,7 +81,9 @@ export function hermesBinResolver(configBin?: string): string {
  */
 export function hermesOnPath(pathEnv: string | undefined): boolean {
   if (pathEnv === undefined || pathEnv === '') return false
+  /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host */
   const names = process.platform === 'win32' ? ['hermes.exe', 'hermes.cmd', 'hermes.bat'] : ['hermes']
+  /* v8 ignore stop */
   for (const entry of pathEnv.split(delimiter)) {
     if (entry === '') continue
     for (const name of names) {

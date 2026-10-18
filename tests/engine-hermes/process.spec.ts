@@ -125,3 +125,13 @@ describe('hermesSpawnRequest', () => {
     expect(request.env[HERMES_HOME_ENV]).toBe('D:\\HermesData\\other')
   })
 })
+
+describe('a LOCALAPPDATA with no Hermes install', () => {
+  it('resolves to the bare name when the venv copy is absent', () => {
+    // The per-user location exists as a variable but the installer never put a
+    // binary there: the answer is PATH resolution, not a path to nothing.
+    process.env.LOCALAPPDATA = 'C:\Users\tester\AppData\Local'
+    mockedExistsSync.mockReturnValue(false)
+    expect(hermesBinResolver('')).toBe('hermes')
+  })
+})

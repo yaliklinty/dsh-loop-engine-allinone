@@ -331,3 +331,30 @@ describe('AppServerClient', () => {
     expect(proc.kill).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('a pinned codex executable', () => {
+  it('spawns an external binary directly', async () => {
+    // The bundled entrypoint is a Node script run under the current node; an
+    // external path is usually a real binary and must be spawned as-is.
+    const client = await AppServerClient.create([], {}, 'C:/tools/codex.exe')
+    const [program] = mocks.spawn.mock.calls.at(-1)! as unknown as [string, string[]]
+    expect(program).toBe('C:/tools/codex.exe')
+    client.dispose()
+  })
+
+  it('still runs a pinned JavaScript entrypoint through node', async () => {
+    // Pointing the knob at an unpacked bundled copy has to keep working.
+    const client = await AppServerClient.create([], {}, 'C:/tools/codex.js')
+    const [program, args] = mocks.spawn.mock.calls.at(-1)! as unknown as [string, string[]]
+    expect(program).toBe(process.execPath)
+    expect(args[0]).toBe('C:/tools/codex.js')
+    client.dispose()
+  })
+
+  it('ignores an empty pin, so "not pinned" is not "the executable named \'\'"', async () => {
+    const client = await AppServerClient.create([], {}, '')
+    const [program] = mocks.spawn.mock.calls.at(-1)! as unknown as [string, string[]]
+    expect(program).toBe(process.execPath)
+    client.dispose()
+  })
+})
