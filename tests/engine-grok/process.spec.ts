@@ -82,8 +82,8 @@ describe('grokAcpArgv', () => {
   it('routes a Windows shim through the command interpreter', () => {
     // `spawn('grok.cmd')` throws EINVAL synchronously; only `cmd.exe /c` starts it.
     const comSpec = process.env.ComSpec ?? 'cmd.exe'
-    expect(grokAcpArgv('C:/Users/x/AppData/Roaming/npm/grok.cmd'))
-      .toEqual([comSpec, '/c', 'C:/Users/x/AppData/Roaming/npm/grok.cmd', 'agent', 'stdio'])
+    expect(grokAcpArgv('D:/npm-global/grok.cmd'))
+      .toEqual([comSpec, '/c', 'D:/npm-global/grok.cmd', 'agent', 'stdio'])
   })
 
   it('runs a JavaScript entry point through the current node', () => {
