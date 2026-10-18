@@ -8,17 +8,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
-## [0.7.6]
-
-### Fixed
-
-- **Two preset-authoring tests could flake on a loaded runner.** They polled for one second while the plugin's own roster wait is bounded at two; a docs-only push (run `39118609901`) failed both. The helper now polls for the full eight-second budget, which is what the assertion means. (Tests only.)
-
-### Changed
-
-- The README now tells deployments that upgraded from 0.7.4 to delete a managed block
-  0.7.4 may have left in a `web` profile that has no plugin. (Documentation only.)
-
 ## [0.7.5]
 
 ### Added
@@ -43,6 +32,7 @@ Nothing yet.
   ready"). The profile is now resolved from the launcher's `profileContext`, then from the
   directory the package was installed into, and only then from `web`. An explicit
   `profile:` entry still wins (needed for a `link:`/source checkout).
+- **Two preset-authoring tests could flake on a loaded runner.** They polled for one second while the plugin's own roster wait is bounded at two; a docs-only push (run `39118609901`) failed both. The helper now polls for the full eight-second budget, which is what the assertion means. (Tests only.)
 - **Coverage no longer depends on the host's home directory.** `model-registry.ts` sat at
   93.94% on a clean CI runner while reading 100% locally, because the local machine has a
   real `~/.kimi-code/config.toml` and the tests silently relied on it. The spec now points
@@ -51,6 +41,8 @@ Nothing yet.
 
 ### Changed
 
+- The README now tells deployments that upgraded from 0.7.4 to delete a managed block
+  0.7.4 may have left in a `web` profile that has no plugin. (Documentation only.)
 - Coverage-only source edits are comments at genuinely unreachable arms (`/* v8 ignore
   start|stop */` plus a reason: POSIX-only ternaries, registry-constant branches, the
   production-layout early return). Runtime behaviour is unchanged.
