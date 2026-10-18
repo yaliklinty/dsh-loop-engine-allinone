@@ -246,3 +246,106 @@ describe('failure and unknown-document handling', () => {
     expect((frames[0] as { call: { id: string } }).call.id).toBe('agy-tool-7')
   })
 })
+
+describe('the defensive arms of the mapper', () => {
+  it('leaves the conversation id alone when the init frame carries none', () => {
+    // A CLI that answers before it has a conversation (or omits the id) must not
+    // be recorded with an empty one — that would make two different runs look
+    // like the same conversation.
+    const { run } = collect({ event: 'init', init: {} })
+    expect(run.conversationId).toBeUndefined()
+
+    const empty = collect({ event: 'init', conversation_id: '', init: {} })
+    expect(empty.run.conversationId).toBeUndefined()
+  })
+
+  it('reports usage with only the fields the engine actually sent', () => {
+    // dsh distinguishes "reported zero" from "not reported": a fabricated zero
+    // would corrupt the context accounting the compaction path reads.
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: { step_index: 1, state: 'DONE', step_type: 'agent_response', usage: { input_tokens: 3 } },
+    })
+    const usage = frames.find(frame => frame.kind === 'usage')
+    expect(usage).toEqual({ kind: 'usage', usage: { input: 3, output: 0 } })
+  })
+
+  it('omits the cache counters when the engine did not report them', () => {
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: { step_index: 1, state: 'DONE', step_type: 'agent_response', usage: { input_tokens: 1, output_tokens: 2 } },
+    })
+    const usage = frames.find(frame => frame.kind === 'usage') as { usage: Record<string, unknown> }
+    expect(usage.usage).not.toHaveProperty('cacheRead')
+    expect(usage.usage).not.toHaveProperty('cacheWrite')
+    expect(usage.usage).not.toHaveProperty('thinking')
+  })
+
+  it('reads a step update that omits its own step_type, state and index', () => {
+    // The mapper's defaults exist so a slimmer update is DROPPED rather than
+    // turned into a bogus step; `stepIndex: -1` is the "no index" marker.
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: { text_delta: 'orphan' },
+    })
+    // No step_type means no block kind to attach the text to: nothing lands.
+    expect(frames).toEqual([])
+  })
+
+  it('reports a tool result with no output as an empty string, not as undefined', () => {
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: {
+        step_index: 2, state: 'DONE', step_type: 'tool',
+        tool_name: 'run_command', tool_info: { name: 'run_command', parameters: {} },
+      },
+    })
+    const result = frames.find(frame => frame.kind === 'tool-result') as { result: { text: string; isError: boolean } }
+    expect(result.result).toEqual({ id: expect.any(String), text: '', isError: false })
+  })
+
+  it('marks a tool result as failed when the engine reported an error', () => {
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: {
+        step_index: 2, state: 'DONE', step_type: 'tool',
+        tool_name: 'run_command', tool_info: { name: 'run_command', parameters: {}, error: 'permission denied' },
+      },
+    })
+    const result = frames.find(frame => frame.kind === 'tool-result') as { result: { isError: boolean } }
+    expect(result.result.isError).toBe(true)
+  })
+})
+
+describe('usage fields the engine does send', () => {
+  it('maps every cache counter the engine reports', () => {
+    // The captured turns all carry `cache_read_tokens`; the mapper must pass it
+    // (and a write counter, when one appears) through rather than dropping it.
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: {
+        step_index: 1, state: 'DONE', step_type: 'agent_response',
+        usage: { input_tokens: 10, output_tokens: 20, cache_read_tokens: 5, thinking_tokens: 7 },
+      },
+    })
+    const usage = frames.find(frame => frame.kind === 'usage') as { usage: Record<string, unknown> }
+    expect(usage.usage).toEqual({ input: 10, output: 20, cacheRead: 5, thinking: 7 })
+  })
+})
+
+describe('usage with missing counters', () => {
+  it('defaults input and output to zero when the engine omitted them', () => {
+    // A `usage` member that carries only one counter still produces a usable
+    // record: the two mandatory fields fall back to 0 rather than to undefined,
+    // because dsh's accounting reads them as numbers.
+    const { frames } = collect({
+      event: 'step_update',
+      step_update: {
+        step_index: 1, state: 'DONE', step_type: 'agent_response',
+        usage: { total_tokens: 99 },
+      },
+    })
+    const usage = frames.find(frame => frame.kind === 'usage') as { usage: Record<string, unknown> }
+    expect(usage.usage).toEqual({ input: 0, output: 0 })
+  })
+})
