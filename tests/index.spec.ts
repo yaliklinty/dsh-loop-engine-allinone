@@ -827,6 +827,9 @@ function presetDir(home: string, preset: string): string {
  * @param patchPath - the profile patch file the 0.1.7 mechanism writes into.
  */
 async function waitForEnginePresets(home: string, patchPath: string): Promise<void> {
+  // The plugin's own roster wait is bounded at 2s (20 x 100ms), and a loaded CI
+  // runner can take most of that before the first authoring pass lands; the
+  // default one-second poll was a flake waiting to happen (run 39118609901).
   await vi.waitFor(async () => {
     if (!LEGACY_HARNESS) {
       const text = await readFile(patchPath, 'utf8')
@@ -839,7 +842,7 @@ async function waitForEnginePresets(home: string, patchPath: string): Promise<vo
         .toContain('Managed by dsh-loop-engine')
       expect(await readFile(join(presetDir(home, preset), METADATA_FILE), 'utf8')).toContain('name: ')
     }
-  })
+  }, { timeout: 8000, interval: 50 })
 }
 
 /**
