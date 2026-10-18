@@ -79,6 +79,11 @@ engine switch answered `router-unmounted` ("the loop engine router is not ready"
 profile that had no plugin at all. 0.7.5 fixes both ends: it finds the right
 profile, and it warns when the resolved profile has no `package.json` beside it.
 
+If 0.7.4 already wrote the managed block into `web` while you did not install the
+plugin there, delete that block (from `# -- dsh-loop-engine managed block --` through
+`# -- /dsh-loop-engine managed block --`, plus the preset block) before booting
+`web`; otherwise that profile has no agent factory.
+
 ### Installation notes
 
 - The installer rewrites one managed block in the profile's `cordis.patch.yml`; every
