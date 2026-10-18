@@ -46,7 +46,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
@@ -279,15 +280,75 @@ export const Config: z<ConfigInput, Config> = z.object({
   }),
 }) as z<ConfigInput, Config>
 
-/** Resolve the managed patch file from configuration, defaulting to the web profile. */
-export function resolvePatchPath(config: Config): string {
+/**
+ * Resolve the managed patch file from configuration, defaulting to the web profile.
+ * @param config - composition entry; `patchPath` wins, then `profile` + `patchFilename`.
+ * @param fallbackProfile - profile name to use when the entry names none (the
+ *   running profile, discovered by {@link resolveProfileName}); `web` when unknown.
+ * @returns the absolute patch file path.
+ */
+export function resolvePatchPath(config: Config, fallbackProfile = 'web'): string {
   if (config.patchPath !== undefined && config.patchPath !== '') return config.patchPath
   return join(
     resolveDshHome(),
     'profiles',
-    config.profile ?? 'web',
+    config.profile ?? fallbackProfile,
     config.patchFilename ?? 'cordis.patch.yml',
   )
+}
+
+/**
+ * Infer the profile a plugin copy was installed into from its own location.
+ *
+ * A profile is the nearest ancestor directory holding a `package.json` with a
+ * `dsh.profile` field. Walking up (rather than assuming
+ * `<home>/profiles/<name>/node_modules`) survives pnpm's real path
+ * (`node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/lib`) and nested installs,
+ * and returns undefined when the plugin runs from a checkout, a global install,
+ * or a linked source tree - none of which belongs to a profile.
+ * @param entry - module path to start from; the resolved module by default.
+ * @returns the profile name, or undefined when the copy is not inside one.
+ */
+export function inferProfileName(entry: string = fileURLToPath(import.meta.url)): string | undefined {
+  let dir = dirname(entry)
+  for (;;) {
+    const manifest = join(dir, 'package.json')
+    if (existsSync(manifest)) {
+      try {
+        const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { dsh?: { profile?: unknown } }
+        if (parsed.dsh?.profile !== undefined) return basename(dir)
+      } catch {
+        // An unreadable or malformed manifest is not this plugin's profile;
+        // keep walking, a real profile manifest is still allowed to be above it.
+      }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) return undefined
+    dir = parent
+  }
+}
+
+/**
+ * The profile this process is actually serving.
+ *
+ * Precedence: the composition entry's `profile` (an explicit deployment choice),
+ * then the harness's `profileContext.name` (0.2.x launchers), then the install
+ * location, and only then `web` (the historical default, correct for a global
+ * install and for `dsh web` before profiles had names).
+ *
+ * The install-location step is what makes a market install work without hand
+ * editing: installing into `desktop` used to leave `profile` unset, so the
+ * managed block went to `web`, the base `agent-loop` kept the factory slot in
+ * `desktop`, and every per-session switch answered `router-unmounted`.
+ * @param ctx - composing context, read for `profileContext`.
+ * @param config - composition entry, read for an explicit `profile`.
+ * @returns the profile name whose patch file this plugin owns.
+ */
+export function resolveProfileName(ctx: Context, config: Config): string {
+  if (config.profile !== undefined && config.profile !== '') return config.profile
+  const fromContext = (ctx.get('profileContext') as { name?: unknown } | undefined)?.name
+  if (typeof fromContext === 'string' && fromContext !== '') return fromContext
+  return inferProfileName() ?? 'web'
 }
 
 /**
@@ -421,30 +482,30 @@ function readPatchFileSync(path: string): string {
 }
 
 /**
- * Warn when the profile this plugin is configured for does not look like a real one.
+ * Warn when the profile this plugin resolved does not look like a real one.
  *
- * `profile` defaults to `web`, and forgetting it is silent in the worst way: the
- * managed block lands in another profile's patch file, the profile that actually
- * boots never reads it, and no engine is reachable with nothing logged. The harness
- * gives a plugin no way to ask which profile is running, so this checks the one
- * thing that IS knowable - whether the target directory holds a profile's
- * `package.json` - and names the field to set when it does not.
+ * Resolution now asks the launcher (`profileContext`), then the install path,
+ * before falling back to `web`; a wrong answer from any of those still writes the
+ * managed block into another profile's patch file, where the profile that
+ * actually boots never reads it, and no engine is reachable with nothing logged.
+ * This checks the one thing that is always knowable - whether the target
+ * directory holds a profile's `package.json` - and names the field to set when it
+ * does not.
  *
  * Deliberately a WARNING, not a failure: a first boot may legitimately precede the
  * profile's own files, and refusing to start would turn a diagnosable state into an
  * outage.
  * @param ctx - the context to log through.
- * @param config - the composition entry, read for the profile field.
+ * @param profileName - the profile name the plugin resolved.
  * @param patchPath - the resolved patch file this plugin will write.
  */
-function warnIfProfileLooksWrong(ctx: Context, config: Config, patchPath: string): void {
+function warnIfProfileLooksWrong(ctx: Context, profileName: string, patchPath: string): void {
   const profileDir = dirname(patchPath)
   /* v8 ignore start -- the plugin writes its patch beside a real profile, which always has a package.json; the harnesses mount into a temp directory */
   if (existsSync(join(profileDir, 'package.json'))) return
   /* v8 ignore stop */
-  const named = config.profile ?? 'web'
   ctx.logger.warn(
-    `loop-engine: profile "${named}" has no package.json beside "${patchPath}". `
+    `loop-engine: profile "${profileName}" has no package.json beside "${patchPath}". `
     + 'If you boot a different profile, set `profile: <that-name>` in this plugin\'s '
     + 'composition entry - otherwise its managed block is written here, the profile you '
     + 'actually boot never reads it, and no hosted engine will be reachable.',
@@ -462,8 +523,9 @@ export function apply(ctx: Context, config: Config): void {
   // Resolved first: a half-set pair is a compose-time misconfiguration, and it
   // must fail before anything is written.
   const summarizer = resolveSummarizerTarget(config)
-  const patchPath = resolvePatchPath(config)
-  warnIfProfileLooksWrong(ctx, config, patchPath)
+  const profileName = resolveProfileName(ctx, config)
+  const patchPath = resolvePatchPath(config, profileName)
+  warnIfProfileLooksWrong(ctx, profileName, patchPath)
   const patchText = readPatchFileSync(patchPath)
   // A block written by an older build names the ONE engine the profile used to
   // be pinned to. Carry that choice into the settings seed so the deployment's

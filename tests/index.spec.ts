@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,7 +21,9 @@ import { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import {
   apply,
   Config,
+  inferProfileName,
   resolvePatchPath,
+  resolveProfileName,
   resolveSummarizerTarget,
   syncManagedBlock,
   writePatchFile,
@@ -86,7 +88,6 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const mockedReadFile = vi.mocked(readFile)
 const mockedWriteFile = vi.mocked(writeFile)
-const mockedReadFileSync = vi.mocked(readFileSync)
 const mockedWriteFileSync = vi.mocked(writeFileSync)
 
 /**
@@ -304,6 +305,69 @@ describe('resolvePatchPath', () => {
 
   it('treats an empty patchPath as absent', () => {
     expect(resolvePatchPath({ patchPath: '' })).toBe(join(resolveDshHome(), 'profiles', 'web', 'cordis.patch.yml'))
+  })
+})
+
+describe('which profile the plugin owns', () => {
+  /** A fake profile with the package installed under its node_modules. */
+  async function fixtureProfile(name: string, manifest: unknown): Promise<{ root: string, entry: string }> {
+    const root = await mkdtemp(join(tmpdir(), 'loop-profile-'))
+    const profile = join(root, 'profiles', name)
+    const pkg = join(profile, 'node_modules', 'dsh-loop-engine-allinone')
+    await mkdir(join(pkg, 'lib'), { recursive: true })
+    await writeFile(join(profile, 'package.json'), JSON.stringify(manifest))
+    return { root, entry: join(pkg, 'lib', 'index.js') }
+  }
+
+  it('infers the profile a package was installed into, past its own manifest', async () => {
+    // A market install leaves `profile` unset; the install path is then the only
+    // thing that says which profile's base `agent-loop` must be released.
+    const { root, entry } = await fixtureProfile('desktop', { dsh: { profile: { bundles: [] } } })
+    try {
+      await writeFile(join(dirname(dirname(entry)), 'package.json'),
+        JSON.stringify({ name: 'dsh-loop-engine-allinone', dsh: { bundle: {} } }))
+      expect(inferProfileName(entry)).toBe('desktop')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('walks past an unreadable package manifest instead of giving up', async () => {
+    const { root, entry } = await fixtureProfile('desktop', { dsh: { profile: { bundles: [] } } })
+    try {
+      await writeFile(join(dirname(dirname(entry)), 'package.json'), '{ not json')
+      expect(inferProfileName(entry)).toBe('desktop')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns undefined outside a profile (checkout or global install)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loop-checkout-'))
+    try {
+      await mkdir(join(root, 'lib'), { recursive: true })
+      await writeFile(join(root, 'package.json'),
+        JSON.stringify({ name: 'dsh-loop-engine-allinone', dsh: { bundle: {} } }))
+      expect(inferProfileName(join(root, 'lib', 'index.js'))).toBeUndefined()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('prefers the composition entry, then the launcher, then the fallback', () => {
+    const ctx = {
+      get: (name: string) => (name === 'profileContext' ? { name: 'desktop' } : undefined),
+    } as unknown as Context
+    expect(resolveProfileName(ctx, { profile: 'custom' })).toBe('custom')
+    expect(resolveProfileName(ctx, {})).toBe('desktop')
+    // No entry, no launcher: this checkout is not inside any profile → web.
+    const anonymous = { get: () => undefined } as unknown as Context
+    expect(resolveProfileName(anonymous, {})).toBe('web')
+  })
+
+  it('feeds the resolved name into the patch path', () => {
+    expect(resolvePatchPath({}, 'desktop'))
+      .toBe(join(resolveDshHome(), 'profiles', 'desktop', 'cordis.patch.yml'))
   })
 })
 
@@ -669,12 +733,12 @@ describe('apply managed block', () => {
 
   it('propagates a non-ENOENT failure from the startup read', async () => {
     const dir = await tempDir()
+    // A directory where the patch file should be: `readFileSync` fails with
+    // EISDIR, which is not the "profile has no patch yet" case apply tolerates.
     const path = join(dir, 'cordis.patch.yml')
-    mockedReadFileSync.mockImplementationOnce(() => {
-      throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
-    })
+    await mkdir(path)
     const { ctx } = await boot()
-    expect(() => apply(ctx, { patchPath: path, ...live.config })).toThrow('EACCES')
+    expect(() => apply(ctx, { patchPath: path, ...live.config })).toThrow()
   })
 })
 

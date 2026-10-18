@@ -79,7 +79,7 @@ managed block 本身是**根级 block sequence**，这带来一个真实踩过�
 
 `apply(ctx, config)`（`src/index.ts:264`）依次做（第 4–6 步是后面三个挂载共用的准备，不是挂载本身）：
 
-1. `resolvePatchPath` 解析 patch 文件路径：`patchPath` 显式指定优先，否则 `$DSH_HOME/profiles/<profile>/<patchFilename>`，默认 `web/cordis.patch.yml`；空字符串视为未指定（`src/index.ts:139-147`）。composition 条目是**引擎无关的超集**：四个引擎的旋钮全在这一层，因为任何会话都可能选中任何引擎（`src/index.ts:111-121`）。
+1. `resolveProfileName` 先定"我到底在服务哪个 profile"：`config.profile`（显式部署选择）→ `ctx.get('profileContext').name`（0.2.x 启动器直接给出）→ 安装目录（从模块路径向上找最近的、带 `dsh.profile` 的 `package.json`）→ `web`（历史默认，只该在全局安装/旧 `dsh web` 时命中）。随后 `resolvePatchPath` 拼路径：`patchPath` 显式指定优先，否则 `$DSH_HOME/profiles/<profile>/<patchFilename>`；空字符串视为未指定（`src/index.ts:139-147`）。**这一步是 0.7.5 的修复点**：0.7.4 只认 `config.profile ?? 'web'`，市场把插件装进 `desktop` 却没写 `config.profile` 时，受管区块被写进 `web`，`desktop` 的 base `agent-loop` 仍占着 agent-factory 槽位，切引擎只能得到 `router-unmounted`。composition 条目是**引擎无关的超集**：四个引擎的旋钮全在这一层，因为任何会话都可能选中任何引擎（`src/index.ts:111-121`）。
 2. **同步**读文件；非 ENOENT 的读失败直接抛出，不让插件带未知状态启动（`:266`、`:207-214`）。
 3. 从文件里取 legacy 引擎作为 settings seed，并按 §2.2 重写为常量块（seed 的落点 `:531`，写入 `:272-285`）。
 4. `const pluginWarn`（`:538`）是本插件**唯一的诊断出口**：侧车记录的降级（§3.9）、路由器的跳过与释放失败、Remote 的读取失败，全部从这一个 sink 发声，部署在宿主日志里只看到一种声音。

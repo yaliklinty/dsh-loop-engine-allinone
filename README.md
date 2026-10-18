@@ -57,25 +57,27 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 
 `web` is the profile the harness's own CLI documents (`dsh web` is short for
 `dsh --profile web`), so it is the right default. But the Desktop app boots
-`desktop`, a CI deployment may boot `headless`, and you may have made your own. In
-that case:
+`desktop`, a CI deployment may boot `headless`, and you may have made your own.
 
-1. install with that profile's name — `dsh plugin --profile desktop add
-   dsh-loop-engine-allinone`;
-2. **and** set the same name in the composition entry:
+**Installing with `dsh plugin --profile desktop add dsh-loop-engine-allinone` is
+enough**: the plugin resolves the profile it is actually serving — the launcher's
+`profileContext` when the generation provides it, otherwise the profile directory
+it was installed into (the nearest ancestor with a `dsh.profile` manifest). Only a
+`link:`/source checkout has neither, and there the composition entry still wins:
 
-   ```yaml
-   - id: loop-engine
-     config:
-       profile: desktop
-   ```
+```yaml
+- id: loop-engine
+  config:
+    profile: desktop      # only needed for a linked checkout / global install
+```
 
-Step 2 is the one that bites. The field defaults to `web`, so omitting it makes the
-plugin write its managed block into `profiles/web/cordis.patch.yml` while the profile
-you actually boot never reads it: the plugin mounts, but the base `agent-loop` row is
-never disabled, the router cannot take the agent-factory slot, and **no hosted engine
-is reachable** — with nothing logged. This release also warns when it detects that
-shape, naming the field to set.
+Before 0.7.5 the field defaulted to `web` and nothing else was consulted. A market
+install into `desktop` then wrote the managed block into `profiles/web/`, the
+`desktop` base `agent-loop` kept the agent-factory slot, and every per-session
+engine switch answered `router-unmounted` ("the loop engine router is not ready")
+— with nothing logged. The same omission could disable `agent-loop` in a `web`
+profile that had no plugin at all. 0.7.5 fixes both ends: it finds the right
+profile, and it warns when the resolved profile has no `package.json` beside it.
 
 ### Installation notes
 
