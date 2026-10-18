@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.6]
+
+### Fixed
+
+- **Two preset-authoring tests could flake on a loaded runner.** They polled for one second while the plugin's own roster wait is bounded at two; a docs-only push (run `39118609901`) failed both. The helper now polls for the full eight-second budget, which is what the assertion means. (Tests only.)
+
+### Changed
+
+- The README now tells deployments that upgraded from 0.7.4 to delete a managed block
+  0.7.4 may have left in a `web` profile that has no plugin. (Documentation only.)
+
 ## [0.7.5]
 
 ### Added
