@@ -335,3 +335,62 @@ describe('which engines declare which bridges', () => {
     expect(minimaxcodeProfile('/x').clientBridges).toBeUndefined()
   })
 })
+
+describe('terminal executions that end badly', () => {
+  /** A bridge over an execution whose `done` rejects and reports no exit code. */
+  function brokenShell(options: { stderr?: string; exitCode?: number | null; reject?: boolean }) {
+    const shell: ShellExecutorLike = {
+      resolve: request => ({
+        ...request,
+        workdir: request.workdir ?? '/w',
+        timeoutMs: request.timeoutMs ?? 0,
+        onExpiry: request.onExpiry ?? 'none',
+      }),
+      execute: async () => {
+        const done = Promise.withResolvers<void>()
+        let drained = false
+        const execution: ShellExecutionLike = {
+          done: done.promise,
+          exitCode: options.exitCode === undefined ? 0 : options.exitCode,
+          readOutput: () => {
+            if (drained) return { stdout: '', stderr: '' }
+            drained = true
+            return { stdout: 'out', stderr: options.stderr ?? '' }
+          },
+          kill: () => true,
+          result: async () => ({ exitCode: options.exitCode ?? 0, stdout: 'out', stderr: options.stderr ?? '' }),
+        }
+        queue().then(() => {
+          if (options.reject === true) done.reject(new Error('spawn failed'))
+          else done.resolve()
+        })
+        return execution
+      },
+    }
+    return shell
+  }
+
+  it('collects stderr into the terminal output', async () => {
+    // ACP gives the agent ONE output stream; a command that wrote only on stderr
+    // still said something, and dropping it would look like an empty command.
+    const terminal = await createTerminalBridge(brokenShell({ stderr: 'boom\n' }), '/w')('false', {})
+    await terminal.waitForExit()
+    expect(terminal.snapshot().output).toBe('outboom\n')
+  })
+
+  it('settles a terminal whose execution rejected, rather than hanging it', async () => {
+    // A rejected spawn still settles: the agent must not wait for a process that
+    // will never report an exit code.
+    const terminal = await createTerminalBridge(brokenShell({ reject: true }), '/w')('ghost', {})
+    await expect(terminal.waitForExit()).resolves.toEqual({ exitCode: 1 })
+    expect(terminal.snapshot().exited).toBe(true)
+  })
+
+  it('omits the exit code when the execution reported none', async () => {
+    // `?? undefined` on a null exit code is what keeps the snapshot honest: a
+    // signal death has no code, and inventing one would misreport it.
+    const terminal = await createTerminalBridge(brokenShell({ exitCode: null }), '/w')('killed', {})
+    await terminal.waitForExit()
+    expect(terminal.snapshot()).not.toHaveProperty('exitCode')
+  })
+})

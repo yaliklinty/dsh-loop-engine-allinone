@@ -49,10 +49,12 @@ export function execArgvPrefix(bin: string): string[] {
 export function resolveOnPath(name: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
   const path = env.PATH ?? env.Path ?? ''
   if (path === '') return undefined
+  /* v8 ignore start -- the POSIX arm cannot run on this project's Windows CI host, and the two arms are the only difference between the platforms */
   const separator = process.platform === 'win32' ? ';' : ':'
   const extensions = process.platform === 'win32'
     ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(extension => extension !== '')
     : ['']
+  /* v8 ignore stop */
   for (const directory of path.split(separator)) {
     if (directory === '') continue
     for (const extension of extensions) {
@@ -75,10 +77,14 @@ export function resolveOnPath(name: string, env: NodeJS.ProcessEnv = process.env
  * @returns the entrypoint path when it exists.
  */
 export function npmPackageEntry(prefix: string, pkg: string, entry: string): string | undefined {
-  // A scoped name is `@scope/name`; anything else is a plain package name.
+  // A scoped name is `@scope/name`; anything else is a plain package name. The
+  // slash is located ONCE: `slice(0, -1)` on a name with no slash silently
+  // truncates a character, which turns a malformed `@` into a search for
+  // `node_modules/@/…` instead of a rejection.
+  const slash = pkg.indexOf('/')
   const scoped = pkg.startsWith('@')
-  const scope = scoped ? pkg.slice(0, pkg.indexOf('/')) : ''
-  const name = scoped ? pkg.slice(pkg.indexOf('/') + 1) : pkg
+  const scope = scoped && slash > 0 ? pkg.slice(0, slash) : ''
+  const name = scoped ? pkg.slice(slash + 1) : pkg
   if (name === '' || (scoped && scope === '')) return undefined
   const relative = scoped
     ? join('node_modules', scope, name, entry)

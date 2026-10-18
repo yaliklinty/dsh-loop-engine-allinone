@@ -12,6 +12,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -240,6 +243,153 @@ describe('an engine without the subprocess service', () => {
         .toThrow(/the minimaxcode engine needs the dsh subprocess service/)
     } finally {
       await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('the reverse bridges an engine declares', () => {
+  /**
+   * Drive one grok session and hand back the handlers the driver built.
+   *
+   * The wire machinery of those handlers is covered in
+   * `tests/driver-acp/capabilities.spec.ts`; what is under test HERE is that the
+   * driver constructs them at all, wires them to the composition's own `fs` and
+   * `shell` services, and does so only for the bridges its profile declares.
+   */
+  async function handlersOf(
+    provide: (ctx: Context) => void,
+    engine: 'grok' | 'minimaxcode' = 'grok',
+  ): Promise<{ handlers: Record<string, (...args: never[]) => unknown>; dispose: () => Promise<void> }> {
+    const spec = ENGINES[engine]
+    const plugin = loopPluginFor(spec.loop as never, ['agents', 'sessions', 'systemPrompt', 'subprocess'])
+    const ctx = await mountHarness(plugin, { bin: spec.bin, model: spec.model }, 'stub')
+    ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+    provide(ctx)
+    mock.updates.mockReturnValue([text('ok')])
+    const { agent } = await ctx.agents.create({ sessionId: SessionId('bridge-s'), meta: { cwd: '/work' } })
+    agent.followup(message('hi'))
+    await agent.whenIdle()
+    // The LAST create, because one test may mount two engines in a row and the
+    // array is not reset between them.
+    const options = mock.created.at(-1)!.options as { handlers?: Record<string, (...args: never[]) => unknown> }
+    return {
+      handlers: options.handlers ?? {},
+      dispose: async () => { await ctx.fiber.dispose() },
+    }
+  }
+
+  it('builds the bridges its profile declares, and only those', async () => {
+    // Grok drives its tools through the client, so it declares both; MiniMax Code
+    // runs its own tools and declares none, which must leave no handlers behind.
+    const grok = await handlersOf(() => {})
+    try {
+      expect(Object.keys(grok.handlers).sort()).toEqual(['readTextFile', 'spawnTerminal'])
+    } finally {
+      await grok.dispose()
+    }
+
+    const minimax = await handlersOf(() => {}, 'minimaxcode')
+    try {
+      expect(minimax.handlers).toEqual({})
+    } finally {
+      await minimax.dispose()
+    }
+  })
+
+  it('reads a file through the composition’s own filesystem service', async () => {
+    // Through `fs.readText` when the profile has one, so dsh's observation policy
+    // applies to what the engine reads; the resolved target carries the session's
+    // cwd.
+    const reads: Array<{ path: string; cwd?: string }> = []
+    const { handlers, dispose } = await handlersOf((ctx) => {
+      ctx.provide('fs', {
+        resolve: (path: string, opts?: { cwd?: string }) => { reads.push({ path, cwd: opts?.cwd }); return { resolved: path } },
+        readText: async () => 'FROM THE POLICY',
+      } as never)
+    })
+    try {
+      await expect(handlers.readTextFile('/work/a.txt')).resolves.toBe('FROM THE POLICY')
+      expect(reads).toEqual([{ path: '/work/a.txt', cwd: '/work' }])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('falls back to a plain read when the profile has no filesystem service', async () => {
+    // A minimal composition still answers; dropping the bridge would make grok's
+    // file tools fail with `methodNotFound` instead of reading the file.
+    const { handlers, dispose } = await handlersOf(() => {})
+    try {
+      const path = join(tmpdir(), `acp-bridge-${process.pid}-${Date.now()}.txt`)
+      await writeFile(path, 'PLAIN READ', 'utf8')
+      await expect(handlers.readTextFile(path)).resolves.toBe('PLAIN READ')
+      await rm(path, { force: true })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('spawns a terminal through the composition’s shell executor', async () => {
+    // The same executor dsh's own bash tool uses, so the sandbox, timeout and
+    // output caps apply to the engine's commands too.
+    const spawned: string[] = []
+    const { handlers, dispose } = await handlersOf((ctx) => {
+      ctx.provide('shell', {
+        resolve: (request: Record<string, unknown>) => ({
+          ...request, workdir: request.workdir ?? '/work', timeoutMs: 0, onExpiry: 'none',
+        }),
+        execute: async (spec: { command: string }) => {
+          spawned.push(spec.command)
+            let drained = false
+          return {
+            done: Promise.resolve(),
+            exitCode: 0,
+            readOutput: () => {
+              // `readOutput` DRAINS, as the real one does: returning the same
+              // chunk twice would make the terminal's output grow on every snapshot.
+              if (drained) return { stdout: '', stderr: '' }
+              drained = true
+              return { stdout: 'BRIDGED' + String.fromCharCode(10), stderr: '' }
+            },
+            kill: () => true,
+            result: async () => ({ exitCode: 0, stdout: 'BRIDGED\n', stderr: '' }),
+          }
+        },
+      } as never)
+    })
+    try {
+      const terminal = await (handlers.spawnTerminal as unknown as
+        (command: string, opts: Record<string, unknown>) => Promise<{ snapshot(): { output: string } }>)('echo hi', {})
+      await new Promise(resolve => { setTimeout(resolve, 0) })
+      expect(spawned).toEqual(['echo hi'])
+      expect(terminal.snapshot().output).toBe('BRIDGED\n')
+    } finally {
+      await dispose()
+    }
+  })
+})
+
+describe('a catalog the engine publishes on session/new', () => {
+  it('records the models the client discovered, without a plugin release', async () => {
+    // `session/new` already carries the agent's catalog, so publishing it to the
+    // route registry is free and spares a release every time a vendor ships a
+    // model. A client that publishes nothing must not record an empty catalog.
+    mock.client.discoveredModels.mockReturnValue([{ id: 'grok-9', label: 'Grok 9' }])
+    try {
+      const plugin = loopPluginFor(GrokLoop as never, ['agents', 'sessions', 'systemPrompt', 'subprocess'])
+      const ctx = await mountHarness(plugin, { bin: '/opt/grok', model: 'grok-4.7' }, 'stub')
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      mock.updates.mockReturnValue([text('ok')])
+      try {
+        const { agent } = await ctx.agents.create({ sessionId: SessionId('catalog-s'), meta: { cwd: '/work' } })
+        agent.followup(message('hi'))
+        await agent.whenIdle()
+        expect(mock.client.discoveredModels).toHaveBeenCalled()
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    } finally {
+      mock.client.discoveredModels.mockReturnValue(undefined)
     }
   })
 })
