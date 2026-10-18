@@ -14,9 +14,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fall below `.coverage-baseline.json`. The gate reads the istanbul `json` report, diffs
   against the base commit, and refuses a lowered floor in the same change that needs it
   (the baseline is regenerated deliberately, in its own commit, with a reason).
-- The 38 files the old threshold flagged are all at per-file 100% now (1,613 → **1,810
+- The 38 files the old threshold flagged are all at per-file 100% now (1,613 → **1,812
   tests**, 96 files); `.coverage-baseline.json` was rewritten to 119 × 100%, so "do not
   regress" now means the same thing as "must be full".
+
+### Fixed
+
+- **Coverage no longer depends on the host's home directory.** `model-registry.ts` sat at
+  93.94% on a clean CI runner while reading 100% locally, because the local machine has a
+  real `~/.kimi-code/config.toml` and the tests silently relied on it. The spec now points
+  `KIMI_CODE_HOME` at a fixture for the discovered arm and at an empty directory for the
+  "not installed" arm, so both run everywhere. (Tests only; runtime behaviour unchanged.)
 
 ### Changed
 
