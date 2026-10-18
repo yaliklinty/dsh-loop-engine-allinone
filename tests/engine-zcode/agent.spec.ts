@@ -16,6 +16,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Readable } from 'node:stream'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -403,6 +404,47 @@ describe('the empty-transcript and empty-answer arms', () => {
     try {
       const { agent } = await ctx.agents.create({ sessionId: SessionId('built'), meta: { cwd: '/work' } })
       expect(agent.constructor.name).toBe('ZcodeAgent')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('the shared runtime’s spawn capability', () => {
+  it('spawns through the seam with the engine’s grace period and stdin decision', async () => {
+    // `CliEngineRuntime` wraps the dsh subprocess seam once for every CLI engine,
+    // applying its grace period and whether the prompt travels on stdin. The
+    // per-engine specs otherwise inject a fake capability straight into the
+    // agent, which leaves that wrapper itself unexercised — so this drives a real
+    // step through the mounted loop instead.
+    const plugin = loopPluginFor(ZcodeLoop as never, ['agents', 'sessions', 'systemPrompt', 'subprocess'])
+    const ctx = await mountHarness(plugin, {}, 'stub')
+    const seen: Array<Record<string, unknown>> = []
+    // Replace the stub the harness provided with one that answers like a child.
+    ;(ctx.get('subprocess') as { spawn: unknown }).spawn = (spec: Record<string, unknown>) => {
+      seen.push(spec)
+      const stream = (payload: string) => Readable.from(payload === '' ? [] : [Buffer.from(payload, 'utf8')])
+      return {
+        stdin: undefined,
+        stdout: stream('PONG\n'),
+        stderr: stream(''),
+        done: Promise.resolve({ exitCode: 0 }),
+        terminate: () => {},
+      }
+    }
+    try {
+      const { agent } = await ctx.agents.create({ sessionId: SessionId('spawn'), meta: { cwd: '/work' } })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      expect(seen).toHaveLength(1)
+      const spec = seen[0]!
+      // The seam is asked for the pipes the engine needs and the grace period the
+      // engine declares; a text engine sends its prompt in argv, so no stdin pipe
+      // is requested.
+      expect(spec.stdio).toEqual({ stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+      expect(typeof spec.graceMs).toBe('number')
+      expect(spec.cwd).toBe('/work')
     } finally {
       await ctx.fiber.dispose()
     }

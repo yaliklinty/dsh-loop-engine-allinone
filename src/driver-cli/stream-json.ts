@@ -198,11 +198,14 @@ export function mapStreamJsonDocument(
       const subtype = typeof frame.subtype === 'string' ? frame.subtype : undefined
       const isError = frame.is_error === true || (subtype !== undefined && subtype !== 'success')
       if (isError) {
-        const message = typeof frame.result === 'string' && frame.result !== ''
-          ? frame.result
-          : typeof frame.error === 'string' && frame.error !== ''
-            ? frame.error
-            : `the engine ended the run with "${subtype ?? 'an error'}"`
+        // Three sources, in precedence order: the CLI's own result text, the
+        // separate `error` member a fork emits, and finally the subtype. Written
+        // as a sequence rather than a nested ternary because the last fallback
+        // is the common one and reading it first is what makes the precedence
+        // visible.
+        let message = `the engine ended the run with "${subtype ?? 'an error'}"`
+        if (typeof frame.result === 'string' && frame.result !== '') message = frame.result
+        else if (typeof frame.error === 'string' && frame.error !== '') message = frame.error
         run.reportedError = message
         accept({ kind: 'error', message })
       }

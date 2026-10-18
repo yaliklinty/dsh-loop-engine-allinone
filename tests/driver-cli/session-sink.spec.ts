@@ -469,6 +469,18 @@ describe('flattenToolResult', () => {
     expect(flattenToolResult({ content: [{ type: 'text', text: 'inner' }] })).toBe('inner')
   })
 
+  it('keeps a bare string inside a block list', () => {
+    // Some engines report a result as `["done", {…}]`: a string among the
+    // blocks is already text and must not be JSON-quoted.
+    expect(flattenToolResult(['plain', { type: 'text', text: 'block' }]))
+      .toBe('plain' + String.fromCharCode(10, 10) + 'block')
+  })
+
+  it('drops an empty block rather than leaving a blank paragraph', () => {
+    // An empty segment would produce a stray double newline in the transcript.
+    expect(flattenToolResult(['', { type: 'text', text: 'only' }])).toBe('only')
+  })
+
   it('answers empty for null and undefined', () => {
     expect(flattenToolResult(null)).toBe('')
     expect(flattenToolResult(undefined)).toBe('')
@@ -480,5 +492,158 @@ describe('flattenToolResult', () => {
 
   it('skips an empty segment rather than emitting a blank line', () => {
     expect(flattenToolResult([{ type: 'text', text: '' }, { type: 'text', text: 'b' }])).toBe('b')
+  })
+})
+
+describe('block ordering and index handling', () => {
+  it('orders streamed blocks by the protocol’s own index, not arrival order', () => {
+    // An adapter that reports indices can deliver them out of order (a parallel
+    // stream); the durable message must still read in the engine's own layout.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [
+      { kind: 'text', text: 'second', index: 1 },
+      { kind: 'text', text: 'first', index: 0 },
+      { kind: 'reasoning', text: 'think-b', index: 1 },
+      { kind: 'reasoning', text: 'think-a', index: 0 },
+    ])
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: Array<{ type: string; text: string }> }
+    expect(message.content).toEqual([
+      { type: 'reasoning', text: 'think-a' },
+      { type: 'reasoning', text: 'think-b' },
+      { type: 'text', text: 'first' },
+      { type: 'text', text: 'second' },
+    ])
+  })
+
+  it('folds streamed reasoning into an authoritative message that lacks it', () => {
+    // A protocol hands over a finished message AND streamed reasoning for the
+    // same segment: the message is authoritative for its blocks, but dropping
+    // the reasoning would lose something the model produced.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [
+      { kind: 'reasoning', text: 'why-b', index: 1 },
+      { kind: 'reasoning', text: 'why-a', index: 0 },
+    ])
+    sink.commitBlocks([{ type: 'text', text: 'answer' }], position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: Array<{ type: string; text: string }> }
+    expect(message.content).toEqual([
+      { type: 'reasoning', text: 'why-a' },
+      { type: 'reasoning', text: 'why-b' },
+      { type: 'text', text: 'answer' },
+    ])
+  })
+
+  it('reports the open step through stepOf', () => {
+    // Drivers read the step back rather than tracking it themselves; the value
+    // must follow the sink's own rotation, not the caller's copy.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [], 4)
+    expect(sink.stepOf(position)).toBe(4)
+    sink.accept({ kind: 'tool-call', call: { id: 'c1', name: 'bash', arguments: '{}' } }, position)
+    sink.accept({ kind: 'tool-result', result: { id: 'c1', text: 'ok', isError: false } }, position)
+    sink.accept({ kind: 'text', text: 'next' }, position)
+    // The rotation bumped the caller's object, and `stepOf` agrees with it.
+    expect(sink.stepOf(position)).toBe(5)
+  })
+
+  it('abandons a live stream attempt that never settled', () => {
+    // A run that ends with an open live attempt (the engine stopped mid-answer)
+    // must close it, or the UI keeps painting a stream that will never finish.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [{ kind: 'text', text: 'partial' }])
+    // No `settle` frame and no `commitWholeMessage`: the attempt is still live.
+    const outcome = sink.finish(position)
+    expect(outcome.kind).toBe('completed')
+    expect(rec.types()).toContain('assistant/message')
+  })
+})
+
+describe('a live attempt that outlives its step', () => {
+  it('abandons a stream attempt whose buffers a new step already cleared', () => {
+    // `beginStep()` clears the per-step buffers but deliberately does NOT touch
+    // the live attempt: the attempt belongs to the UI, and what happens to it is
+    // the driver's call. So a run that ends after a rotation can still hold one,
+    // and `finish` must abandon it — otherwise the UI paints a stream that will
+    // never be completed.
+    const rec = recorder()
+    const sink = new SessionSink(hostOf(rec))
+    const position = { turn: 1, step: 1 }
+    sink.beginRun()
+    sink.beginStep()
+    sink.accept({ kind: 'text', text: 'from the closed step' }, position)
+    // A rotation: the next step starts with empty buffers.
+    sink.beginStep()
+    const outcome = sink.finish(position)
+    expect(outcome.kind).toBe('failed')
+    expect(rec.types()).not.toContain('assistant/message')
+  })
+})
+
+describe('whole-message and authoritative-block commits', () => {
+  it('carries a whole message’s reasoning as a reasoning block', () => {
+    // A text engine reports no separate reasoning block, but the method accepts
+    // one: a caller that has both must get both, reasoning first.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [])
+    sink.commitWholeMessage('answer', 'because', position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: unknown[] }
+    expect(message.content).toEqual([
+      { type: 'reasoning', text: 'because' },
+      { type: 'text', text: 'answer' },
+    ])
+  })
+
+  it('leaves an authoritative message alone when it already carries reasoning', () => {
+    const rec = recorder()
+    const { sink, position } = feed(rec, [{ kind: 'reasoning', text: 'streamed' }])
+    sink.commitBlocks([
+      { type: 'reasoning', text: 'from the message' },
+      { type: 'text', text: 'answer' },
+    ], position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: unknown[] }
+    // The message's own reasoning wins; nothing is prepended twice.
+    expect(message.content).toEqual([
+      { type: 'reasoning', text: 'from the message' },
+      { type: 'text', text: 'answer' },
+    ])
+  })
+
+  it('does not fold reasoning when none streamed', () => {
+    const rec = recorder()
+    const { sink, position } = feed(rec, [])
+    sink.commitBlocks([{ type: 'text', text: 'answer' }], position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: unknown[] }
+    expect(message.content).toEqual([{ type: 'text', text: 'answer' }])
+  })
+})
+
+describe('an empty reasoning string', () => {
+  it('omits a reasoning block for an empty reasoning argument', () => {
+    // Callers pass the engine's own reasoning through; an empty one is not a
+    // block, or the transcript would carry `{ type: 'reasoning', text: '' }`.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [])
+    sink.commitWholeMessage('answer', '', position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: unknown[] }
+    expect(message.content).toEqual([{ type: 'text', text: 'answer' }])
+  })
+})
+
+describe('an answer with reasoning but no text', () => {
+  it('commits a reasoning-only message', () => {
+    // An engine that thought and then stopped has produced something real. The
+    // message must carry the reasoning and no empty text block.
+    const rec = recorder()
+    const { sink, position } = feed(rec, [])
+    sink.commitWholeMessage('', 'only reasoning', position)
+    sink.finish(position)
+    const message = rec.appends[0]!.data.message as { content: unknown[] }
+    expect(message.content).toEqual([{ type: 'reasoning', text: 'only reasoning' }])
   })
 })

@@ -109,3 +109,20 @@ describe('textRunOutcome', () => {
     expect(textRunOutcome(run({ stdout: 'PONG', exitCode: null })).kind).toBe('answered')
   })
 })
+
+describe('an exit outcome that is not an object', () => {
+  it('reports a null exit code when the seam resolved with a bare value', async () => {
+    // The seam's `done` resolves with an outcome object, but a mock or a future
+    // seam may resolve with nothing at all. `exitCodeOf` must answer "unknown"
+    // rather than reading `.exitCode` off null and throwing inside the adapter.
+    for (const outcome of [null, undefined, 'exited', 7]) {
+      const result = await runText({ transport: transportOf('PONG', '', Promise.resolve(outcome)) })
+      expect(result.exitCode, String(outcome)).toBeNull()
+    }
+  })
+
+  it('still reads stdout and the answer with an unknown exit code', async () => {
+    const result = await runText({ transport: transportOf('PONG', '', Promise.resolve(null)) })
+    expect(textRunOutcome(result)).toEqual({ kind: 'answered', text: 'PONG' })
+  })
+})

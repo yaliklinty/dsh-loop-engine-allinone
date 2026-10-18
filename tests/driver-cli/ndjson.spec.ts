@@ -176,3 +176,24 @@ describe('runNdjson', () => {
     expect(settled).toBe(true)
   })
 })
+
+describe('blank lines inside a run', () => {
+  it('skips a blank line between documents instead of counting it as unparsed', async () => {
+    // Engines interleave progress lines and keep-alives. Counting a blank line
+    // as malformed would make `lastUnparsed` name an empty string and turn a
+    // healthy run into a reported protocol error.
+    const reported: string[] = []
+    const seen: unknown[] = []
+    const result = await runNdjson(
+      {
+        transport: transportOf(stream('{"n":1}\n\n   \n{"n":2}\n')),
+        map: (document) => { seen.push(document); return [] },
+        onUnparsed: (line) => { reported.push(line) },
+      },
+      () => {},
+    )
+    expect(seen).toEqual([{ n: 1 }, { n: 2 }])
+    expect(result).toMatchObject({ parsed: 2, unparsed: 0, lastUnparsed: undefined })
+    expect(reported).toEqual([])
+  })
+})

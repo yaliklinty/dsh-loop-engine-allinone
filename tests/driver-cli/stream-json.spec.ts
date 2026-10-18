@@ -178,3 +178,98 @@ describe('mapStreamJsonDocument', () => {
     expect(frames).toEqual([])
   })
 })
+
+describe('malformed documents and blocks', () => {
+  it('ignores a non-object document', () => {
+    // A line that parses to `null`, a string or an array is not a document of
+    // this protocol; it must be dropped rather than read as an empty one.
+    expect(collect(null).frames).toEqual([])
+    expect(collect('text').frames).toEqual([])
+    expect(collect([{ type: 'assistant' }]).frames).toEqual([])
+  })
+
+  it('ignores a null or non-object block inside a content list', () => {
+    // Anthropic-shaped content occasionally carries a placeholder; reading it
+    // would put `undefined` in the transcript.
+    const { frames } = collect({
+      type: 'assistant',
+      message: { role: 'assistant', content: [null, 'text', 7, { type: 'text', text: 'kept' }] },
+    })
+    expect(frames).toEqual([{ kind: 'text', text: 'kept' }])
+  })
+
+  it('ignores a non-object block inside a user content list', () => {
+    const { frames } = collect({
+      type: 'user',
+      message: { content: [null, 7, { type: 'tool_result', tool_use_id: 'c', content: 'kept' }] },
+    })
+    expect(frames).toEqual([{ kind: 'tool-result', result: { id: 'c', text: 'kept', isError: false } }])
+  })
+
+  it('ignores an assistant or user document whose message is not an object', () => {
+    expect(collect({ type: 'assistant', message: 'not a message' }).frames).toEqual([])
+    expect(collect({ type: 'user', message: null }).frames).toEqual([])
+  })
+
+  it('ignores a content member that is not a list', () => {
+    expect(collect({ type: 'assistant', message: { role: 'assistant', content: 'text' } }).frames).toEqual([])
+    expect(collect({ type: 'user', message: { content: 'text' } }).frames).toEqual([])
+  })
+
+  it('reports a usage record carrying a cache counter', () => {
+    // The cache counters are optional; when the engine reports them they must
+    // reach the durable usage rather than being dropped as unknown fields.
+    const { frames } = collect({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        usage: { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 4 },
+        content: [],
+      },
+    })
+    expect(frames).toEqual([{ kind: 'usage', usage: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 } }])
+  })
+
+  it('ignores a usage record that reports no counter at all', () => {
+    // Reporting zeros would be a fabricated measurement.
+    const { frames } = collect({
+      type: 'assistant',
+      message: { role: 'assistant', usage: { cache_read_input_tokens: 9 }, content: [] },
+    })
+    expect(frames).toEqual([])
+  })
+})
+
+describe('the remaining single arms', () => {
+  it('defaults a missing input counter to zero while keeping the output', () => {
+    const { frames } = collect({
+      type: 'assistant',
+      message: { role: 'assistant', usage: { output_tokens: 5 }, content: [] },
+    })
+    expect(frames).toEqual([{ kind: 'usage', usage: { input: 0, output: 5 } }])
+  })
+
+  it('accepts a document with no type member and still reads its session id', () => {
+    // The session id lives on the envelope, not the payload: a document this
+    // adapter does not recognise may still be the first place it sees one.
+    const { sessionId } = collect({ session_id: 'sess-2', something: 'else' })
+    expect(sessionId).toBe('sess-2')
+  })
+
+  it('prefers the error member over the generic wording when the result is empty', () => {
+    const { error } = collect({ type: 'result', subtype: 'error', is_error: true, error: 'rate limited' })
+    expect(error).toBe('rate limited')
+  })
+
+  it('falls back to the subtype when neither result nor error carries text', () => {
+    const { error } = collect({ type: 'result', subtype: 'error_max_turns', is_error: true })
+    expect(error).toContain('error_max_turns')
+  })
+})
+
+describe('an empty error member', () => {
+  it('falls through to the subtype wording when the error member is empty', () => {
+    const { error } = collect({ type: 'result', subtype: 'error_during_execution', is_error: true, error: '' })
+    expect(error).toContain('error_during_execution')
+  })
+})
