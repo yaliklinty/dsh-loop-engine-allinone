@@ -26,6 +26,7 @@ import { AgyLoop } from '../../src/engine-agy/loop.ts'
 import { AgyAgent, AGY_ENGINE, type ResolvedAgyConfig } from '../../src/engine-agy/agent.ts'
 import { loopPluginFor, mountHarness, userMessage } from '../helpers/agent-harness.ts'
 import { modelSelectionProjections } from '../helpers/model-selection-projection.ts'
+import { DSH_ENDPOINT, provideDshEndpoint } from '../helpers/dsh-model-endpoint.ts'
 
 /** One spawn the driver made, with the stdin it was given. */
 interface Spawned {
@@ -444,6 +445,49 @@ describe('the unpinned executable', () => {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
       expect(spawned[0]!.argv[0]).toBe('agy')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('a dsh model handed to Antigravity', () => {
+  it('rides the CLI\'s own LLM gateway environment, and names the model in argv', async () => {
+    const { ctx, session, agent, spawned } = await agentWith(TEXT_TURN, { cwd: '/work' })
+    try {
+      provideDshEndpoint(ctx, { api: 'openai-completions' })
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(userMessage('say PONG'))
+      await agent.whenIdle()
+
+      // Measured: these three variables make the CLI fetch `{url}/models` and POST
+      // `{url}/chat/completions` with the key as Bearer.
+      expect(spawned[0]!.env).toMatchObject({
+        AGY_LLM_GATEWAY_URL: DSH_ENDPOINT.baseURL,
+        AGY_LLM_GATEWAY_API_KEY: DSH_ENDPOINT.apiKey,
+        AGY_LLM_GATEWAY_WIRE_PROTOCOL: 'openai',
+      })
+      // The model is still named per run, in the CLI's own vocabulary.
+      expect(spawned[0]!.argv).toEqual(expect.arrayContaining(['--model', DSH_ENDPOINT.model]))
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
+    const { ctx, session, agent, spawned } = await agentWith(TEXT_TURN, { cwd: '/work' })
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      expect(spawned).toHaveLength(0)
+      expect(session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: { reason: { kind: 'error', error: { code: 'UNSERVABLE_MODEL' } } },
+      })
     } finally {
       await ctx.fiber.dispose()
     }

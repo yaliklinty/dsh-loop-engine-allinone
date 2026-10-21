@@ -131,7 +131,7 @@ describe('the handover matrix', () => {
       kimi: true,
       grok: true,
       minimaxcode: true,
-      agy: false,
+      agy: true,
       zcode: false,
       qoderclicn: false,
       hermes: true,

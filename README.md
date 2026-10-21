@@ -159,7 +159,7 @@ the engine, and each engine accepts that in its own way — or not at all.
 | **Kimi Code** | ✅ | `KIMI_MODEL_NAME` / `KIMI_MODEL_BASE_URL` / `KIMI_MODEL_API_KEY` | environment only, nothing written to disk |
 | **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + a plugin-owned empty `GROK_HOME` | **OpenAI-compatible endpoints only.** The owned home is load-bearing: with your real `~/.grok` the CLI attaches the account's session JWT to a helper request aimed at that endpoint |
 | **MiniMax Code** | ✅ | a plugin-owned data directory (`MINIMAX_DATA_DIR`) holding a BYOK `custom_provider` | supports `anthropic-messages`, `openai-completions`, and `openai-responses`; the key is written to a `0600` file inside a `0700` directory this plugin removes at exit, because this CLI has no environment indirection for it |
-| **Antigravity** | ❌ | — | runs only models from its own sign-in |
+| **Antigravity** | ✅ | `AGY_LLM_GATEWAY_URL` + `AGY_LLM_GATEWAY_API_KEY` + `AGY_LLM_GATEWAY_WIRE_PROTOCOL=openai` | environment only: the CLI's own LLM gateway is repointed, its sign-in is untouched |
 | **ZCode** | ❌ | — | runs only models from its own GLM plan |
 | **Qoder CN** | ❌ | — | runs only models from its own sign-in |
 | **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | environment only: nothing is written and the user's `HERMES_HOME` (sessions, skills, `auth.json`) stays in force |

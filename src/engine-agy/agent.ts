@@ -30,7 +30,12 @@ import {
   currentSelection,
   foreignHostedModelRefusal,
   modelForStep,
+  sessionModelOverride,
+  unservableModelRefusal,
 } from '../driver-core/session-model.ts'
+import { resolveModelHandover } from '../driver-core/model-handover.ts'
+import { agyHandoverEnv } from './model-handover.ts'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { SessionModelSelection, SessionProjectionsService } from '../driver-core/host-servers.ts'
 import type { AgyEffort, AgyMode, AgySpawnSpec } from './process.ts'
 import { agyDangerouslySkipPermissions, agySpawnRequest, agyStdinPrompt } from './process.ts'
@@ -99,13 +104,21 @@ export class AgyAgent extends CliHostedAgent {
     const selection = this.selection()
     const foreign = foreignHostedModelRefusal(selection, AGY_ENGINE, ENGINE_REGISTRY[AGY_ENGINE].label)
     if (foreign !== undefined) throw new Error(foreign)
-    const model = modelForStep(selection, AGY_ENGINE, this.config.model)
+    // A REAL dsh model is handed over through the CLI's own LLM-gateway layer
+    // instead of being named: forwarding the id alone would ask Antigravity's
+    // provider table for a model it has never heard of.
+    const override = sessionModelOverride(selection)
+    const resolved = await resolveModelHandover(this.loopCtx, override)
+    const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[AGY_ENGINE].label)
+    if (resolved === undefined && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
+    const handoverEnv = resolved === undefined ? undefined : agyHandoverEnv(resolved)
+    const model = resolved?.model ?? modelForStep(selection, AGY_ENGINE, this.config.model)
 
     const spec: AgySpawnSpec = {
       bin: this.config.bin ?? 'agy',
       prompt,
       cwd,
-      env: this.config.env,
+      env: handoverEnv === undefined ? this.config.env : { ...this.config.env, ...handoverEnv },
       model,
       mode: this.config.mode,
       effort: this.config.effort,

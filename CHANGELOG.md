@@ -12,8 +12,13 @@ Nothing yet.
 
 ### Added
 
-- **Hermes Agent takes a dsh model too**, which makes seven of the ten hosted engines. Its
-  handover is the least invasive of the set: `OPENAI_BASE_URL` + `OPENAI_API_KEY` ride the
+- **Antigravity and Hermes Agent take a dsh model too**, which makes eight of the ten
+  hosted engines. Antigravity's handover repoints the CLI's own LLM gateway
+  (`AGY_LLM_GATEWAY_URL` / `_API_KEY` / `_WIRE_PROTOCOL=openai`) — measured end to end
+  against a local endpoint, environment only, sign-in untouched; a non-OpenAI wire is
+  refused with `AGY_UNSUPPORTED_API`.
+- **Hermes Agent takes a dsh model too**. Its
+  Its handover is the least invasive of the set: `OPENAI_BASE_URL` + `OPENAI_API_KEY` ride the
   child environment and `--provider openai` names the endpoint, so nothing is written to
   disk and the user's own `HERMES_HOME` — sessions, skills, `auth.json` — stays in force.
   Measured on 0.21.4: `--provider custom` (Hermes' own provider table) IGNORES

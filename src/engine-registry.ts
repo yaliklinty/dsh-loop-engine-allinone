@@ -488,7 +488,7 @@ export const ENGINE_REGISTRY = {
       // Verified absent: there is no image input on this surface.
       images: false,
       reasoningLevels: true,
-      modelHandover: false,
+      modelHandover: true,
     },
   },
   zcode: {
