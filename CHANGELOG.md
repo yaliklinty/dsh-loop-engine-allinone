@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.9]
+
+### Fixed
+
+- **The composer's model seat no longer disappears in an `in-process` session.**
+  0.7.8 scoped the model menu by session engine and, for the harness loop,
+  removed both the engine groups and the shared `external` placeholder. A
+  session whose menu then held no other group lost the seat entirely. The
+  harness loop now keeps the global menu unchanged (it has no engine group of
+  its own to narrow to), and a hosted scope that would otherwise filter the menu
+  EMPTY fails open to the raw catalog — a usable menu beats a dead seat.
+
 ## [0.7.8]
 
 ### Added

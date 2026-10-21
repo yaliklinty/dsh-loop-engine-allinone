@@ -69,7 +69,7 @@ function fakeEngines(report: SessionEngineReport | undefined) {
 describe('modelMenuScope', () => {
   it('scopes a hosted engine to itself and the harness loop to no engine group', () => {
     expect(modelMenuScope({ engine: { kind: 'engine', engine: 'minimaxcode' } } as SessionEngineReport)).toBe('minimaxcode')
-    expect(modelMenuScope({ engine: { kind: 'engine', engine: 'in-process' } } as SessionEngineReport)).toBe('in-process')
+    expect(modelMenuScope({ engine: { kind: 'engine', engine: 'in-process' } } as SessionEngineReport)).toBeUndefined()
     // No answer yet (or a legacy/unset record): leave the menu unscoped rather
     // than hide the wrong things.
     expect(modelMenuScope(undefined)).toBeUndefined()
@@ -85,9 +85,14 @@ describe('scopeModelDirectoryState', () => {
     expect(scoped.failures.map(failure => failure.id)).toEqual(['deepseek-account'])
   })
 
-  it('drops every engine group AND the placeholder route for an in-process session', () => {
-    const scoped = scopeModelDirectoryState(state(['external', 'agy', 'grok', 'deepseek-account']), 'in-process')
-    expect(scoped.groups.map(group => group.id)).toEqual(['deepseek-account'])
+  it('leaves an in-process session’s menu untouched', () => {
+    const raw = state(['external', 'agy', 'grok', 'deepseek-account'])
+    expect(scopeModelDirectoryState(raw, 'in-process')).toBe(raw)
+  })
+
+  it('fails open instead of emptying a hosted session’s menu', () => {
+    const raw = state(['agy'])
+    expect(scopeModelDirectoryState(raw, 'minimaxcode')).toBe(raw)
   })
 
   it('returns the SAME object when nothing needs dropping, and while the engine is unknown', () => {

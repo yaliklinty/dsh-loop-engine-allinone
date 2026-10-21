@@ -42,7 +42,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { HOSTED_ENGINE_IDS } from '../engine-registry.ts'
-import { HOSTED_ROUTE_LABEL, type SessionEngineReport } from '../agent-preset-ids.ts'
+import type { SessionEngineReport } from '../agent-preset-ids.ts'
 import type { SessionEngineCache } from './session-engine.ts'
 
 /**
@@ -93,7 +93,11 @@ export function modelMenuScope(report: SessionEngineReport | undefined): ModelMe
   // `legacy`/`unset` name no engine (and predate presets): leave the menu global
   // rather than guessing which group belongs to them.
   if (report.engine.kind !== 'engine') return undefined
-  return report.engine.engine === 'in-process' ? 'in-process' : report.engine.engine
+  // The harness loop keeps the global menu. It is not a hosted engine, so there
+  // is no "own group" to narrow to — and removing the shared placeholder there
+  // once left a session with an EMPTY model menu (the composer's model seat is
+  // still rendered, but has nothing to show). Leave it untouched.
+  return report.engine.engine === 'in-process' ? undefined : report.engine.engine
 }
 
 /**
@@ -110,17 +114,15 @@ export function scopeModelDirectoryState<T extends ModelDirectoryStateLike>(
   state: T,
   scope: ModelMenuScope,
 ): T {
-  if (scope === undefined) return state
+  if (scope === undefined || scope === 'in-process') return state
   const engines = new Set<string>(HOSTED_ENGINE_IDS)
-  const keep = (id: string): boolean => {
-    if (engines.has(id)) return id === scope
-    // The shared placeholder route only makes sense for a hosted session. An
-    // in-process session must not be offered a model whose adapter fails loud.
-    if (id === HOSTED_ROUTE_LABEL) return scope !== 'in-process'
-    return true
-  }
+  const keep = (id: string): boolean => !engines.has(id) || id === scope
   const groups = state.groups.filter(group => keep(group.id))
   const failures = state.failures.filter(failure => keep(failure.id))
+  // Fail open when the filter would empty the menu: a session whose current
+  // selection is the shared placeholder (or whose only groups were engine
+  // groups) must keep a usable model seat rather than lose it.
+  if (groups.length === 0) return state
   if (groups.length === state.groups.length && failures.length === state.failures.length) return state
   return { ...state, groups, failures }
 }
