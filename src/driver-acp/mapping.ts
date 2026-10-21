@@ -82,21 +82,32 @@ export function toolRawInput(update: AcpToolCallExt | AcpToolCallStreamExt): str
 }
 
 /**
+ * Statuses that mean "the call is still running".
+ *
+ * The ACP vocabulary's own progress values plus the two hyphen/`started`
+ * spellings seen in the wild. Kept as a deny-list rather than an allow-list of
+ * terminal values: a vendor that invents a terminal word (`success`, `done`)
+ * must still settle its call, while the protocol's own progress words — and an
+ * absent status — must not.
+ */
+const TOOL_TRANSIENT_STATUSES: ReadonlySet<string> = new Set([
+  'pending', 'queued', 'running', 'in_progress', 'in-progress', 'started', 'streaming',
+])
+
+/**
  * Whether a tool stream status is settled (no longer streaming).
  *
  * An ABSENT status is not settled. Measured on MiniMax Code 1.1.56: its
  * `tool_call_update` frames start with NO `status` field at all — only the final
  * `completed` frame carries one — and treating "undefined" as settled logged the
- * call on the first progress frame with empty arguments and no output. Unknown
- * statuses are likewise treated as still running; only the protocol's explicit
- * terminal values settle a call.
+ * call on the first progress frame with empty arguments and no output, then
+ * ignored the frames that carried the real input and output.
  * @param status - the frame's status, when it carries one.
  * @returns whether the call has finished.
  */
 export function isToolSettledStatus(status: string | undefined): boolean {
-  return status === 'completed' || status === 'complete'
-    || status === 'failed' || status === 'error' || status === 'denied'
-    || status === 'cancelled' || status === 'canceled'
+  if (status === undefined || status === '') return false
+  return !TOOL_TRANSIENT_STATUSES.has(status)
 }
 
 /** Whether a tool stream status denotes a failure. */

@@ -206,6 +206,13 @@ These belong to the CLI, not to the plugin; the handover cannot remove either.
 
 The settings page repeats this matrix ("Which engines can run a model configured
 in dsh"), so the answer is reachable without reading this file.
+> **Tool cards.** Every engine whose protocol carries tool events (Claude Code,
+> Codex, Pi, Kimi, Grok, MiniMax, Antigravity, Qoder CN) streams `tool/call` and
+> `tool/result` with the engine's own arguments and output. **Hermes Agent and
+> ZCode are text engines**: `-z` / `-p` print only the finished answer, so their
+> internal tool calls are not part of the transcript — a limitation of the
+> surface this driver uses, not a mapping bug.
+
 
 ---
 

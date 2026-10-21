@@ -69,8 +69,9 @@ describe('tool identity', () => {
     // Measured on MiniMax 1.1.56: progress frames omit the field entirely.
     expect(isToolSettledStatus(undefined)).toBe(false)
     expect(isToolSettledStatus('')).toBe(false)
-    // An unknown status is not a terminal one; only the protocol's own values are.
-    expect(isToolSettledStatus('weird')).toBe(false)
+    // A vendor-invented terminal word still settles: the deny-list is what keeps
+    // compatibility with engines that never adopted ACP's exact four values.
+    expect(isToolSettledStatus('success')).toBe(true)
     expect(isToolSettledStatus('cancelled')).toBe(true)
     expect(isToolErrorStatus('failed')).toBe(true)
     expect(isToolErrorStatus('error')).toBe(true)

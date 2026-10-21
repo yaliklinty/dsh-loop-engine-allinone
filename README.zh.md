@@ -171,6 +171,8 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 > 裸 `zcode`、没有 catalog，交接跑不起来。
 
 设置页里有一张同样的表（"各引擎能否使用 dsh 里配置的模型"），不翻这个文件也能看到答案。
+> **工具卡片**：协议里带工具事件的引擎（Claude Code、Codex、Pi、Kimi、Grok、MiniMax、Antigravity、Qoder CN）都会把 `tool/call` 与 `tool/result` 连同引擎自己的参数和输出写入日志。**Hermes Agent 与 ZCode 是纯文本引擎**：`-z` / `-p` 只打印最终答案，它们内部的工具调用不会出现在对话里——这是所用接口的限制，不是映射 bug。
+
 
 ---
 
