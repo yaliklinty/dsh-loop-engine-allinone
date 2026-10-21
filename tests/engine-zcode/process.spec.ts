@@ -41,7 +41,6 @@ function spec(overrides: Partial<ZcodeSpawnSpec> = {}): ZcodeSpawnSpec {
     prompt: 'say PONG',
     cwd: '/work',
     env: {},
-    model: undefined,
     mode: 'build',
     signal: new AbortController().signal,
     ...overrides,
@@ -138,8 +137,10 @@ describe('zcodeArgv', () => {
     expect(zcodeArgv(spec())).toEqual(['zcode', '-p', 'say PONG', '--mode', 'build', '--no-color'])
   })
 
-  it('appends a pinned model last', () => {
-    expect(zcodeArgv(spec({ model: 'glm-4.6' })).slice(-2)).toEqual(['--model', 'glm-4.6'])
+  it('never passes a model flag, which CLI 0.16.9 rejects', () => {
+    // Measured: `--model` is an unknown option in 0.16.9. The model is chosen by
+    // the provider document (`defaultModelSelection`), not by argv.
+    expect(zcodeArgv(spec())).not.toContain('--model')
   })
 })
 

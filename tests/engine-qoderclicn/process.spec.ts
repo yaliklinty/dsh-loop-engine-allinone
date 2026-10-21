@@ -117,9 +117,19 @@ describe('qoderclicnArgv', () => {
     ])
   })
 
-  it('appends a pinned model before the prompt', () => {
+  it('narrows a pinned model through -m, the measured spelling', () => {
     expect(qoderclicnArgv(spec({ model: 'auto' }))).toEqual([
-      'qoderclicn', '-p', '--output-format', 'stream-json', '--permission-mode', 'default', '--model', 'auto', 'say PONG',
+      'qoderclicn', '-p', '--output-format', 'stream-json', '--permission-mode', 'default', '-m', 'auto', 'say PONG',
+    ])
+  })
+
+  it('runs a handover in its private config root, before -p', () => {
+    // `--config-dir` is load-bearing: without it the CLI reads the user's own
+    // root, whose custom-model table is encrypted and whose provider selection
+    // is not the dsh endpoint.
+    expect(qoderclicnArgv(spec({ configDir: '/tmp/dsh-qoder', model: 'dsh-handover/m' }))).toEqual([
+      'qoderclicn', '--config-dir', '/tmp/dsh-qoder', '-p', '--output-format', 'stream-json',
+      '--permission-mode', 'default', '-m', 'dsh-handover/m', 'say PONG',
     ])
   })
 })

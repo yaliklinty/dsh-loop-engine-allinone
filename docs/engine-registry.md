@@ -278,7 +278,7 @@ export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: strin
 | 行分隔 JSON | `ndjson.ts` | 分帧（行切分、跨 chunk 重组、**保留无换行的末行**、跳过空行） | 所有 ndjson 家族 |
 | Claude `stream-json` 方言 | `stream-json.ts` | `system/init`·`assistant`·`user(tool_result)`·`result` → 帧 | **qoderclicn**（Claude Code 本体及同族 fork 通用） |
 | 纯文本 | `text.ts` | 整段 stdout 即回答；**退出码算答案的一部分** | **hermes**、**zcode** |
-| JSON-RPC | — （见 §6 TODO） | codex 的 app-server / zcode 的 app-server | 待补公共骨架 |
+| JSON-RPC | — （见 §6 TODO） | codex 的 app-server（zcode 已改用 `-p`，见 §5.11） | 待补公共骨架 |
 | `event` 信封 | `engine-agy/frames.ts` | `event` + `step_update`（`step_type`/`state`）+ `result` | **agy**（样板：init 取会话 id、`text_delta` 流式、`step_type:"tool"` 工具） |
 
 判定顺序：
@@ -391,6 +391,10 @@ prompt for, so it was auto-denied`）。真正让它跑工具的是
 `resources/config/provider/zcode-builtin.json`。驱动提供**探测到的默认值**，
 部署在 `env` 里显式给的**优先**。
 
+交接 dsh 模型时还要同时给 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`：CLI 的
+`prepareCliProviderRuntimeEnv` **只在两个变量都齐**时才跳过自己的目录探测。
+详细形状见 §5.11。
+
 ### 5.4 账号相关的档位不是全局常量（agy）
 
 `--mode auto` 在某些账号上是 `not available for this account`。
@@ -452,6 +456,76 @@ provided"`，而 `initialize` 里 `authMethods:[{id:'grok.com'}]` 已经给了�
 否则你会以为 `authenticate` 是个可能不存在的假设。失败时抛注册表里的 `loginHint`，
 不要给用户看裸 JSON-RPC 错误。
 
+### 5.11 「选择在 SQLite 里」曾经是错的（zcode）
+
+上一版结论是：zcode 的 provider 表支持自定义端点，但无头 CLI 从 App 的 SQLite 读
+当前 provider，所以单次运行指不到别处。**这个结论是错的**，错在把两个文件当成了
+一个：
+
+- `~/.zcode/v2/config.json` 是桌面 App 的 provider 表，`-p` **不读**它。
+- `~/.zcode/v2/provider_config.json`（或
+  `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 指向的文件）才是 CLI 的**个人 provider
+  文档**；`config.defaultModelSelection: { providerId, modelId }` 决定这一趟用哪个
+  模型。App 自己的 `NodeModelSelectionConfigRepository` 读写的也是它。
+- `--model` 在 0.16.9 里**不存在**（`Unknown option '--model'`），所以驱动不再传它。
+
+一个可用的个人文档（实测跑到本地 mock）：
+
+```json
+{ "schemaVersion": 1,
+  "config": {
+    "providerOrder": ["dsh-handover"],
+    "providerConfigRules": { "providerRules": [{
+      "providerId": "dsh-handover", "providerName": "DSH model handover",
+      "config": { "group": "standard-personal",
+        "access": { "type": "api-key", "apiKey": "…" },
+        "api": { "type": "anthropic-messages", "baseUrl": "http://…" },
+        "personalModelIds": ["…"], "modelOrder": ["…"] } }] },
+    "modelConfigRules": { "providerModelRules": [], "manualProviderModelRules": [] },
+    "defaultModelSelection": { "providerId": "dsh-handover", "modelId": "…" } } }
+```
+
+`api.type` 实测支持 `anthropic-messages` 与 `openai-chat-completions`；
+`llm-pi-ai` 的 `openai-completions` 映射到后者。`-p --json` 的返回形如
+`{sessionId, traceId, turnId, response, usage, …}`，而驱动仍按纯文本读 stdout
+（`--json` 只是用来确认成功形状的）。
+
+**教训**：下"做不到"的结论前，先把 CLI 真正读取的那个文件找出来——名字相近的
+两个配置文件（`config.json` vs `provider_config.json`）足以让一轮实验得出相反答案。
+
+### 5.12 加密的自定义型号库旁边有明文入口（qoderclicn）
+
+上一版结论是：Qoder CN 的自定义端点存在 `.models/<uid>/customs`（AES-GCM，密钥来自
+machine id）+ 固定网关，所以不可行。**只对了一半**：那份 `customs` 是 Qoder 自己的
+BYOK 缓存，确实没有本地覆写入口；但 CLI 的 settings schema 里还有一个**明文**
+`providers` 表：
+
+```json
+{ "providers": { "dsh-handover": {
+  "protocol": "anthropic",           // openai | openai-responses | anthropic
+  "baseUrl": "http://…", "apiKey": "…", "model": "…",
+  "models": [{ "model": "…", "contextWindow": 128000,
+               "capabilities": { "tools": true } }] } } }
+```
+
+配合 `--config-dir <临时根>`（根里放一份 `.auth` 副本）和
+`-m <providerId>/<modelId>`，`-p` 就会把请求发到 `baseUrl`。实测 openai 协议
+（`baseUrl + /chat/completions`）与 anthropic 协议（`POST /v1/messages`）都通，
+用户自己的 `~/.qoder-cn` 一个字节没改。
+
+**两条拆不掉的前置条件**：
+
+1. `-p` 在 local 模式下强制 `isAuthenticated()`，所以临时根必须带 `.auth` 副本；
+2. 启动时 CLI 要 `GET https://openapi.qoder.com.cn/api/v3/user/status`，看
+   `featureSwitches.allow_byok >= 2` 才允许自定义 Provider。**断网 = 这条交接不可用。**
+
+`QODER_SDK_CUSTOM_BASE_URL_BYOK=1` 只在 `startupMode === "sdk"` 时放宽准入，对 `-p`
+无用；`QODER_MODEL_SERVER_HOST` 永远拼 `https://…/model/v1/chat/completions` 且要
+Qoder bearer，也是死路。
+
+**教训**：看到一份加密存储就下"没有入口"的结论，会漏掉同一功能旁边的明文 schema。
+先把 settings 里所有顶层键列出来，再判断哪条是产品入口、哪条是缓存。
+
 ---
 
 ## 6. TODO 清单（按价值排序）
@@ -459,11 +533,10 @@ provided"`，而 `initialize` 里 `authMethods:[{id:'grok.com'}]` 已经给了�
 | # | 事项 | 为什么值得做 | 前置 |
 |---|---|---|---|
 | 1 | **agy 流式块映射** | 主机登录后即可拿到逐 token 输出 | 用户重新登录 Google |
-| 2 | **JSON-RPC 公共骨架** | codex 与 zcode 两家的 app-server 是同一形态，值得抽一层 | 探到 zcode 的 `initialize`/`session/create` 请求参数 |
-| 3 | **zcode app-server 驱动** | 换取结构化流式输出与工具事件 | 同上 + 续订 GLM 套餐 |
-| 4 | **grok / minimaxcode 探针落地** | 加两家 | 先装 CLI |
-| 5 | **把现有四家驱动迁到 `CliHostedAgent`** | 消掉约 4 × 450 行重复相位机 | 高风险，需逐家回归；**当前刻意不动**，免得碰已验证的协议 |
-| 6 | **设置页"引擎管理"子区**（阶段 D） | 版本 / 升级 / 诊断集中展示 | 完成，见 `output/交付说明.md` |
+| 2 | **JSON-RPC 公共骨架** | codex 的 app-server 已经能用；抽一层给将来需要结构化流的引擎复用 | 无（zcode 不需要了：`-p` 已能跑通并交接 dsh 模型） |
+| 3 | **grok / minimaxcode 探针落地** | 加两家 | 先装 CLI |
+| 4 | **把现有四家驱动迁到 `CliHostedAgent`** | 消掉约 4 × 450 行重复相位机 | 高风险，需逐家回归；**当前刻意不动**，免得碰已验证的协议 |
+| 5 | **设置页"引擎管理"子区**（阶段 D） | 版本 / 升级 / 诊断集中展示 | 完成，见 `output/交付说明.md` |
 
 ---
 

@@ -12,13 +12,29 @@ Nothing yet.
 
 ### Added
 
-- **Antigravity and Hermes Agent take a dsh model too**, which makes eight of the ten
+- **ZCode takes a dsh model.** The previous "provider selection lives in the app's
+  SQLite" verdict was wrong: `zcode -p` reads a personal provider document named by
+  `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` (default `~/.zcode/v2/provider_config.json`),
+  and `config.defaultModelSelection` names the model. The driver writes one such
+  document per step into a private temp directory — alongside the app's own
+  `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`, which the CLI requires in the same breath —
+  and removes it when the step ends. Measured end to end against a local mock:
+  `POST /v1/messages` (or `/chat/completions`) with the dsh key, answer returned,
+  `~/.zcode` untouched. `--model` is rejected by CLI 0.16.9 and is no longer passed.
+- **Qoder CN takes a dsh model.** Its encrypted `.models/<uid>/customs` is Qoder's
+  server-side BYOK cache, not the only entry: the CLI's settings schema has a
+  plaintext `providers` table. One private `--config-dir` root per step (a copy of
+  `.auth` + that table) plus `-m dsh-handover/<model>` routes `-p` at the dsh
+  endpoint. Measured with both `openai` and `anthropic` protocols; the user's
+  `~/.qoder-cn` is untouched. Preconditions stay the CLI's own: a signed-in account
+  and a reachable startup entitlement check (`allow_byok >= 2`).
+  Unsupported wires are refused with `QODERCLICN_UNSUPPORTED_API`.
+- **Antigravity and Hermes Agent take a dsh model too**, which makes all ten
   hosted engines. Antigravity's handover repoints the CLI's own LLM gateway
   (`AGY_LLM_GATEWAY_URL` / `_API_KEY` / `_WIRE_PROTOCOL=openai`) — measured end to end
   against a local endpoint, environment only, sign-in untouched; a non-OpenAI wire is
   refused with `AGY_UNSUPPORTED_API`.
-- **Hermes Agent takes a dsh model too**. Its
-  Its handover is the least invasive of the set: `OPENAI_BASE_URL` + `OPENAI_API_KEY` ride the
+- **Hermes Agent takes a dsh model too**. Its handover is the least invasive of the set: `OPENAI_BASE_URL` + `OPENAI_API_KEY` ride the
   child environment and `--provider openai` names the endpoint, so nothing is written to
   disk and the user's own `HERMES_HOME` — sessions, skills, `auth.json` — stays in force.
   Measured on 0.21.4: `--provider custom` (Hermes' own provider table) IGNORES

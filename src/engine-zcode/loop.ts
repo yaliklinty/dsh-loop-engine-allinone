@@ -21,7 +21,11 @@ import { ZCODE_DISPOSE_GRACE_MS, zcodeArgvPrefix, zcodeBuiltinProviderConfig } f
 
 /** Deployment-owned configuration for the ZCode engine. */
 export interface Config {
-  /** Model label (`--model`); ZCode's own settings own the model when omitted. */
+  /**
+   * Model label for the host's transcript. ZCode 0.16.9 rejects `--model`, so
+   * this is NOT passed to the CLI: the model comes from the provider document
+   * (`defaultModelSelection`), the user's own when no dsh model is selected.
+   */
   model?: string
   /** Explicit environment entries passed to the child; these win over the discovered ones. */
   env?: Record<string, string>

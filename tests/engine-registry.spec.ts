@@ -132,8 +132,12 @@ describe('the handover matrix', () => {
       grok: true,
       minimaxcode: true,
       agy: true,
-      zcode: false,
-      qoderclicn: false,
+      // Verified end to end (CLI 0.16.9): a private provider document hands over
+      // the endpoint, key and model. See `engine-zcode/model-handover.ts`.
+      zcode: true,
+      // Verified end to end (CLI 1.1.56): a private `--config-dir` root with a
+      // plaintext `providers` table. See `engine-qoderclicn/model-handover.ts`.
+      qoderclicn: true,
       hermes: true,
     }
     for (const [engine, capable] of Object.entries(expected)) {

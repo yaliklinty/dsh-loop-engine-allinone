@@ -134,8 +134,8 @@ plugin there, delete that block (from `# -- dsh-loop-engine managed block --` th
 | **Pi** | Bundled / `jsonrpc` | `~/.pi/agent/auth.json`, or the provider's API-key variable |
 | **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) |
 | **Antigravity** | External CLI / `ndjson` | `agy` CLI installed and signed in to Google |
-| **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed, with a live GLM Coding Plan subscription |
-| **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated |
+| **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed; a live GLM Coding Plan for ZCode's own models, or any DSH model through the handover |
+| **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated; a DSH model additionally needs the startup entitlement check to reach Qoder's API (`allow_byok >= 2`) |
 | **Hermes Agent** | External CLI / `text` | `hermes` CLI installed and configured (`hermes setup`) |
 | **Grok Build** | External CLI / `acp` | `grok` CLI installed and signed in once (`grok login`) |
 | **MiniMax Code** | External CLI / `acp` | `npm i -g @minimax-ai/code`, `mcode login --region cn\|global`, then `mcode provider use token-plan` |
@@ -160,21 +160,27 @@ the engine, and each engine accepts that in its own way — or not at all.
 | **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + a plugin-owned empty `GROK_HOME` | **OpenAI-compatible endpoints only.** The owned home is load-bearing: with your real `~/.grok` the CLI attaches the account's session JWT to a helper request aimed at that endpoint |
 | **MiniMax Code** | ✅ | a plugin-owned data directory (`MINIMAX_DATA_DIR`) holding a BYOK `custom_provider` | supports `anthropic-messages`, `openai-completions`, and `openai-responses`; the key is written to a `0600` file inside a `0700` directory this plugin removes at exit, because this CLI has no environment indirection for it |
 | **Antigravity** | ✅ | `AGY_LLM_GATEWAY_URL` + `AGY_LLM_GATEWAY_API_KEY` + `AGY_LLM_GATEWAY_WIRE_PROTOCOL=openai` | environment only: the CLI's own LLM gateway is repointed, its sign-in is untouched |
-| **ZCode** | ❌ | — | its provider table accepts any OpenAI/Anthropic endpoint (20 templates ship with the app; a custom provider is just `kind` + `baseURL` + `apiKey`), but the headless CLI takes the active provider from the desktop app’s SQLite state: no flag or variable points ONE run at a different provider. Driving it would mean mutating that database. |
-| **Qoder CN** | ❌ | — | runs only models from its own sign-in |
+| **ZCode** | ✅ | a private `provider_config.json` named by `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` (+ the app’s `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`) | one document per step, removed when the step ends: `defaultModelSelection` points ZCode at the dsh endpoint and the dsh key. `~/.zcode` is neither read as configuration nor written to. Supports `anthropic-messages` and `openai-completions`; anything else is refused with `ZCODE_UNSUPPORTED_API`. |
+| **Qoder CN** | ✅ | a private `--config-dir` root holding a plaintext `providers` entry and a copy of your `.auth` | one root per step, removed when the step ends: `-m dsh-handover/<model>` selects the endpoint. Your `~/.qoder-cn` settings, plugins and encrypted model store are untouched. Requires a signed-in account and a reachable Qoder API at startup (`allow_byok >= 2`); supports `openai-completions` and `anthropic-messages`. |
 | **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | environment only: nothing is written and the user's `HERMES_HOME` (sessions, skills, `auth.json`) stays in force |
 
-Two consequences worth knowing before you pick a model:
+Every one of the ten hosted engines can now run a DSH model. What still differs
+is the price of the handover:
 
-- **A "❌" engine refuses rather than guesses.** Selecting a DSH model on one of
-  them fails the turn with `UNSERVABLE_MODEL` and a message naming both ways out
-  (pick a model from the engine's own group, or switch the session to the
-  in-process engine). It does not forward an id the engine's provider table has
-  never heard of.
-- **A "✅" engine can still decline a specific endpoint.** The engine's own
-  protocol support is the limit — Grok's custom-endpoint path is
-  OpenAI-compatible only, for example, and the handover is refused with
-  `GROK_UNSUPPORTED_API` when the provider declares anything else.
+- **An engine that cannot speak the endpoint's wire refuses rather than guesses.**
+  The engine's own protocol support is the limit — Grok's custom-endpoint path is
+  OpenAI-compatible only, ZCode and Qoder CN take `anthropic-messages` or
+  `openai-completions` — and a mismatch is refused before a child spawns, with
+  the engine's own code (`GROK_UNSUPPORTED_API`, `ZCODE_UNSUPPORTED_API`,
+  `QODERCLICN_UNSUPPORTED_API`). A DSH model whose endpoint or credential dsh
+  cannot disclose fails with `UNSERVABLE_MODEL` and names both ways out.
+- **Qoder CN's handover is not offline.** It copies your login into a private
+  config root and needs the CLI's startup entitlement call to reach Qoder's API
+  (`allow_byok >= 2`); without either, the turn fails in the CLI's own words.
+- **The rest are environment-only or a private directory the plugin removes.**
+  Claude Code, Codex, Hermes and Antigravity write nothing; Pi, Kimi, Grok,
+  MiniMax, ZCode and Qoder CN trade a plugin-owned directory for the session
+  that runs the DSH model.
 
 The settings page repeats this matrix ("Which engines can run a model configured
 in dsh"), so the answer is reachable without reading this file.
@@ -237,7 +243,7 @@ environment variable or with `bins.zcodeBin` — nothing hardcodes a drive lette
 - **Header Badge**: Shows the engine actively powering the current session. Can be toggled via *Show the engine badge in the conversation header*.
 - **Model Selection**:
   - **A catalog is discovered, not shipped.** Kimi Code's is read from its own config file at boot; an ACP engine's arrives in its `session/new` response the first time a session opens; Codex's is static in its bundled CLI. Picking a discovered model passes its id to the engine. **A vendor shipping a model therefore needs no plugin release.**
-  - An engine whose catalog this build cannot read falls back to a **declared** list, and the settings page says which of the two you are looking at. **Pi** has none by design (it refreshes from each provider at runtime via `pi update --models`); **ZCode**'s could not be read because its GLM Coding Plan subscription has lapsed, and an expired account cannot enumerate what it may use.
+  - An engine whose catalog this build cannot read falls back to a **declared** list, and the settings page says which of the two you are looking at. **Pi** has none by design (it refreshes from each provider at runtime via `pi update --models`); **ZCode** has no declared catalog: its own model list needs a live GLM Coding Plan, and an expired account cannot enumerate what it may use — but a DSH model can still be handed to it through the handover above.
   - Other hosted engines share one `external` group holding a single `default`, which means "let the engine decide". A shared group is not a limitation on what you can run — it is the menu collapsing engines whose catalogs this build has not measured. Declaring a catalog (one `models` row in the registry) gives an engine its own group.
   - Picking a **real dsh model** instead hands the engine that model's endpoint and credential as well; whether the engine can serve it is the engine's business, and a refusal is reported rather than swallowed.
   - Native dsh commands (`/export`, `/feedback`, `/permission`) and context auto-compaction remain fully functional.

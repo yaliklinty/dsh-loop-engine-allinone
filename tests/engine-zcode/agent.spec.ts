@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Readable } from 'node:stream'
+import { existsSync, readFileSync } from 'node:fs'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -24,7 +25,11 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { ZcodeLoop } from '../../src/engine-zcode/loop.ts'
 import { ZcodeAgent, ZCODE_ENGINE, type ResolvedZcodeConfig } from '../../src/engine-zcode/agent.ts'
+import { ZCODE_PERSONAL_PROVIDER_CONFIG_ENV } from '../../src/engine-zcode/model-handover.ts'
+import { ZCODE_PROVIDER_CONFIG_ENV } from '../../src/engine-zcode/process.ts'
 import { loopPluginFor, mountHarness, userMessage } from '../helpers/agent-harness.ts'
+import { DSH_ENDPOINT, provideDshEndpoint } from '../helpers/dsh-model-endpoint.ts'
+import { modelSelectionProjections } from '../helpers/model-selection-projection.ts'
 
 /** One spawn the driver made, and the streams the fake handed back. */
 interface Spawned {
@@ -46,9 +51,12 @@ function fakeSpawn(options: {
   stderr?: string
   exitCode?: number | null
   error?: unknown
+  /** Observe the request while the child is alive (the handover file is transient). */
+  onSpawn?: (request: { argv: readonly string[]; cwd: string; env: Record<string, string> }) => void
 } = {}) {
   const spawned: Spawned[] = []
   const spawn = vi.fn((request: { argv: readonly string[]; cwd: string; env: Record<string, string> }) => {
+    options.onSpawn?.(request)
     const stdin = { write: vi.fn(), end: vi.fn() }
     spawned.push({ argv: request.argv, cwd: request.cwd, env: request.env, stdin })
     const stream = (text: string) => (async function* () {
@@ -137,8 +145,10 @@ describe('one completed step', () => {
       expect(call.argv[2]).toContain('say PONG')
       expect(call.argv[2]).toContain('<user>')
       expect(call.argv).toContain('--no-color')
-      expect(call.argv).toContain('--model')
-      expect(call.argv[call.argv.indexOf('--model') + 1]).toBe('glm-5')
+      // `--model` is an unknown option in CLI 0.16.9 (`Unknown option '--model'`),
+      // so a pinned label must never reach argv: the model comes from the
+      // provider document instead.
+      expect(call.argv).not.toContain('--model')
       // A session without full access runs `build`, not `yolo`.
       expect(call.argv[call.argv.indexOf('--mode') + 1]).toBe('build')
       expect(call.cwd).toBe('/work')
@@ -178,8 +188,10 @@ describe('one completed step', () => {
     }
   })
 
-  it('omits --model when the deployment pinned none', async () => {
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+  it('never forwards a pinned model, which this CLI cannot accept', async () => {
+    // Measured against 0.16.9: the flag is rejected outright. Keeping it out of
+    // argv is what makes a deployment-level `model` label harmless.
+    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work', config: { model: 'glm-5' } })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -306,6 +318,78 @@ describe('what the driver refuses rather than degrades', () => {
       await agent.whenIdle()
       const end = session.snapshotEvents().find(event => event.type === 'turn/end')
       expect(end?.data).toMatchObject({ reason: { kind: 'error' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('a dsh model handed to ZCode', () => {
+  it('writes a private provider document and points the child at it', async () => {
+    let observedPath: string | undefined
+    let observedDocument: string | undefined
+    const { ctx, session, agent, spawned } = await agentWith(
+      {
+        stdout: 'PONG\n',
+        // Read while the child is alive: the document is single-use and removed
+        // when the step ends.
+        onSpawn: request => {
+          observedPath = request.env[ZCODE_PERSONAL_PROVIDER_CONFIG_ENV]
+          if (observedPath !== undefined) observedDocument = readFileSync(observedPath, 'utf8')
+        },
+      },
+      { cwd: '/work', config: { providerConfig: '/app/zcode-builtin.json' } },
+    )
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      provideDshEndpoint(ctx, { api: 'anthropic-messages' })
+      session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(userMessage('say PONG'))
+      await agent.whenIdle()
+
+      // Both provider files are named together: the CLI only short-circuits its
+      // own (failing) catalog lookup when BOTH variables are set.
+      expect(spawned[0]!.env[ZCODE_PERSONAL_PROVIDER_CONFIG_ENV]).toBe(observedPath)
+      expect(spawned[0]!.env[ZCODE_PROVIDER_CONFIG_ENV]).toBe('/app/zcode-builtin.json')
+
+      const document = JSON.parse(observedDocument ?? '') as {
+        config: {
+          providerOrder: string[]
+          providerConfigRules: { providerRules: Array<{ config: { access: { apiKey: string }, api: { type: string, baseUrl: string } } }> }
+          defaultModelSelection: { providerId: string, modelId: string }
+        }
+      }
+      // The document carries dsh's endpoint, key and model under one custom
+      // provider, and names that model as the default selection.
+      expect(document.config.providerConfigRules.providerRules[0]!.config.api)
+        .toEqual({ type: 'anthropic-messages', baseUrl: DSH_ENDPOINT.baseURL })
+      expect(document.config.providerConfigRules.providerRules[0]!.config.access.apiKey).toBe(DSH_ENDPOINT.apiKey)
+      expect(document.config.defaultModelSelection).toEqual({ providerId: 'dsh-handover', modelId: DSH_ENDPOINT.model })
+      expect(document.config.providerOrder).toEqual(['dsh-handover'])
+
+      // One step, one document: the temp file is gone once the child settles.
+      expect(observedPath).toBeDefined()
+      expect(existsSync(observedPath!)).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'PONG\n' }, { cwd: '/work' })
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      // No child at all: forwarding a name ZCode's provider table has never heard
+      // of can only come back as a provider error that names neither cause nor cure.
+      expect(spawned).toHaveLength(0)
+      expect(session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: { reason: { kind: 'error', error: { code: 'UNSERVABLE_MODEL' } } },
+      })
     } finally {
       await ctx.fiber.dispose()
     }

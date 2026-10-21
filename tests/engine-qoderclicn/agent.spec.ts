@@ -15,7 +15,10 @@
  * @module tests/engine-qoderclicn/agent
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -28,6 +31,8 @@ import {
   type ResolvedQoderclicnConfig,
 } from '../../src/engine-qoderclicn/agent.ts'
 import { loopPluginFor, mountHarness, userMessage } from '../helpers/agent-harness.ts'
+import { DSH_ENDPOINT, provideDshEndpoint } from '../helpers/dsh-model-endpoint.ts'
+import { modelSelectionProjections } from '../helpers/model-selection-projection.ts'
 
 /** One spawn the driver made. */
 interface Spawned {
@@ -41,10 +46,18 @@ interface Spawned {
  *
  * `exitCode` is how the child dies; the transport's `done` settles immediately.
  */
-function fakeSpawn(documents: readonly unknown[] = [], options: { exitCode?: number | null } = {}) {
+function fakeSpawn(
+  documents: readonly unknown[] = [],
+  options: {
+    exitCode?: number | null
+    /** Observe the request while the child is alive (a handover root is transient). */
+    onSpawn?: (request: { argv: readonly string[]; cwd: string; env: Record<string, string> }) => void
+  } = {},
+) {
   const spawned: Spawned[] = []
   const text = documents.map(document => JSON.stringify(document)).join('\n')
   const spawn = vi.fn((request: { argv: readonly string[]; cwd: string; env: Record<string, string> }) => {
+    options.onSpawn?.(request)
     spawned.push({ argv: request.argv, cwd: request.cwd, env: request.env })
     const stream = (payload: string) => (async function* () {
       if (payload !== '') yield Buffer.from(`${payload}\n`, 'utf8')
@@ -80,10 +93,15 @@ async function harness(options: { cwd?: string | undefined } = {}): Promise<{ ct
 /** Build one agent on a prepared session. */
 async function agentWith(
   documents: readonly unknown[] = [],
-  options: { cwd?: string | undefined; config?: Partial<ResolvedQoderclicnConfig>; exitCode?: number | null } = {},
+  options: {
+    cwd?: string | undefined
+    config?: Partial<ResolvedQoderclicnConfig>
+    exitCode?: number | null
+    onSpawn?: (request: { argv: readonly string[]; cwd: string; env: Record<string, string> }) => void
+  } = {},
 ): Promise<{ ctx: Context; session: Session; agent: QoderclicnAgent; spawned: Spawned[] }> {
   const { ctx, session } = await harness(options)
-  const { spawn, spawned } = fakeSpawn(documents, { exitCode: options.exitCode })
+  const { spawn, spawned } = fakeSpawn(documents, { exitCode: options.exitCode, onSpawn: options.onSpawn })
   const agent = new QoderclicnAgent(
     ctx,
     session.header.id,
@@ -127,7 +145,7 @@ describe('one completed step', () => {
       // the prompt is LAST because `-p` takes it positionally.
       expect(call.argv.slice(0, 5)).toEqual(['qoderclicn', '-p', '--output-format', 'stream-json', '--permission-mode'])
       expect(call.argv.at(-1)).toContain('say PONG')
-      expect(call.argv[call.argv.indexOf('--model') + 1]).toBe('qwen3-coder-plus')
+      expect(call.argv[call.argv.indexOf('-m') + 1]).toBe('qwen3-coder-plus')
       expect(call.cwd).toBe('/work')
       expect(call.env).toEqual({ A: '1' })
 
@@ -387,6 +405,138 @@ describe('the two default arms', () => {
       const message = (end?.data as { reason: { error: { message: string } } }).reason.error.message
       expect(message).toContain('produced no stream-json')
       expect(message).not.toContain('last line')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('a dsh model handed to Qoder CN', () => {
+  /** Scratch login roots and the environment variable this suite borrows. */
+  const roots: string[] = []
+  const previousConfigDir = process.env.QODER_CONFIG_DIR
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+    if (previousConfigDir === undefined) delete process.env.QODER_CONFIG_DIR
+    else process.env.QODER_CONFIG_DIR = previousConfigDir
+  })
+
+  /** A fake signed-in root: the handover copies `.auth` out of one of these. */
+  function signedInRoot(): string {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-qoder-source-'))
+    mkdirSync(join(root, '.auth'))
+    writeFileSync(join(root, '.auth', 'user.json'), '{"uid":"user-1"}')
+    writeFileSync(join(root, 'installation_id'), 'install-1')
+    roots.push(root)
+    return root
+  }
+
+  it('runs the child in a private config root carrying the endpoint, key and model', async () => {
+    process.env.QODER_CONFIG_DIR = signedInRoot()
+    const seen: { dir?: string; settings?: string; authFile?: boolean; installId?: string } = {}
+    const { ctx, session, agent, spawned } = await agentWith(
+      [assistant({ type: 'text', text: 'PONG' }), result()],
+      {
+        cwd: '/work',
+        // Read while the child is alive: the root is single-use and removed when
+        // the step ends.
+        onSpawn: request => {
+          const index = request.argv.indexOf('--config-dir')
+          const dir = index < 0 ? undefined : request.argv[index + 1]
+          seen.dir = dir
+          if (dir === undefined) return
+          seen.settings = readFileSync(join(dir, 'settings.json'), 'utf8')
+          seen.authFile = existsSync(join(dir, '.auth', 'user.json'))
+          seen.installId = readFileSync(join(dir, 'installation_id'), 'utf8')
+        },
+      },
+    )
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      provideDshEndpoint(ctx, { api: 'anthropic-messages' })
+      session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(userMessage('say PONG'))
+      await agent.whenIdle()
+
+      // The child gets a private root, and that root authenticates by copying the
+      // user's login state — never by pointing at (or editing) `~/.qoder-cn`.
+      expect(seen.dir).toBeDefined()
+      expect(seen.authFile).toBe(true)
+      expect(seen.installId).toBe('install-1')
+
+      const settings = JSON.parse(seen.settings ?? '') as {
+        providers: Record<string, {
+          protocol: string
+          baseUrl: string
+          apiKey: string
+          model: string
+          models: Array<{ model: string }>
+        }>
+      }
+      expect(settings.providers['dsh-handover']).toMatchObject({
+        protocol: 'anthropic',
+        baseUrl: DSH_ENDPOINT.baseURL,
+        apiKey: DSH_ENDPOINT.apiKey,
+        model: DSH_ENDPOINT.model,
+      })
+      expect(settings.providers['dsh-handover']!.models.map(entry => entry.model)).toEqual([DSH_ENDPOINT.model])
+
+      // `-m <provider>/<model>` is how Qoder selects a custom-provider model.
+      expect(spawned[0]!.argv).toContain('--config-dir')
+      expect(spawned[0]!.argv).toContain('-m')
+      expect(spawned[0]!.argv[spawned[0]!.argv.indexOf('-m') + 1]).toBe(`dsh-handover/${DSH_ENDPOINT.model}`)
+
+      // One step, one root.
+      expect(existsSync(seen.dir!)).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
+    process.env.QODER_CONFIG_DIR = signedInRoot()
+    const { ctx, session, agent, spawned } = await agentWith(
+      [assistant({ type: 'text', text: 'PONG' }), result()],
+      { cwd: '/work' },
+    )
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      expect(spawned).toHaveLength(0)
+      expect(session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: { reason: { kind: 'error', error: { code: 'UNSERVABLE_MODEL' } } },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses before spawning when the user has no Qoder login to copy', async () => {
+    // A root without `.auth`: the message must name the login command rather than
+    // letting the child fail with a generic protocol error.
+    const empty = mkdtempSync(join(tmpdir(), 'dsh-qoder-source-'))
+    roots.push(empty)
+    process.env.QODER_CONFIG_DIR = empty
+    const { ctx, session, agent, spawned } = await agentWith(
+      [assistant({ type: 'text', text: 'PONG' }), result()],
+      { cwd: '/work' },
+    )
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      provideDshEndpoint(ctx, { api: 'anthropic-messages' })
+      session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      expect(spawned).toHaveLength(0)
+      const end = session.snapshotEvents().at(-1)
+      expect(end).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'error' } } })
+      expect(JSON.stringify(end)).toContain('qoderclicn login')
     } finally {
       await ctx.fiber.dispose()
     }

@@ -123,6 +123,13 @@ export interface QoderclicnSpawnSpec {
   readonly env: Record<string, string>
   /** Pinned model, when the deployment or the session named one. */
   readonly model: string | undefined
+  /**
+   * Private config root for a dsh-model handover, when one is in force.
+   *
+   * A handover replaces both this root and the model: the CLI's own root (and
+   * the user's encrypted custom-model store) is never touched.
+   */
+  readonly configDir?: string
   /** Resolved permission mode. */
   readonly permissionMode: QoderclicnPermissionMode
   /** Cancellation. */
@@ -138,16 +145,21 @@ export interface QoderclicnSpawnSpec {
  * replays the whole transcript into each prompt, so the CLI's own session store
  * is dead weight, but disabling it also disables `--resume`, which a deployment
  * may want later.
+ *
+ * `-m` (not `--model`) is the measured spelling for a custom-provider key such
+ * as `dsh-handover/<model>`; both aliases exist in the help, and `-m` is the one
+ * the handover probe used.
  * @param spec - the step's spawn spec.
  * @returns the argv.
  */
 export function qoderclicnArgv(spec: QoderclicnSpawnSpec): string[] {
   return [
     spec.bin,
+    ...spec.configDir === undefined ? [] : ['--config-dir', spec.configDir],
     '-p',
     '--output-format', 'stream-json',
     '--permission-mode', spec.permissionMode,
-    ...spec.model === undefined ? [] : ['--model', spec.model],
+    ...spec.model === undefined ? [] : ['-m', spec.model],
     spec.prompt,
   ]
 }

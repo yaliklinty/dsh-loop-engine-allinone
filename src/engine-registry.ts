@@ -509,7 +509,10 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['build', 'edit', 'plan', 'yolo'],
       images: false,
       reasoningLevels: false,
-      modelHandover: false,
+      // Verified end to end (CLI 0.16.9): the personal-provider document named by
+      // `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` routes `-p` at the dsh endpoint with
+      // the dsh credential. See `engine-zcode/model-handover.ts`.
+      modelHandover: true,
     },
   },
   qoderclicn: {
@@ -534,7 +537,11 @@ export const ENGINE_REGISTRY = {
       // survive the round trip, so the engine does not claim the capability.
       images: false,
       reasoningLevels: true,
-      modelHandover: false,
+      // Verified end to end (CLI 1.1.56): a private `--config-dir` root with a
+      // plaintext `providers` table routes `-p` at the dsh endpoint. The account
+      // must be signed in and the startup entitlement check must reach Qoder's
+      // API. See `engine-qoderclicn/model-handover.ts`.
+      modelHandover: true,
     },
   },
   hermes: {

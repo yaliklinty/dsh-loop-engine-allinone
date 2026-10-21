@@ -8,30 +8,31 @@
  *
  * ## Why this driver uses the one-shot `-p` surface
  *
- * ZCode advertises two machine-facing surfaces, and they are not equally ready:
+ * ZCode advertises two machine-facing surfaces. The `zcode app-server` JSON-RPC
+ * stdio server is real — the CLI bundle carries its whole method table
+ * (`startup/*`, `session/create`, `session/send`, `session/setModel`, …) — but
+ * its request parameter shape could not be probed, and writing one from the
+ * method names alone is guessing. `zcode -p "prompt"` is the documented surface
+ * and, with `--json`, returns a machine-readable result:
  *
- *  1. **`zcode app-server`** — a JSON-RPC stdio server. The probe
- *     (`docs/probes/zcode.md`) confirmed the transport and captured its method
- *     surface (`startup/*`, `session/create`, `session/send`,
- *     `session/subscribe`, `session/events`, `session/event`, `session/stop`,
- *     `session/setModel`, `session/setMode`, `session/resume`, `session/list`,
- *     `session/compact`, `session/messages`, `session/read`, …) and its
- *     server-initiated `startup/storageState` notifications. What the probe could
- *     NOT obtain is the REQUEST parameter shape: `initialize` drew no response
- *     frame at all, and every `session/create` attempt ended the run before a
- *     reply. Writing a request shape from the method names alone would be
- *     guessing, which the probe-first rule forbids.
- *  2. **`zcode -p "prompt"`** — the documented one-shot print mode. The probe
- *     confirmed it runs and produces a result, but every run stopped at
- *     `ProviderBusinessError [1309] … GLM Coding Plan 已到期` (the machine's GLM
- *     Coding Plan subscription has lapsed), so the SUCCESS output shape is also
- *     unverified.
+ * ```json
+ * { "sessionId": "sess_…", "traceId": "…", "turnId": "…", "response": "…",
+ *   "usage": { "inputTokens": 10, "outputTokens": 2, … }, "eventCount": 11 }
+ * ```
  *
- * So this driver takes the surface that is verified to at least reach the model,
- * treats stdout as the answer, and declares `protocol: 'text'` /
- * `streaming: false` in the registry — an honest statement of what the DRIVER
- * does, not of what the CLI could do. Upgrading it to the app-server protocol is
- * the recorded next step (`docs/engine-registry.md` §6, TODO).
+ * (measured on CLI 0.16.9 against a local Anthropic-compatible mock). The driver
+ * still treats stdout as the answer rather than parsing that envelope: the
+ * documented print mode prints the answer, and a text read is what every
+ * `--json`-less run produces.
+ *
+ * ## Where the provider selection actually lives
+ *
+ * A headless run reads its provider table from the file named by
+ * `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` (`~/.zcode/v2/provider_config.json` by
+ * default), NOT from `~/.zcode/v2/config.json` and NOT from the desktop app's
+ * SQLite. `config.defaultModelSelection` names the provider/model. That is the
+ * seam `./model-handover.ts` writes; see that module for the measured document
+ * shape and the two-env-var requirement.
  *
  * @module dsh-loop-engine-allinone/engine-zcode/process
  */
@@ -171,8 +172,6 @@ export interface ZcodeSpawnSpec {
   readonly cwd: string
   /** Explicit environment entries layered over the scrubbed parent environment. */
   readonly env: Record<string, string>
-  /** Pinned model (`--model` is not a flag; ZCode selects a model per session). */
-  readonly model: string | undefined
   /** Resolved permission mode. */
   readonly mode: ZcodeMode
   /** Cancellation. */
@@ -181,6 +180,11 @@ export interface ZcodeSpawnSpec {
 
 /**
  * Build the argv for one non-interactive ZCode step.
+ *
+ * No model flag: ZCode 0.16.9 rejects `--model` (`Unknown option '--model'`) and
+ * takes the model from the provider document its environment names — the seam
+ * `./model-handover.ts` uses for a dsh model, and the user's own
+ * `defaultModelSelection` when no handover is in force.
  * @param spec - the step's spawn spec.
  * @returns the argv.
  */
@@ -190,7 +194,6 @@ export function zcodeArgv(spec: ZcodeSpawnSpec): string[] {
     '-p', spec.prompt,
     '--mode', spec.mode,
     '--no-color',
-    ...spec.model === undefined ? [] : ['--model', spec.model],
   ]
 }
 

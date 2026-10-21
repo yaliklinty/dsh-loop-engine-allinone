@@ -116,8 +116,8 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 | **Pi** | 捆绑 / `jsonrpc` | `~/.pi/agent/auth.json`，或提供方的 API-key 环境变量 |
 | **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（`kimi login`） |
 | **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 |
-| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI，且 GLM Coding Plan 套餐有效 |
-| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录 |
+| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI；跑它自己的型号需要有效的 GLM Coding Plan，跑 dsh 模型则走交接 |
+| **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录；跑 dsh 模型还要求启动时权益检查能访问 Qoder API（`allow_byok >= 2`） |
 | **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并完成配置（`hermes setup`） |
 | **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并登录过一次（`grok login`） |
 | **MiniMax Code** | 外部 CLI / `acp` | `npm i -g @minimax-ai/code`，然后 `mcode login --region cn\|global`，再 `mcode provider use token-plan` |
@@ -140,14 +140,15 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 | **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + 插件自建空 `GROK_HOME` | **只支持 OpenAI 兼容端点。** 那个空 home 是安全措施：用你自己的 `~/.grok` 时，CLI 会把账号的会话 JWT 附在一个发往该端点的辅助请求上 |
 | **MiniMax Code** | ✅ | 插件自建 data 目录（`MINIMAX_DATA_DIR`）里的 BYOK `custom_provider` | 支持 `anthropic-messages`、`openai-completions`、`openai-responses`；密钥写进 `0700` 目录下的 `0600` 文件（该 CLI 没有环境变量入口），退出时删除 |
 | **Antigravity** | ✅ | `AGY_LLM_GATEWAY_URL` + `AGY_LLM_GATEWAY_API_KEY` + `AGY_LLM_GATEWAY_WIRE_PROTOCOL=openai` | 纯环境变量：改的是它自己的 LLM 网关，登录态不动 |
-| **ZCode** | ❌ | — | 它的 provider 表支持任意 OpenAI/Anthropic 端点（App 自带 20 个模板；自定义 provider 就是 `kind`+`baseURL`+`apiKey`），但无头 CLI 的当前 provider 取自桌面 App 的 SQLite 状态，没有能把**单次运行**指到别的 provider 的参数或环境变量——要驱动它只能改那个数据库。 |
-| **Qoder CN** | ❌ | — | 只跑自己登录账号里的型号 |
+| **ZCode** | ✅ | 插件私有的 `provider_config.json`，由 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（外加 App 的 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE`）指给子进程 | 每步写一份、步末删除：`defaultModelSelection` 把 ZCode 指到 dsh 端点和 dsh 密钥。**不改也不读**你的 `~/.zcode` 配置。支持 `anthropic-messages` 与 `openai-completions`，其余协议以 `ZCODE_UNSUPPORTED_API` 拒绝。 |
+| **Qoder CN** | ✅ | 插件私有的 `--config-dir` 根，内含明文 `providers` 表和 `.auth` 副本 | 每步建一个根、步末删除：`-m dsh-handover/<model>` 选中端点。你的 `~/.qoder-cn` 设置、插件和加密型号库都不动。要求账号已登录，且启动时能访问 Qoder API（`allow_byok >= 2`）；支持 `openai-completions` 与 `anthropic-messages`。 |
 | **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | 纯环境变量：不写任何文件，且你的 `HERMES_HOME`（会话/技能/`auth.json`）照常生效 |
 
-两条后果，选模型前先知道：
+十家托管引擎现在都能跑 dsh 模型；差别在交接的代价：
 
-- **标 ❌ 的引擎会明确拒绝，不会瞎猜。** 在这些引擎上选 dsh 模型，这一轮会以 `UNSERVABLE_MODEL` 失败，并说明两条出路（从该引擎自己的分组里选，或把会话切回进程内引擎）；它不会把引擎 provider 表里根本没有的型号名塞过去。
-- **标 ✅ 的引擎也可能拒绝某个具体端点。** 上限是引擎自己的协议支持：例如 Grok 的自定义端点只吃 OpenAI 兼容协议，provider 声明成别的就会被 `GROK_UNSUPPORTED_API` 拒绝。
+- **协议不支持就明确拒绝，不会瞎猜。** 上限是引擎自己的协议支持——Grok 的自定义端点只吃 OpenAI 兼容，ZCode 与 Qoder CN 接受 `anthropic-messages` 或 `openai-completions`——不匹配会在子进程启动前被拒绝，并带上该引擎自己的错误码（`GROK_UNSUPPORTED_API`、`ZCODE_UNSUPPORTED_API`、`QODERCLICN_UNSUPPORTED_API`）。如果 dsh 无法披露端点或凭据，则以 `UNSERVABLE_MODEL` 失败并说明两条出路。
+- **Qoder CN 的交接不是离线的。** 它把登录态复制进一个私有 config 根，并要求 CLI 启动时的权益检查能访问 Qoder API（`allow_byok >= 2`）；缺任一条，这一轮会以 CLI 自己的错误结束。
+- **其余引擎要么纯环境变量、要么用插件自建并在步末删除的目录。** Claude Code、Codex、Hermes、Antigravity 不写文件；Pi、Kimi、Grok、MiniMax、ZCode、Qoder CN 会为跑 dsh 模型的会话换一个插件自建目录。
 
 设置页里有一张同样的表（"各引擎能否使用 dsh 里配置的模型"），不翻这个文件也能看到答案。
 
@@ -203,7 +204,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 - **状态徽标**：会话标题栏会实时显示当前正在驱动该会话的引擎图标与名称，可通过设置开关控制显隐。
 - **模型与订阅选择**：
   - 声明了独立型号目录的引擎（**Antigravity**、**Codex**、**Kimi Code**、**Grok Build**、**MiniMax Code**）会在模型列表中呈现其专属订阅模型，选中即把该 id 交给引擎。
-  - **Pi** 与 **ZCode** 故意没有声明型号表。Pi 的型号表是**运行时刷新**的（`pi update --models` 从各 provider 拉取），写死必然过期；ZCode 的型号表读不到，因为它的 GLM Coding Plan 套餐已到期——过期账号列不出自己能用什么。
+  - **Pi** 与 **ZCode** 故意没有声明型号表。Pi 的型号表是**运行时刷新**的（`pi update --models` 从各 provider 拉取），写死必然过期；ZCode 没有声明型号表：它自己的型号列表需要有效的 GLM Coding Plan，过期账号列不出自己能用什么——但 dsh 模型仍可通过上面的交接跑起来。
   - 其余托管引擎统一归类至 `external` 分组，组内只有一条 `default`，含义是「交给引擎自己决定」。**这不是功能限制**：它只是菜单把「本版本还没实测过型号的引擎」折叠在一起；在注册表里加一行 `models`，该引擎立刻就有自己的分组。
   - 也可以选一个**真实的 dsh 模型**：插件会把该模型的端点与凭据一并交给引擎。引擎能不能用是引擎的事，被拒会如实报错而不是悄悄吞掉。
   - 原生命令（`/export`、`/feedback`、`/permission`）及自动压缩机制完全可用。

@@ -20,6 +20,7 @@
  * @module dsh-loop-engine-allinone/engine-qoderclicn/agent
  */
 
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
@@ -34,6 +35,9 @@ import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import { ENGINE_REGISTRY } from '../engine-registry.ts'
 import { sessionApprovalPolicy, sessionSandboxMode } from '../driver-core/permission-knobs.ts'
+import { resolveModelHandover } from '../driver-core/model-handover.ts'
+import { sessionModelOverrideOf, unservableModelRefusal } from '../driver-core/session-model.ts'
+import { prepareQoderclicnHandover, removeQoderclicnHandover } from './model-handover.ts'
 import type { QoderclicnSpawnSpec } from './process.ts'
 import type { QoderclicnPermissionMode } from './process.ts'
 import { qoderclicnPermissionMode, qoderclicnSpawnRequest } from './process.ts'
@@ -103,44 +107,71 @@ export class QoderclicnAgent extends CliHostedAgent {
     }
     this.assertRequestHeader()
 
-    const spec: QoderclicnSpawnSpec = {
-      bin: this.config.bin ?? 'qoderclicn',
-      prompt,
-      cwd,
-      env: this.config.env,
-      model: this.config.model,
-      permissionMode: this.permissionMode(),
-      signal,
-    }
-    const transport = this.spawn(qoderclicnSpawnRequest(spec))
+    // The session's model selection, and — when dsh discloses it — that model's
+    // endpoint and credential. A real dsh model Qoder cannot be handed is refused
+    // HERE, before a child is spawned: forwarding the name to Qoder's own catalog
+    // is the cryptic failure this replaces.
+    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    const resolved = await resolveModelHandover(this.loopCtx, override)
+    const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[QODERCLICN_ENGINE].label)
+    if (resolved === undefined && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
 
-    const run = { sessionId: undefined as string | undefined, reportedError: undefined as string | undefined }
-    const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
-    const result = await runNdjson(
-      { transport, map: document => mapDocument(document, accept, run) },
-      /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
-      () => {},
-      /* v8 ignore stop */
-    )
-    // A child that printed NOTHING parseable did not speak the protocol: that is
-    // a startup failure (a missing binary, an unsigned login, a flag the
-    // installed version does not know), and reporting it as an empty answer
-    // would be the silent degradation this plugin exists not to produce.
-    if (result.parsed === 0) {
-      this.sink.accept({
-        kind: 'error',
-        message: `qoderclicn produced no stream-json on its protocol channel`
-          + `${result.lastUnparsed === undefined ? '' : `; last line: ${result.lastUnparsed.slice(0, 200)}`}`,
-      }, position)
+    // One private config root per step: a COPY of the user's login state plus the
+    // handover's plaintext provider table. The user's `~/.qoder-cn` (settings,
+    // plugins, encrypted custom-model store) is neither read as configuration nor
+    // written to, and the root is removed when the step ends.
+    const handover = resolved === undefined ? undefined : await prepareQoderclicnHandover(resolved)
+
+    try {
+      const spec: QoderclicnSpawnSpec = {
+        bin: this.config.bin ?? 'qoderclicn',
+        prompt,
+        cwd,
+        env: this.config.env,
+        model: handover?.modelKey ?? this.config.model,
+        ...handover === undefined ? {} : { configDir: handover.configDir },
+        permissionMode: this.permissionMode(),
+        signal,
+      }
+      const transport = this.spawn(qoderclicnSpawnRequest(spec))
+
+      const run = { sessionId: undefined as string | undefined, reportedError: undefined as string | undefined }
+      const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
+      const result = await runNdjson(
+        { transport, map: document => mapDocument(document, accept, run) },
+        /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
+        () => {},
+        /* v8 ignore stop */
+      )
+      // A child that printed NOTHING parseable did not speak the protocol: that is
+      // a startup failure (a missing binary, an unsigned login, a flag the
+      // installed version does not know), and reporting it as an empty answer
+      // would be the silent degradation this plugin exists not to produce.
+      if (result.parsed === 0) {
+        this.sink.accept({
+          kind: 'error',
+          message: `qoderclicn produced no stream-json on its protocol channel`
+            + `${result.lastUnparsed === undefined ? '' : `; last line: ${result.lastUnparsed.slice(0, 200)}`}`,
+        }, position)
+      }
+      const outcome = this.sink.finish(position)
+      // A failed run is thrown, not returned: the turn's own ending must say the
+      // engine failed, and the base classifies a thrown error as `turn/end`
+      // `error` while carrying the engine's own words into the log. Returning
+      // `{kind:'completed'}` after a reported failure would be exactly the
+      // silent-success bug this plugin exists not to ship.
+      if (outcome.kind === 'failed') throw new Error(outcome.message)
+      return { kind: 'completed' }
+    } finally {
+      if (handover !== undefined) {
+        // A failed cleanup must not replace the step's own outcome.
+        try {
+          await removeQoderclicnHandover(handover.configDir)
+        } catch {
+          // Swallowed on purpose: the step already has its answer or its error.
+        }
+      }
     }
-    const outcome = this.sink.finish(position)
-    // A failed run is thrown, not returned: the turn's own ending must say the
-    // engine failed, and the base classifies a thrown error as `turn/end`
-    // `error` while carrying the engine's own words into the log. Returning
-    // `{kind:'completed'}` after a reported failure would be exactly the
-    // silent-success bug this plugin exists not to ship.
-    if (outcome.kind === 'failed') throw new Error(outcome.message)
-    return { kind: 'completed' }
   }
 
   /** Resolve the permission mode for this step: the pin wins, else the session's knobs. */

@@ -13,9 +13,14 @@
  * `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` points at the app's own copy. The driver
  * supplies the discovered default; a deployment's explicit `env` wins.
  *
+ * A session that selects a REAL dsh model is handed over through ZCode's own
+ * personal-provider document (`./model-handover.ts`), written beside — never
+ * over — the user's `~/.zcode` settings and removed when the step ends.
+ *
  * @module dsh-loop-engine-allinone/engine-zcode/agent
  */
 
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
@@ -28,6 +33,13 @@ import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { sessionSandboxMode } from '../driver-core/permission-knobs.ts'
+import { resolveModelHandover } from '../driver-core/model-handover.ts'
+import { sessionModelOverrideOf, unservableModelRefusal } from '../driver-core/session-model.ts'
+import {
+  ZCODE_PERSONAL_PROVIDER_CONFIG_ENV,
+  removeZcodePersonalProviderConfig,
+  writeZcodePersonalProviderConfig,
+} from './model-handover.ts'
 import type { ZcodeSpawnSpec } from './process.ts'
 import { zcodeArgvPrefix, zcodeBuiltinProviderConfig, zcodeMode, zcodeSpawnRequest } from './process.ts'
 
@@ -79,22 +91,53 @@ export class ZcodeAgent extends CliHostedAgent {
     }
     this.assertRequestHeader()
 
-    const spec: ZcodeSpawnSpec = {
-      prefix: this.config.prefix,
-      prompt,
-      cwd,
-      env: this.config.env,
-      model: this.config.model,
-      mode: zcodeMode(sessionSandboxMode(this.session.snapshotEvents()) === 'danger-full-access'),
-      signal,
+    // The session's model selection, and — when dsh discloses it — that model's
+    // endpoint and credential. A real dsh model ZCode cannot be handed is refused
+    // HERE, before a child is spawned: forwarding the name to the engine's own
+    // provider table is the cryptic failure this replaces.
+    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    const resolved = await resolveModelHandover(this.loopCtx, override)
+    const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[ZCODE_ENGINE].label)
+    if (resolved === undefined && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
+
+    // ZCode's only seam for a custom provider is a file path, so the handover is
+    // one private document per step. The user's own `~/.zcode` is neither read as
+    // configuration nor written to: the file lives in a fresh temp directory and
+    // is removed when the step ends, success or failure.
+    let handoverFile: string | undefined
+    let env = this.config.env
+    if (resolved !== undefined) {
+      handoverFile = await writeZcodePersonalProviderConfig(resolved)
+      env = { ...env, [ZCODE_PERSONAL_PROVIDER_CONFIG_ENV]: handoverFile }
     }
-    const result = await runText({ transport: this.spawn(zcodeSpawnRequest(spec, this.config.providerConfig)) })
-    const outcome = textRunOutcome(result)
-    if (outcome.kind === 'failed') throw new Error(outcome.message)
-    this.sink.commitWholeMessage(outcome.text, undefined, position)
-    const finished = this.sink.finish(position)
-    if (finished.kind === 'failed') throw new Error(finished.message)
-    return { kind: 'completed' }
+
+    try {
+      const spec: ZcodeSpawnSpec = {
+        prefix: this.config.prefix,
+        prompt,
+        cwd,
+        env,
+        mode: zcodeMode(sessionSandboxMode(this.session.snapshotEvents()) === 'danger-full-access'),
+        signal,
+      }
+      const result = await runText({ transport: this.spawn(zcodeSpawnRequest(spec, this.config.providerConfig)) })
+      const outcome = textRunOutcome(result)
+      if (outcome.kind === 'failed') throw new Error(outcome.message)
+      this.sink.commitWholeMessage(outcome.text, undefined, position)
+      const finished = this.sink.finish(position)
+      if (finished.kind === 'failed') throw new Error(finished.message)
+      return { kind: 'completed' }
+    } finally {
+      if (handoverFile !== undefined) {
+        // A failed cleanup must not replace the step's own outcome; the file is
+        // in the OS temp directory and a later run never reuses this path.
+        try {
+          await removeZcodePersonalProviderConfig(handoverFile)
+        } catch {
+          // Swallowed on purpose: the step already has its answer or its error.
+        }
+      }
+    }
   }
 }
 
