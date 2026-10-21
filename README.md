@@ -174,13 +174,35 @@ is the price of the handover:
   the engine's own code (`GROK_UNSUPPORTED_API`, `ZCODE_UNSUPPORTED_API`,
   `QODERCLICN_UNSUPPORTED_API`). A DSH model whose endpoint or credential dsh
   cannot disclose fails with `UNSERVABLE_MODEL` and names both ways out.
-- **Qoder CN's handover is not offline.** It copies your login into a private
-  config root and needs the CLI's startup entitlement call to reach Qoder's API
-  (`allow_byok >= 2`); without either, the turn fails in the CLI's own words.
 - **The rest are environment-only or a private directory the plugin removes.**
   Claude Code, Codex, Hermes and Antigravity write nothing; Pi, Kimi, Grok,
   MiniMax, ZCode and Qoder CN trade a plugin-owned directory for the session
   that runs the DSH model.
+
+#### Qoder CN: the two hard prerequisites
+
+These belong to the CLI, not to the plugin; the handover cannot remove either.
+
+1. **You must be signed in to Qoder CN.** `-p` runs in the CLI's `local`
+   provider-access mode, which requires `isAuthenticated()`. The handover starts
+   each step by copying `~/.qoder-cn/.auth` into its private config root; when
+   that directory is missing the turn fails before a child spawns, with
+   `QODERCLICN_NOT_LOGGED_IN` and the message to run `qoderclicn login`.
+2. **The startup entitlement check must reach Qoder.** Before custom providers
+   are allowed, the CLI calls `GET https://openapi.qoder.com.cn/api/v3/user/status`
+   and requires `featureSwitches.allow_byok >= 2`. Offline — or behind a network
+   that blocks that host — the check returns null, custom providers are refused,
+   and no request ever reaches the DSH endpoint. **The handover is not an offline
+   mode.** A failed turn says so in the CLI's own words; it does not silently
+   fall back to a Qoder model.
+
+> **ZCode has one prerequisite of the same kind:** the desktop app's
+> `resources/config/provider/zcode-builtin.json` must be discoverable, because
+> the CLI requires the built-in and personal provider files in the same breath.
+> Install ZCode normally (`%LOCALAPPDATA%\Programs\ZCode`,
+> `%ProgramFiles%\ZCode`, or `%ZCODE_HOME%`), or point
+> `env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` at a catalog yourself. A standalone
+> `zcode` on PATH with no catalog is not enough for a handover.
 
 The settings page repeats this matrix ("Which engines can run a model configured
 in dsh"), so the answer is reachable without reading this file.

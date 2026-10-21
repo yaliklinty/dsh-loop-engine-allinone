@@ -147,8 +147,28 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 十家托管引擎现在都能跑 dsh 模型；差别在交接的代价：
 
 - **协议不支持就明确拒绝，不会瞎猜。** 上限是引擎自己的协议支持——Grok 的自定义端点只吃 OpenAI 兼容，ZCode 与 Qoder CN 接受 `anthropic-messages` 或 `openai-completions`——不匹配会在子进程启动前被拒绝，并带上该引擎自己的错误码（`GROK_UNSUPPORTED_API`、`ZCODE_UNSUPPORTED_API`、`QODERCLICN_UNSUPPORTED_API`）。如果 dsh 无法披露端点或凭据，则以 `UNSERVABLE_MODEL` 失败并说明两条出路。
-- **Qoder CN 的交接不是离线的。** 它把登录态复制进一个私有 config 根，并要求 CLI 启动时的权益检查能访问 Qoder API（`allow_byok >= 2`）；缺任一条，这一轮会以 CLI 自己的错误结束。
 - **其余引擎要么纯环境变量、要么用插件自建并在步末删除的目录。** Claude Code、Codex、Hermes、Antigravity 不写文件；Pi、Kimi、Grok、MiniMax、ZCode、Qoder CN 会为跑 dsh 模型的会话换一个插件自建目录。
+
+#### Qoder CN：两条拆不掉的硬前置
+
+这两条属于 CLI 自己，插件无法绕过：
+
+1. **必须已登录 Qoder CN。** `-p` 跑在 CLI 的 `local` provider-access 模式，强制
+   `isAuthenticated()`。交接每步都会把 `~/.qoder-cn/.auth` 复制进私有 config 根；
+   这个目录不存在时，子进程不会启动，这一轮直接以 `QODERCLICN_NOT_LOGGED_IN` 失败，
+   并提示去跑 `qoderclicn login`。
+2. **启动时的权益检查必须能访问 Qoder。** CLI 在放行自定义 Provider 之前会请求
+   `GET https://openapi.qoder.com.cn/api/v3/user/status`，要求
+   `featureSwitches.allow_byok >= 2`。断网——或网络屏蔽了该域名——检查返回 null，
+   自定义 Provider 被拒，请求根本到不了 dsh 端点。**这不是离线方案**；失败时这一轮
+   以 CLI 自己的错误结束，不会悄悄退回 Qoder 自己的模型。
+
+> **ZCode 也有一条同类前置：** 必须能找到桌面 App 的
+> `resources/config/provider/zcode-builtin.json`，因为 CLI 要求内置 provider 文件
+> 与个人文件**同时**给出。正常安装 ZCode 即可（`%LOCALAPPDATA%\Programs\ZCode`、
+> `%ProgramFiles%\ZCode` 或 `%ZCODE_HOME%`），也可以用
+> `env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` 自己指一份 catalog。只有一个 PATH 上的
+> 裸 `zcode`、没有 catalog，交接跑不起来。
 
 设置页里有一张同样的表（"各引擎能否使用 dsh 里配置的模型"），不翻这个文件也能看到答案。
 
