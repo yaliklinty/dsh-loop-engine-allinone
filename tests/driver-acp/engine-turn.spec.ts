@@ -83,6 +83,20 @@ const toolDone = (id: string, output: string): Record<string, unknown> => ({
   content: [{ type: 'content', content: { type: 'text', text: output } }],
   rawInput: { command: 'echo hi' },
 })
+/** MiniMax 1.1.56 progress frame: no status, no content (measured live). */
+const toolProgress = (id: string): Record<string, unknown> => ({ sessionUpdate: 'tool_call_update', toolCallId: id })
+/** MiniMax execution-start frame: status + rawInput. */
+const toolStart = (id: string, rawInput: unknown): Record<string, unknown> => ({
+  sessionUpdate: 'tool_call_update', toolCallId: id, status: 'in_progress', rawInput,
+})
+/** MiniMax terminal frame: rawOutput content, not `content` (measured live). */
+const toolRawDone = (id: string, rawInput: unknown, output: string): Record<string, unknown> => ({
+  sessionUpdate: 'tool_call_update',
+  toolCallId: id,
+  status: 'completed',
+  rawInput,
+  rawOutput: { content: [{ type: 'text', text: output }], details: { status: 'succeeded' } },
+})
 
 /** The two engines under test, with the dialect calls each is expected to make. */
 const ENGINES = {
@@ -177,6 +191,38 @@ describe.each(Object.entries(ENGINES))('%s driving a session', (engine, spec) =>
       // with no row through unchanged on purpose — a guessed projection would
       // mis-render a call rather than leave it generic.
       expect(call?.data).toMatchObject({ name: 'Bash', arguments: JSON.stringify({ command: 'echo hi' }) })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('survives status-less progress frames and reads MiniMax’s rawOutput', async () => {
+    // Measured against MiniMax Code 1.1.56: the first `tool_call_update` frames
+    // carry NO status and NO content, and the result arrives as `rawOutput`.
+    // Treating a missing status as settled logged `{}` and "(no content)" on the
+    // very first progress frame — the empty tool cards users saw.
+    mock.updates.mockReturnValue([
+      toolCall('call_1', 'bash'),
+      toolProgress('call_1'),
+      toolProgress('call_1'),
+      toolStart('call_1', { command: 'echo TOOLPROBE', description: 'Echo TOOLPROBE' }),
+      toolRawDone('call_1', { command: 'echo TOOLPROBE', description: 'Echo TOOLPROBE' }, 'TOOLPROBE' + String.fromCharCode(13, 10)),
+    ])
+    const ctx = await harness()
+    try {
+      const { agent } = await ctx.agents.create({ sessionId: SessionId('tool-late-s'), meta: { cwd: process.cwd() } })
+      agent.followup(message('run it'))
+      await agent.whenIdle()
+
+      const call = agent.session.snapshotEvents().find(event => event.type === 'tool/call')
+      expect(call?.data).toMatchObject({
+        name: 'bash',
+        arguments: JSON.stringify({ command: 'echo TOOLPROBE', description: 'Echo TOOLPROBE' }),
+      })
+      const result = agent.session.snapshotEvents().find(event => event.type === 'tool/result')
+      const text = (result?.data as { message: { content: Array<{ text: string }> } }).message.content[0]!.text
+      expect(text).toContain('TOOLPROBE')
+      expect(text).not.toContain('(no content)')
     } finally {
       await ctx.fiber.dispose()
     }

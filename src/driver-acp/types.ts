@@ -67,7 +67,8 @@ export interface AcpToolCallExt extends AcpUpdate {
   readonly toolCallId: string
   readonly title: string
   readonly kind: string
-  readonly status: string
+  /** Present on most announcements; MiniMax omits it entirely. */
+  readonly status?: string
   readonly content?: readonly AcpToolContentBlock[]
   /** The call's real input; absent on the announcement (see above). */
   readonly rawInput?: unknown
@@ -77,7 +78,8 @@ export interface AcpToolCallExt extends AcpUpdate {
 export interface AcpToolCallStreamExt extends AcpUpdate {
   readonly sessionUpdate: 'tool_call_update'
   readonly toolCallId: string
-  readonly status: string
+  /** Absent on progress frames from MiniMax 1.1.56; only the terminal frame carries it. */
+  readonly status?: string
   readonly content?: readonly AcpToolContentBlock[]
   /** The call's real input, first present on the execution-start frame. */
   readonly rawInput?: unknown

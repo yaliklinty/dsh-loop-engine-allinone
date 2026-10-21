@@ -8,6 +8,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.8]
+
+### Fixed
+
+- **CLI tool cards show their real arguments and output again.** MiniMax Code
+  1.1.56 sends `tool_call_update` progress frames with NO `status` field, and the
+  shared ACP mapper treated a missing status as settled: the first progress frame
+  logged the call with `{}` arguments and an empty result (`(no content)`), and the
+  later frame that actually carried `rawInput` was ignored. A status is now
+  settled only for the protocol's explicit terminal values (`completed`,
+  `failed`, `error`, `denied`, `cancelled`); an absent or unknown one keeps the
+  call open. The mapper also reads the result from `rawOutput` — MiniMax puts it
+  there as `{ content: [{ type: 'text', text }] }`, not in `content` — accepting
+  both block spellings. Measured live: the real MiniMax agent now logs
+  `{"command":"echo TOOLPROBE",…}` on `tool/call` and `TOOLPROBE` on
+  `tool/result`.
+- **The model menu is scoped to the session's engine.** The harness builds ONE
+  model catalog per Host generation, so every one of this plugin's per-engine
+  routes appeared in every session's menu — picking another engine's subscription
+  model only produced the cross-engine refusal. The client half now wraps each
+  session's `ModelDirectory` store and filters the VIEW to that session's own
+  engine group plus every non-engine provider (DeepSeek, `llm-pi-ai`, …). Provider
+  routes stay registered and keep serving background sessions, so the Host's
+  `modelAvailable` check on send is untouched. A legacy/unset session, or one
+  whose engine has not answered yet, is left unscoped rather than guessed.
+
 ## [0.7.7]
 
 ### Added

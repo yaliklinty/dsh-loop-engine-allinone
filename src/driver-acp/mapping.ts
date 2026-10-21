@@ -81,9 +81,22 @@ export function toolRawInput(update: AcpToolCallExt | AcpToolCallStreamExt): str
   return typeof raw === 'string' ? raw : JSON.stringify(raw)
 }
 
-/** Whether a tool stream status is settled (no longer streaming). */
-export function isToolSettledStatus(status: string): boolean {
-  return status !== 'pending' && status !== 'queued' && status !== 'running' && status !== 'in_progress'
+/**
+ * Whether a tool stream status is settled (no longer streaming).
+ *
+ * An ABSENT status is not settled. Measured on MiniMax Code 1.1.56: its
+ * `tool_call_update` frames start with NO `status` field at all — only the final
+ * `completed` frame carries one — and treating "undefined" as settled logged the
+ * call on the first progress frame with empty arguments and no output. Unknown
+ * statuses are likewise treated as still running; only the protocol's explicit
+ * terminal values settle a call.
+ * @param status - the frame's status, when it carries one.
+ * @returns whether the call has finished.
+ */
+export function isToolSettledStatus(status: string | undefined): boolean {
+  return status === 'completed' || status === 'complete'
+    || status === 'failed' || status === 'error' || status === 'denied'
+    || status === 'cancelled' || status === 'canceled'
 }
 
 /** Whether a tool stream status denotes a failure. */
@@ -105,9 +118,40 @@ export function isToolErrorStatus(status: string): boolean {
  * @returns the content snapshot, or `undefined` when the field is absent.
  */
 export function toolContentText(update: AcpToolCallExt | AcpToolCallStreamExt): string | undefined {
-  const blocks = update.content
+  const direct = contentBlocksText(update.content)
+  if (direct !== undefined) return direct
+  // Measured on MiniMax Code 1.1.56: the result rides `rawOutput`, not `content`
+  // — `{ content: [{ type: 'text', text }], details: … }` on the settling frame.
+  // Reading only `content` was the other half of "tool output shows (no
+  // content)": the call had a result, but this function never saw it.
+  const raw = (update as { rawOutput?: unknown }).rawOutput
+  if (typeof raw === 'string') return raw
+  if (raw !== null && typeof raw === 'object') {
+    const fromContent = contentBlocksText((raw as { content?: unknown }).content)
+    if (fromContent !== undefined) return fromContent
+    const stdout = (raw as { stdout?: unknown }).stdout
+    if (typeof stdout === 'string') return stdout
+  }
+  return undefined
+}
+
+/**
+ * Join one `content` array as display text, accepting both block spellings seen
+ * on the wire: `{ type: 'content', content: { type: 'text', text } }` (Kimi) and
+ * the flat `{ type: 'text', text }` (MiniMax's `rawOutput.content`).
+ * @param blocks - the frame's `content` field, if any.
+ * @returns the joined text, or undefined when the field is absent.
+ */
+function contentBlocksText(blocks: unknown): string | undefined {
   if (!Array.isArray(blocks)) return undefined
-  return blocks.map((block) => (block.type === 'content' && block.content.type === 'text' ? block.content.text : '')).join('')
+  return blocks.map((block: unknown) => {
+    if (block === null || typeof block !== 'object') return ''
+    const candidate = block as { type?: unknown; text?: unknown; content?: unknown }
+    if (candidate.type === 'text' && typeof candidate.text === 'string') return candidate.text
+    const nested = candidate.content as { type?: unknown; text?: unknown } | undefined
+    if (candidate.type === 'content' && nested?.type === 'text' && typeof nested.text === 'string') return nested.text
+    return ''
+  }).join('')
 }
 
 /** Project a completed tool call to a durable tool/result message. */

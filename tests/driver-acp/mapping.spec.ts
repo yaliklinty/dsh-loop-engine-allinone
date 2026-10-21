@@ -66,6 +66,12 @@ describe('tool identity', () => {
     expect(isToolSettledStatus('running')).toBe(false)
     expect(isToolSettledStatus('complete')).toBe(true)
     expect(isToolSettledStatus('failed')).toBe(true)
+    // Measured on MiniMax 1.1.56: progress frames omit the field entirely.
+    expect(isToolSettledStatus(undefined)).toBe(false)
+    expect(isToolSettledStatus('')).toBe(false)
+    // An unknown status is not a terminal one; only the protocol's own values are.
+    expect(isToolSettledStatus('weird')).toBe(false)
+    expect(isToolSettledStatus('cancelled')).toBe(true)
     expect(isToolErrorStatus('failed')).toBe(true)
     expect(isToolErrorStatus('error')).toBe(true)
     expect(isToolErrorStatus('denied')).toBe(true)
@@ -86,6 +92,70 @@ describe('toolContentText', () => {
   it('returns undefined for an update with no content field (nothing to replace)', () => {
     const absent = { sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'in_progress' } as unknown as AcpToolCallStreamExt
     expect(toolContentText(absent)).toBeUndefined()
+  })
+
+  it('reads MiniMax’s rawOutput content, in both block spellings', () => {
+    const flat = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'c1',
+      status: 'completed',
+      rawOutput: { content: [{ type: 'text', text: 'TOOLPROBE' }] },
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(flat)).toBe('TOOLPROBE')
+    const nested = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'c1',
+      status: 'completed',
+      rawOutput: { content: [{ type: 'content', content: { type: 'text', text: 'nested' } }] },
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(nested)).toBe('nested')
+  })
+
+  it('falls back to a rawOutput string or stdout', () => {
+    const rawString = {
+      sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: 'plain',
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(rawString)).toBe('plain')
+    const stdout = {
+      sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: { stdout: 'out' },
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(stdout)).toBe('out')
+    const neither = {
+      sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: { details: {} },
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(neither)).toBeUndefined()
+  })
+
+  it('returns undefined for a null rawOutput and skips malformed blocks', () => {
+    const nullRaw = {
+      sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: null,
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(nullRaw)).toBeUndefined()
+    const malformed = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'c1',
+      status: 'completed',
+      content: [
+        null,
+        'not a block',
+        { type: 'text', text: 42 },
+        { type: 'content', content: { type: 'image', data: 'x' } },
+        { type: 'content', content: { type: 'text', text: 42 } },
+        { type: 'text', text: 'ok' },
+      ],
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(malformed)).toBe('ok')
+  })
+
+  it('prefers the direct content field when both are present', () => {
+    const both = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'c1',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'direct' } }],
+      rawOutput: { content: [{ type: 'text', text: 'raw' }] },
+    } as unknown as AcpToolCallStreamExt
+    expect(toolContentText(both)).toBe('direct')
   })
 
   it('returns empty for empty content and for non-matching blocks', () => {
