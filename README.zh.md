@@ -140,7 +140,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 | **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + 插件自建空 `GROK_HOME` | **只支持 OpenAI 兼容端点。** 那个空 home 是安全措施：用你自己的 `~/.grok` 时，CLI 会把账号的会话 JWT 附在一个发往该端点的辅助请求上 |
 | **MiniMax Code** | ✅ | 插件自建 data 目录（`MINIMAX_DATA_DIR`）里的 BYOK `custom_provider` | 支持 `anthropic-messages`、`openai-completions`、`openai-responses`；密钥写进 `0700` 目录下的 `0600` 文件（该 CLI 没有环境变量入口），退出时删除 |
 | **Antigravity** | ✅ | `AGY_LLM_GATEWAY_URL` + `AGY_LLM_GATEWAY_API_KEY` + `AGY_LLM_GATEWAY_WIRE_PROTOCOL=openai` | 纯环境变量：改的是它自己的 LLM 网关，登录态不动 |
-| **ZCode** | ❌ | — | 只跑自己 GLM 套餐里的型号 |
+| **ZCode** | ❌ | — | 它的 provider 表支持任意 OpenAI/Anthropic 端点（App 自带 20 个模板；自定义 provider 就是 `kind`+`baseURL`+`apiKey`），但无头 CLI 的当前 provider 取自桌面 App 的 SQLite 状态，没有能把**单次运行**指到别的 provider 的参数或环境变量——要驱动它只能改那个数据库。 |
 | **Qoder CN** | ❌ | — | 只跑自己登录账号里的型号 |
 | **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | 纯环境变量：不写任何文件，且你的 `HERMES_HOME`（会话/技能/`auth.json`）照常生效 |
 
