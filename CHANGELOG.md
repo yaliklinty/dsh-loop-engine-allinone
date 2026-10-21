@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.10]
+
+### Fixed
+
+- **The composer's model seat is visible again in every session.** 0.7.8 added a
+  client-side filter that scoped each session's model menu to its own engine's
+  group. Wrapping `ModelDirectory.store.getSnapshot/subscribe` turned out to
+  break the seat's `useSyncExternalStore` contract: the seat disappeared from
+  the composer entirely. The filter is REMOVED (and the module deleted) until it
+  can be done without touching the host store. The menu is global again — every
+  engine's subscription group is listed, which is the host catalog's behavior,
+  not a plugin choice.
+
 ## [0.7.9]
 
 ### Fixed
