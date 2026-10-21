@@ -113,6 +113,14 @@ export interface HermesSpawnSpec {
   readonly env: Record<string, string>
   /** Pinned model, when the deployment or the session named one. */
   readonly model: string | undefined
+  /**
+   * Provider id the argv must name, when a dsh endpoint was handed over.
+   *
+   * Present only for a handover: Hermes' own configuration decides the provider
+   * otherwise (`--provider custom` would re-select the user's own vendor table,
+   * which is exactly what the handover replaces).
+   */
+  readonly provider: string | undefined
   /** Pinned reasoning level, when the deployment named one. */
   readonly reasoning: string | undefined
   /** Cancellation. */
@@ -128,6 +136,7 @@ export function hermesArgv(spec: HermesSpawnSpec): string[] {
   return [
     spec.bin,
     HERMES_PROMPT_FLAG, spec.prompt,
+    ...spec.provider === undefined ? [] : ['--provider', spec.provider],
     ...spec.model === undefined ? [] : ['-m', spec.model],
     ...spec.reasoning === undefined ? [] : ['--reasoning', spec.reasoning],
   ]

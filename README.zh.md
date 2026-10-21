@@ -142,7 +142,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 | **Antigravity** | ❌ | — | 只跑自己登录账号里的型号 |
 | **ZCode** | ❌ | — | 只跑自己 GLM 套餐里的型号 |
 | **Qoder CN** | ❌ | — | 只跑自己登录账号里的型号 |
-| **Hermes Agent** | ❌ | — | 只跑自己配置的 provider |
+| **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | 纯环境变量：不写任何文件，且你的 `HERMES_HOME`（会话/技能/`auth.json`）照常生效 |
 
 两条后果，选模型前先知道：
 

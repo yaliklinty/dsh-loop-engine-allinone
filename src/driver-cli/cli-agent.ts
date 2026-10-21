@@ -42,7 +42,7 @@ import type {
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { ImageAttachmentAccessResolver, Message } from '@deepseek-ai/dsh-llm'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { LlmError, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Session, SessionId, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
@@ -453,9 +453,14 @@ export abstract class CliHostedAgent implements Agent {
         turnEnds = { kind: 'aborted', reason: signal.reason as AgentCancelCause }
         throw error
       }
+      // An `LlmError` carries its own machine code, and a driver that refuses a
+      // selection on purpose (`UNSERVABLE_MODEL`, an engine's own protocol
+      // refusal) must not have that code flattened to `UNKNOWN` on the way out:
+      // the ACP drivers already keep it, and a caller matching on the code would
+      // otherwise see one engine's refusal and not another's.
       turnEnds = {
         kind: 'error',
-        error: { message: errorMessageOf(error), code: 'UNKNOWN' },
+        error: error instanceof LlmError ? error.failure : { message: errorMessageOf(error), code: 'UNKNOWN' },
       }
       this.throwError(error)
     } finally {

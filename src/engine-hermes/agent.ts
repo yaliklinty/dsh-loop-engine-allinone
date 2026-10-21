@@ -27,8 +27,12 @@ import { runText, textRunOutcome } from '../driver-cli/text.ts'
 import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
+import { resolveModelHandover } from '../driver-core/model-handover.ts'
+import { sessionModelOverrideOf, unservableModelRefusal } from '../driver-core/session-model.ts'
 import type { HermesSpawnSpec } from './process.ts'
 import { hermesSpawnRequest } from './process.ts'
+import { hermesHandover } from './model-handover.ts'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 
 /** Deployment-resolved configuration for the Hermes engine. */
 export interface ResolvedHermesConfig {
@@ -78,12 +82,25 @@ export class HermesAgent extends CliHostedAgent {
     }
     this.assertRequestHeader()
 
+    // The session's model selection, and — when dsh discloses it — that model's
+    // endpoint and credential. A real dsh model Hermes cannot be handed is refused
+    // HERE, before a child is spawned: forwarding the name to an engine whose
+    // provider table has never heard of it is the cryptic failure this replaces.
+    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    const resolved = await resolveModelHandover(this.loopCtx, override)
+    const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[HERMES_ENGINE].label)
+    if (resolved === undefined && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
+    const handover = resolved === undefined ? undefined : hermesHandover(resolved)
+
     const spec: HermesSpawnSpec = {
       bin: this.config.bin ?? 'hermes',
       prompt,
       cwd,
-      env: this.config.env,
-      model: this.config.model,
+      // A handover rides the child environment, so the user's own HERMES_HOME —
+      // sessions, skills, auth.json — stays in force for this session.
+      env: handover === undefined ? this.config.env : { ...this.config.env, ...handover.env },
+      model: handover?.model ?? this.config.model,
+      provider: handover?.provider,
       reasoning: this.config.reasoning,
       signal,
     }

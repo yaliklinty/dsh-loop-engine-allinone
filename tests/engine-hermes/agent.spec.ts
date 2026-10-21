@@ -24,6 +24,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { HermesLoop } from '../../src/engine-hermes/loop.ts'
 import { HermesAgent, HERMES_ENGINE, type ResolvedHermesConfig } from '../../src/engine-hermes/agent.ts'
 import { loopPluginFor, mountHarness, userMessage } from '../helpers/agent-harness.ts'
+import { DSH_ENDPOINT, provideDshEndpoint } from '../helpers/dsh-model-endpoint.ts'
+import { modelSelectionProjections } from '../helpers/model-selection-projection.ts'
 
 /** One spawn the driver made. */
 interface Spawned {
@@ -329,6 +331,58 @@ describe('the sink’s own verdict', () => {
           runStep: (m: readonly UserMessage[], p: { turn: number; step: number }, s: AbortSignal) => Promise<unknown>
         }).runStep([userMessage('hi')], { turn: 1, step: 1 }, new AbortController().signal),
       ).rejects.toThrow(/ended the run without producing a reply/)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('a dsh model handed to Hermes', () => {
+  it('rides the child environment and the argv, keeping the user home in force', async () => {
+    const { ctx, session, agent, spawned } = await agentWith(
+      { stdout: 'PONG\n' },
+      { cwd: '/work', config: { env: { HERMES_HOME: 'D:/HermesData/hermes-home' } } },
+    )
+    try {
+      // The host's `modelSelection` fold: a `model/selection` event is read back
+      // as the pending selection the driver resolves a model from.
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      provideDshEndpoint(ctx, { api: 'openai-completions' })
+      session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(userMessage('say PONG'))
+      await agent.whenIdle()
+
+      // The endpoint and credential travel as environment, and the user's own
+      // HERMES_HOME rides along — this handover costs the engine nothing.
+      expect(spawned[0]!.env).toMatchObject({
+        OPENAI_BASE_URL: DSH_ENDPOINT.baseURL,
+        OPENAI_API_KEY: DSH_ENDPOINT.apiKey,
+        HERMES_HOME: 'D:/HermesData/hermes-home',
+      })
+      // `--provider openai` is load-bearing: without it Hermes' own `custom:` table
+      // wins and the child dials the user's vendor instead.
+      expect(spawned[0]!.argv).toContain('--provider')
+      expect(spawned[0]!.argv).toEqual(expect.arrayContaining(['--provider', 'openai', '-m', DSH_ENDPOINT.model]))
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'PONG\n' }, { cwd: '/work' })
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+
+      // No child at all: a name Hermes' provider table has never heard of can only
+      // come back as a provider error that names neither cause nor cure.
+      expect(spawned).toHaveLength(0)
+      expect(session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: { reason: { kind: 'error', error: { code: 'UNSERVABLE_MODEL' } } },
+      })
     } finally {
       await ctx.fiber.dispose()
     }

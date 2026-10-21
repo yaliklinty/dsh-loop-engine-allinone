@@ -162,7 +162,7 @@ the engine, and each engine accepts that in its own way — or not at all.
 | **Antigravity** | ❌ | — | runs only models from its own sign-in |
 | **ZCode** | ❌ | — | runs only models from its own GLM plan |
 | **Qoder CN** | ❌ | — | runs only models from its own sign-in |
-| **Hermes Agent** | ❌ | — | runs only models from its own configured provider |
+| **Hermes Agent** | ✅ | `OPENAI_BASE_URL` + `OPENAI_API_KEY` + `--provider openai` | environment only: nothing is written and the user's `HERMES_HOME` (sessions, skills, `auth.json`) stays in force |
 
 Two consequences worth knowing before you pick a model:
 

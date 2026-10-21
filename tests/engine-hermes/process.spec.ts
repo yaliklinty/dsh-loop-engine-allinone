@@ -135,3 +135,23 @@ describe('a LOCALAPPDATA with no Hermes install', () => {
     expect(hermesBinResolver('')).toBe('hermes')
   })
 })
+
+describe('the argv a handover adds', () => {
+  it('names the provider before the model, so the endpoint is the one dsh resolved', () => {
+    // Measured: without `--provider openai`, Hermes' own `custom:` table wins and
+    // the child dials the user's vendor instead of the handed-over endpoint.
+    const spec = {
+      bin: 'hermes', prompt: 'hi', cwd: '.', env: {}, model: 'deepseek-flash',
+      provider: 'openai', reasoning: undefined, signal: new AbortController().signal,
+    }
+    expect(hermesArgv(spec)).toEqual(['hermes', '-z', 'hi', '--provider', 'openai', '-m', 'deepseek-flash'])
+  })
+
+  it('leaves the flags out when nothing was handed over', () => {
+    const spec = {
+      bin: 'hermes', prompt: 'hi', cwd: '.', env: {}, model: undefined,
+      provider: undefined, reasoning: 'high', signal: new AbortController().signal,
+    }
+    expect(hermesArgv(spec)).toEqual(['hermes', '-z', 'hi', '--reasoning', 'high'])
+  })
+})

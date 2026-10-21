@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.7]
+
+### Added
+
+- **Hermes Agent takes a dsh model too**, which makes seven of the ten hosted engines. Its
+  handover is the least invasive of the set: `OPENAI_BASE_URL` + `OPENAI_API_KEY` ride the
+  child environment and `--provider openai` names the endpoint, so nothing is written to
+  disk and the user's own `HERMES_HOME` — sessions, skills, `auth.json` — stays in force.
+  Measured on 0.21.4: `--provider custom` (Hermes' own provider table) IGNORES
+  `OPENAI_BASE_URL` and dials the configured vendor, while `--provider openai` obeys it;
+  an end-to-end run against a local endpoint answered from that endpoint with the env key.
+  A provider whose wire is not `openai-completions` is refused with
+  `HERMES_UNSUPPORTED_API` before a child spawns.
+
+### Fixed
+
+- **A CLI engine's refusal keeps its machine code.** `driver-cli` flattened every step
+  error to `code: 'UNKNOWN'`, so a driver that refuses on purpose (`UNSERVABLE_MODEL`)
+  lost the code the ACP drivers have always kept — the same refusal reported itself
+  differently depending on which engine produced it.
+
 ## [0.7.6]
 
 ### Added

@@ -557,7 +557,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['safe-mode', 'yolo'],
       images: false,
       reasoningLevels: true,
-      modelHandover: false,
+      modelHandover: true,
     },
   },
   grok: {

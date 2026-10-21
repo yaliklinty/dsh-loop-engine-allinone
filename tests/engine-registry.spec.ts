@@ -134,7 +134,7 @@ describe('the handover matrix', () => {
       agy: false,
       zcode: false,
       qoderclicn: false,
-      hermes: false,
+      hermes: true,
     }
     for (const [engine, capable] of Object.entries(expected)) {
       expect(ENGINE_REGISTRY[engine as keyof typeof ENGINE_REGISTRY].capabilities.modelHandover)
