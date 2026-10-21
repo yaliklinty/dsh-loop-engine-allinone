@@ -100,6 +100,25 @@ export function liveCatalog(engine: HostedEngineId): readonly EngineModel[] {
   /* v8 ignore stop */
 }
 
+/**
+ * The catalog one engine PUBLISHED at runtime, or `undefined` when it has
+ * published none.
+ *
+ * Deliberately narrower than {@link liveCatalog}, which falls back to the
+ * declared rows: this answers "what has the engine itself confirmed", which is
+ * the only catalog a seat may name a concrete model from. A declared row is a
+ * guess about a vendor's list and may be stale (`MiniMax-M3.1-Flash-Preview` was
+ * a real id and is not one any more); pinning a seat to a guess would fail the
+ * session's very next turn instead of letting the engine decide.
+ * @param engine - the engine whose published catalog is wanted.
+ * @returns the models it published, or undefined when it published none.
+ */
+export function discoveredCatalog(engine: HostedEngineId): readonly EngineModel[] | undefined {
+  // A published entry is never empty: `recordDiscoveredCatalog` refuses one, so
+  // this does not repeat that guard.
+  return discovered.get(engine)?.models
+}
+
 /** What one engine's catalog currently is, and where it came from. */
 export interface CatalogReport {
   readonly engine: HostedEngineId

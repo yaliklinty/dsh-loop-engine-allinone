@@ -85,13 +85,27 @@ export interface AcpEngineProfile {
    */
   readonly approve?: (session: Session) => boolean
   /**
-   * Select the model for one ACP session, in this engine's own dialect.
+   * Select the model for one ACP session, in this engine's own dialect, and —
+   * when the session's pick carries one — the reasoning effort that applies to
+   * it.
+   *
+   * The effort is a FOURTH fact rather than part of `model` because on every
+   * dialect this plugin speaks the two are separate calls, and because the
+   * engine validates the effort against the model it just selected: a profile
+   * must set the model first. A profile that does not take the argument simply
+   * ignores it (a fewer-parameter function is assignable), which is the honest
+   * answer for an engine whose effort surface this plugin has not measured.
    *
    * Absent means the engine has no model selection on this surface at all, and
    * the deployment's `model`/the session's pick is dropped rather than sent as a
    * call the agent would reject.
    */
-  readonly selectModel?: (client: AcpClient, sessionId: string, model: string) => Promise<void>
+  readonly selectModel?: (
+    client: AcpClient,
+    sessionId: string,
+    model: string,
+    reasoningEffort?: string,
+  ) => Promise<void>
   /**
    * Open one ACP session, including whatever handshake the engine requires first.
    *

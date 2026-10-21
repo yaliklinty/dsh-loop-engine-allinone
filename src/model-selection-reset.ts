@@ -91,10 +91,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { HOSTED_DEFAULT_MODEL } from './agent-preset-ids.ts'
+import { discoveredCatalog } from './model-registry.ts'
 import { currentSelection } from './driver-core/session-model.ts'
 import type { SessionModelSelection, SessionProjectionsService, SettingsMutator } from './driver-core/host-servers.ts'
 import { hostedRouteLabelOf, isHostedProviderRoute } from './provider-route.ts'
 import type { LoopEngineId } from './settings.ts'
+import type { EngineModel, HostedEngineId } from './engine-registry.ts'
 
 /**
  * The host's settings namespace for its default model selection
@@ -261,7 +263,14 @@ export class ModelSelectionReset {
    */
   private seatOf(engine: LoopEngineId): SessionModelSelection | undefined {
     if (engine === 'in-process') return this.defaultSelection()
-    return { provider: hostedRouteLabelOf(engine), model: HOSTED_DEFAULT_MODEL }
+    // An engine that has PUBLISHED its catalog owns a route of its own, and its
+    // first model is what the subscription actually offers: seating the session
+    // there means the composer names a real subscription model instead of the
+    // word `default`, which is the difference between "the engine decides" and
+    // the user being able to see WHICH model is in force. Only a DISCOVERED
+    // catalog qualifies (see `discoveredCatalog`): a declared row may be stale,
+    // and a seat pinned to a stale id fails the next turn.
+    return hostedSeat(engine, discoveredCatalog(engine))
   }
 
   /**
@@ -400,5 +409,28 @@ function usableSelection(answered: Partial<SessionModelSelection> | undefined): 
     provider,
     model,
     ...typeof effort !== 'string' || effort.length === 0 ? {} : { reasoningEffort: effort },
+  }
+}
+
+/**
+ * The model seat a session on one hosted engine starts from.
+ *
+ * A hosted engine whose catalog it PUBLISHED owns a route of its own, and its
+ * first model is what the subscription actually offers: seating the session there
+ * means the composer names a real subscription model instead of the word
+ * `default`. An engine that has published nothing keeps `default` — the honest
+ * "the engine decides" — because a seat pinned to a guess (a declared row the
+ * vendor may have renamed) would fail the session's next turn.
+ * @param engine - the hosted engine the session runs.
+ * @param published - the catalog the engine published, if it published one.
+ * @returns the selection to log for the engine's seat.
+ */
+export function hostedSeat(
+  engine: HostedEngineId,
+  published: readonly EngineModel[] | undefined,
+): SessionModelSelection {
+  return {
+    provider: hostedRouteLabelOf(engine),
+    model: published === undefined || published.length === 0 ? HOSTED_DEFAULT_MODEL : published[0]!.id,
   }
 }

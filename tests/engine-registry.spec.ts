@@ -118,3 +118,29 @@ describe('the roster is not restated anywhere', () => {
     expect(text).not.toMatch(/z\.union\(\[[^\]]*['"](?:claude-code|codex|kimi|agy)['"]/)
   })
 })
+
+describe('the handover matrix', () => {
+  it('declares, per engine, whether a dsh model can be handed to it', () => {
+    // Pinned because the settings page, the refusal message, and the published
+    // compatibility table all quote this. The three ACP engines are additionally
+    // checked against their real profiles in `engine-grok`/`kimi`/`minimaxcode`.
+    const expected: Record<string, boolean> = {
+      'claude-code': true,
+      codex: true,
+      pi: true,
+      kimi: true,
+      grok: true,
+      minimaxcode: true,
+      agy: false,
+      zcode: false,
+      qoderclicn: false,
+      hermes: false,
+    }
+    for (const [engine, capable] of Object.entries(expected)) {
+      expect(ENGINE_REGISTRY[engine as keyof typeof ENGINE_REGISTRY].capabilities.modelHandover)
+        .toBe(capable)
+    }
+    // Every declared engine answers, so a new row cannot silently omit it.
+    expect(Object.keys(ENGINE_REGISTRY)).toHaveLength(Object.keys(expected).length)
+  })
+})

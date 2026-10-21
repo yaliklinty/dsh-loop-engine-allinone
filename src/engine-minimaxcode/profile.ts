@@ -39,12 +39,33 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { sessionApprovalPolicy } from '../driver-core/permission-knobs.ts'
 import { acpProtocolVersionOf } from '../engine-registry.ts'
 import { mcodeAcpArgv } from './process.ts'
+import { mcodeHandoverEnv } from './model-handover.ts'
 
 /** The engine's model config option id, as `session/new` advertises it. */
 export const MCODE_MODEL_CONFIG_ID = 'model'
 
 /** The engine's tool-permission config option id (category `_permission`). */
 export const MCODE_PERMISSION_CONFIG_ID = 'permissionMode'
+
+/**
+ * The engine's reasoning-effort config option id, as `session/new` advertises it.
+ *
+ * Measured on 0.6.12: the option offers `default`/`low`/`medium`/`high`/`xhigh`/
+ * `max`, and the engine validates the value against the SELECTED model — a
+ * non-thinking variant answers "Thinking effort is not advertised for the
+ * selected model", which is why the effort is set after the model and never on
+ * its own.
+ */
+export const MCODE_EFFORT_CONFIG_ID = 'thinkingEffort'
+
+/**
+ * The engine's "whatever I would do" effort value.
+ *
+ * Sending it is not the same as sending nothing: it would overwrite a level the
+ * engine's own session had already adopted. Absent or this value therefore means
+ * "leave the engine alone", and only a real level is forwarded.
+ */
+export const MCODE_DEFAULT_EFFORT = 'default'
 
 /**
  * The engine's `permissionMode` value for one session's dsh approval knob.
@@ -92,8 +113,19 @@ export function minimaxcodeProfile(bin: string): AcpEngineProfile {
     // Measured: `promptCapabilities.image: true`.
     images: true,
     approve: acpDefaultApproval,
-    // Measured: the BARE value form is the one this engine accepts.
-    selectModel: async (client, sessionId, model) => { await client.setConfigOption(sessionId, MCODE_MODEL_CONFIG_ID, model) },
+    // A dsh endpoint is a BYOK `custom_provider` in a plugin-owned data directory:
+    // `mcode acp` has no `--config`, and its `defaultModel` has to name that
+    // provider or the session resolves through the account and demands a login.
+    // See `./model-handover.ts` for the frames behind each of those facts.
+    handoverEnv: handover => mcodeHandoverEnv(handover),
+    // Measured: the BARE value form is the one this engine accepts, and the
+    // effort must follow the model (the engine validates it against the pick).
+    selectModel: async (client, sessionId, model, reasoningEffort) => {
+      await client.setConfigOption(sessionId, MCODE_MODEL_CONFIG_ID, model)
+      if (reasoningEffort !== undefined && reasoningEffort !== MCODE_DEFAULT_EFFORT) {
+        await client.setConfigOption(sessionId, MCODE_EFFORT_CONFIG_ID, reasoningEffort)
+      }
+    },
     openSession: async (client, cwd, session) => {
       const sessionId = await client.newSession(cwd)
       // Set unconditionally: the engine's own default is whatever it last

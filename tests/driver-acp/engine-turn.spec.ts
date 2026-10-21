@@ -18,6 +18,9 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { ENGINE_REGISTRY } from '../../src/engine-registry.ts'
+import { DSH_ENDPOINT, provideDshEndpoint } from '../helpers/dsh-model-endpoint.ts'
 import { GrokLoop } from '../../src/engine-grok/loop.ts'
 import { MinimaxcodeLoop } from '../../src/engine-minimaxcode/loop.ts'
 import { loopPluginFor, mountHarness, userMessage as message } from '../helpers/agent-harness.ts'
@@ -207,6 +210,91 @@ describe.each(Object.entries(ENGINES))('%s driving a session', (engine, spec) =>
         expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'model', spec.model)
         expect(mock.client.newSession).toHaveBeenCalledWith(process.cwd())
       }
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('sends the engine\'s OWN catalog pick, which the menu advertises for its subscription', async () => {
+    mock.updates.mockReturnValue([text('ok')])
+    const ctx = await harness()
+    try {
+      const { agent } = await ctx.agents.create({ sessionId: SessionId('native-s'), meta: { cwd: process.cwd() } })
+      // The pick a user makes inside the engine's own group: a hosted route label,
+      // which the foreign-model override deliberately ignores — so before this the
+      // engine silently ran its own default instead of the model on the seat.
+      const own = (ENGINE_REGISTRY[engine] as { models: readonly { id: string }[] }).models[0]!.id
+      agent.session.append('model/selection', {
+        provider: engine,
+        model: own,
+        reasoningEffort: ReasoningEffortId('high'),
+      })
+      agent.followup(message('hi'))
+      await agent.whenIdle()
+
+      expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'model', own)
+      if (engine === 'minimaxcode') {
+        // The engine's own effort follows the model, and only the engine that takes
+        // one receives it.
+        expect(mock.client.setConfigOption).toHaveBeenCalledWith('sess_1', 'thinkingEffort', 'high')
+      }
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a dsh-provider model when the engine has no handover at all', async () => {
+    // MiniMax Code declares no `handoverEnv`, so a real dsh model can only become
+    // the engine's own complaint ("Invalid model config value: …") — the failure
+    // this refusal replaces. Grok DOES declare one (see the test below): it forwards
+    // the model name and lets its own configuration answer.
+    if (engine === 'grok') return
+    const ctx = await harness()
+    try {
+      const { agent } = await ctx.agents.create({ sessionId: SessionId('foreign-s'), meta: { cwd: process.cwd() } })
+      agent.session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+      agent.followup(message('hi'))
+      await agent.whenIdle()
+
+      expect(mock.created).toHaveLength(0)
+      expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: {
+          reason: {
+            kind: 'error',
+            error: {
+              code: 'UNSERVABLE_MODEL',
+              message: expect.stringContaining(`${ENGINE_REGISTRY[engine].label}'s own group`),
+            },
+          },
+        },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('hands a dsh endpoint to an engine that declares one, instead of selecting a name', async () => {
+    if (engine !== 'grok') return
+    mock.updates.mockReturnValue([text('ok')])
+    const ctx = await harness()
+    try {
+      // Grok's custom-endpoint path is OpenAI-compatible only.
+      provideDshEndpoint(ctx, { api: 'openai-completions' })
+      const { agent } = await ctx.agents.create({ sessionId: SessionId('handover-s'), meta: { cwd: process.cwd() } })
+      agent.session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
+      agent.followup(message('hi'))
+      await agent.whenIdle()
+
+      const env = mock.created[0]!.spec.env
+      expect(env.GROK_MODELS_BASE_URL).toBe(DSH_ENDPOINT.baseURL)
+      expect(env.XAI_API_KEY).toBe(DSH_ENDPOINT.apiKey)
+      expect(env.GROK_DEFAULT_MODEL).toBe(DSH_ENDPOINT.model)
+      // The home is the plugin's own: the user's account state never reaches a
+      // third-party endpoint through a helper call.
+      expect(env.GROK_HOME).not.toContain('.grok')
+      // A handed-over endpoint already names the model, so no name is selected.
+      expect(mock.client.setConfigOption).not.toHaveBeenCalledWith('sess_1', 'model', expect.anything())
     } finally {
       await ctx.fiber.dispose()
     }

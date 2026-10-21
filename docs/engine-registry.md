@@ -92,8 +92,23 @@ capabilities: {
   permissionModes?: string[],      // 引擎自己的权限档位名
   images: boolean,                 // 能不能原生吃图
   reasoningLevels: boolean,
+  reasoningEfforts?: string[],     // 引擎自己的档位值，从低到高（如 default/low/…/max）
+  reasoningModelSuffix?: string,   // 哪些型号吃这些档位（如 ':v:thinking'）
 }
 ```
+
+`reasoningEfforts` / `reasoningModelSuffix` 是**选填的一对**，两个都要有才生效：
+
+- 档位值是**引擎自己的词表**，驱动**原样转发**（MiniMax Code 实测：`session/new` 的
+  `thinkingEffort` 就是 `default/low/medium/high/xhigh/max`，`session/set_config_option`
+  逐个接受）。插件不翻译、不裁剪——猜一个档位等于给用户一个没生效的强度。
+- 只有 id 以 `reasoningModelSuffix` 结尾的型号才在菜单里出现 Effort 行：MiniMax Code
+  对非 thinking 变体自己会拒（"Thinking effort is not advertised for the selected
+  model"），所以不能对整组开放。
+- 声明后，**模型菜单与 `selectModel` 的校验都读 `resolveModel`**（`LlmModelInfo` 没有
+  reasoning 字段），`resolveModelInfo` 没有档位时带 effort 的选择会被宿主直接拒
+  （`UNSUPPORTED_REASONING_EFFORT`）。
+- 驱动侧：模型先设、档位后设（引擎按当前型号校验档位），`default` 不下发。
 
 **规则是"表面绝不宣称超过已实测的"**：
 

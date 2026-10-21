@@ -89,6 +89,52 @@ export interface EngineCapabilities {
   /** Whether the engine exposes a reasoning-effort/thinking level. */
   readonly reasoningLevels: boolean
   /**
+   * The effort values this engine accepts, in its own vocabulary and from least
+   * to greatest, when {@link reasoningLevels} is true.
+   *
+   * Declared as DATA because the values are the engine's, not a dsh scale
+   * (`ReasoningEffortId` is an opaque string for exactly that reason): the
+   * driver forwards a value verbatim, so a ladder the plugin invented would be a
+   * silently wrong strength. Measured on MiniMax Code 0.6.12 from the live
+   * `session/new` `thinkingEffort` option — `default` is the engine's own
+   * "whatever I would do", and every other value was accepted by
+   * `session/set_config_option`.
+   *
+   * Absent means the engine has no effort surface this plugin can name: no model
+   * under its route advertises one, so the model menu shows no effort row (the
+   * pre-existing behavior for every hosted engine).
+   */
+  readonly reasoningEfforts?: readonly string[]
+  /**
+   * The model-id suffix that marks a variant as the one those efforts apply to.
+   *
+   * MiniMax Code's composite ids end in `:v:<variant>` (`…:v:thinking`), and its
+   * effort option is only valid for a thinking variant — the CLI itself refuses
+   * `thinkingEffort` for a non-thinking pick ("Thinking effort is not advertised
+   * for the selected model"). A suffix rather than per-model flags, because the
+   * catalog is often DISCOVERED at runtime (`session/new`) and a discovered entry
+   * carries an id and a label only; deriving from the id keeps the effort row
+   * alive across a discovery.
+   */
+  readonly reasoningModelSuffix?: string
+  /**
+   * Whether this engine can be pointed at a dsh model's endpoint at all.
+   *
+   * `true` means the driver carries the session's dsh selection into the engine —
+   * each engine in its own dialect (Claude Code `Options.env`, Codex `-c`, Pi's
+   * plugin-owned agent directory, Kimi's `KIMI_MODEL_*` variables, Grok's
+   * environment + owned home, MiniMax Code's owned data directory).
+   *
+   * `false` means the engine runs only models from its own sign-in, and a session
+   * that selects a dsh model is REFUSED with a message saying so (`UNSERVABLE_MODEL`)
+   * rather than handed an id its provider table has never heard of.
+   *
+   * Declared as data, and pinned against the drivers' own wiring by
+   * `tests/engine-drivers.spec.ts`, so the settings page and the release notes can
+   * state the matrix without asking each driver at runtime.
+   */
+  readonly modelHandover: boolean
+  /**
    * The ACP protocol version this engine's client announces at `initialize`.
    *
    * Declared rather than hardcoded because three engines now share ONE ACP
@@ -305,6 +351,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
       images: true,
       reasoningLevels: false,
+      modelHandover: true,
     },
   },
   codex: {
@@ -340,6 +387,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['read-only', 'workspace-write', 'danger-full-access'],
       images: true,
       reasoningLevels: true,
+      modelHandover: true,
     },
   },
   pi: {
@@ -361,6 +409,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['read-only', 'workspace-write', 'danger-full-access'],
       images: true,
       reasoningLevels: true,
+      modelHandover: true,
     },
   },
   kimi: {
@@ -395,6 +444,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['ask', 'allow', 'deny'],
       images: true,
       reasoningLevels: false,
+      modelHandover: true,
     },
   },
   agy: {
@@ -438,6 +488,7 @@ export const ENGINE_REGISTRY = {
       // Verified absent: there is no image input on this surface.
       images: false,
       reasoningLevels: true,
+      modelHandover: false,
     },
   },
   zcode: {
@@ -458,6 +509,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['build', 'edit', 'plan', 'yolo'],
       images: false,
       reasoningLevels: false,
+      modelHandover: false,
     },
   },
   qoderclicn: {
@@ -482,6 +534,7 @@ export const ENGINE_REGISTRY = {
       // survive the round trip, so the engine does not claim the capability.
       images: false,
       reasoningLevels: true,
+      modelHandover: false,
     },
   },
   hermes: {
@@ -504,6 +557,7 @@ export const ENGINE_REGISTRY = {
       permissionModes: ['safe-mode', 'yolo'],
       images: false,
       reasoningLevels: true,
+      modelHandover: false,
     },
   },
   grok: {
@@ -551,6 +605,7 @@ export const ENGINE_REGISTRY = {
       // The user guide documents the `reasoning_effort` session config option
       // (`minimal`, `low`, `medium`, `high`, `xhigh`).
       reasoningLevels: true,
+      modelHandover: true,
       // Measured: the engine answers `protocolVersion: 1` to a client that
       // announces 1.
       acpProtocolVersion: 1,
@@ -605,13 +660,18 @@ export const ENGINE_REGISTRY = {
     // MiniMax Code's own composite model ids, whose `v:` suffix selects the
     // variant. A subscription can expose more; a stale id fails loud at the
     // engine, which is the honest outcome.
+    // Re-measured on 0.6.12 (2026-10-21): the live `session/new` catalog advertises
+    // `MiniMax-M3.1-Flash` and `MiniMax-M3` only, and the `-Preview` id this row used
+    // to carry is refused by the engine as "Model selection is not advertised". The
+    // M2.7 rows went the same way. Thinking variants come first because they are the
+    // only form an effort can be applied to (the M3.1 one has no non-thinking form at
+    // all). A discovery replaces this list at the first step, so this is the
+    // boot-time answer, not a second source of truth.
     models: [
+      { id: 'm:minimax:MiniMax-M3.1-Flash:v:thinking', label: 'M3.1-Flash · thinking' },
       { id: 'm:minimax:MiniMax-M3:v:thinking', label: 'M3 · thinking' },
+      { id: 'm:minimax:MiniMax-M3.1-Flash:v:', label: 'M3.1-Flash' },
       { id: 'm:minimax:MiniMax-M3:v:', label: 'M3' },
-      { id: 'm:minimax:MiniMax-M3.1-Flash-Preview:v:thinking', label: 'M3.1-Flash-Preview · thinking' },
-      { id: 'm:minimax:MiniMax-M3.1-Flash-Preview:v:', label: 'M3.1-Flash-Preview' },
-      { id: 'm:minimax:MiniMax-M2.7-highspeed:v:thinking', label: 'M2.7-highspeed · thinking' },
-      { id: 'm:minimax:MiniMax-M2.7:v:thinking', label: 'M2.7 · thinking' },
     ],
     capabilities: {
       // Measured: `agent_message_chunk` / `agent_thought_chunk` increments, and
@@ -630,6 +690,15 @@ export const ENGINE_REGISTRY = {
       // Measured: a `thinkingEffort` config option
       // (`default`/`low`/`medium`/`high`/`xhigh`/`max`).
       reasoningLevels: true,
+      modelHandover: true,
+      // The same config option's values, re-measured on 0.6.12: `session/new`
+      // advertises exactly these six, and `session/set_config_option` accepts
+      // each of them for a thinking variant.
+      reasoningEfforts: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+      // The effort option is only valid for a `…:v:thinking` pick — a
+      // non-thinking variant is refused by the CLI itself with
+      // "Thinking effort is not advertised for the selected model".
+      reasoningModelSuffix: ':v:thinking',
       // Measured: the engine answers `protocolVersion: 1`.
       acpProtocolVersion: 1,
     },

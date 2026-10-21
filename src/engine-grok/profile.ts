@@ -37,6 +37,7 @@ import type { AcpClient } from '../driver-acp/client.ts'
 import type { AcpEngineProfile } from '../driver-acp/profile.ts'
 import { acpProtocolVersionOf, descriptorOf } from '../engine-registry.ts'
 import { grokAcpArgv } from './process.ts'
+import { grokHandoverEnv } from './model-handover.ts'
 
 /** Grok's model config option id, as its user guide documents it. */
 export const GROK_MODEL_CONFIG_ID = 'model'
@@ -117,6 +118,11 @@ export function grokProfile(bin: string): AcpEngineProfile {
     images: false,
     approve: acpDefaultApproval,
     selectModel: selectGrokModel,
+    // Grok takes a dsh endpoint entirely through its environment (base URL, key,
+    // model), plus a plugin-owned empty `GROK_HOME` so the account's session
+    // token can never ride along — see `./model-handover.ts` for the measured
+    // leak this prevents and the protocol refusal it can raise.
+    handoverEnv: handover => grokHandoverEnv(handover),
     // THE reason grok needs the capability bridges, and the finding that made
     // this engine more than a chat surface: measured, grok runs every shell tool by
     // asking the CLIENT to do it (`terminal/create`) and reads files the same way

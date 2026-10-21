@@ -43,6 +43,16 @@ export interface SessionModelOverride {
   readonly provider: string
   /** Provider-owned model id the selection names. */
   readonly model: string
+  /**
+   * The reasoning effort the same selection carries, in the ENGINE's own
+   * vocabulary, or absent when the pick named none.
+   *
+   * Carried beside the model rather than folded into it because the two are
+   * separate calls on every ACP dialect this plugin speaks
+   * (`session/set_config_option` twice, model then effort), and because an
+   * engine may accept an effort for a model it would reject as a name.
+   */
+  readonly reasoningEffort?: string
 }
 
 /**
@@ -65,7 +75,15 @@ export function currentSelection(
   const pending = projections?.stateOf(session, 'modelSelection')?.pending ?? null
   if (pending !== null) return pending
   const header = session.requestHeader()?.config
-  return header === undefined ? undefined : { provider: header.provider, model: header.model }
+  if (header === undefined) return undefined
+  // The effort rides the header's own call config. Dropping it here would lose a
+  // session's strength the moment its pending selection is consumed — the very
+  // read a driver makes on EVERY step, not just the one that picked it.
+  return {
+    provider: header.provider,
+    model: header.model,
+    ...header.reasoningEffort === undefined ? {} : { reasoningEffort: String(header.reasoningEffort) },
+  }
 }
 
 /**
@@ -86,7 +104,11 @@ export function sessionModelOverride(
 ): SessionModelOverride | undefined {
   if (selection === undefined) return undefined
   if (isHostedProviderRoute(selection.provider)) return undefined
-  return { provider: selection.provider, model: selection.model }
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+  }
 }
 
 /**
@@ -107,6 +129,26 @@ export function sessionModelOverrideOf(
   return sessionModelOverride(
     currentSelection(session, ctx.get('sessionProjections') as SessionProjectionsService | undefined),
   )
+}
+
+/**
+ * The session's own selection, read live from its log through the host's
+ * projection registry.
+ *
+ * The same one read {@link sessionModelOverrideOf} makes, exposed separately
+ * because two different questions are asked of it: "is this a foreign dsh model"
+ * (the override) and "is this one of the engine's OWN catalog models" (see
+ * {@link nativeModelOf}) — and only a caller holding the selection itself can ask
+ * both, and read the reasoning effort beside it.
+ * @param ctx - the driver's context, carrying the session-projection registry.
+ * @param session - the session whose selection is being read.
+ * @returns the current selection, or undefined when the log records none.
+ */
+export function currentSelectionOf(
+  ctx: Context,
+  session: Session,
+): SessionModelSelection | undefined {
+  return currentSelection(session, ctx.get('sessionProjections') as SessionProjectionsService | undefined)
 }
 
 /**
@@ -162,6 +204,40 @@ export function foreignHostedModelRefusal(
   return `this session runs ${engineLabel}, but the selected model "${selection.model}"`
     + ` (${selection.provider}) belongs to another hosted engine's catalog.`
     + ` Pick a model from ${engineLabel}'s own group, or switch this session's engine first.`
+}
+
+/**
+ * The refusal a driver owes when the session picked a model from dsh's OWN
+ * provider catalog and the engine has no way to serve it, or undefined when the
+ * pick is not that case.
+ *
+ * A hosted engine is a closed world: its model lives behind its own endpoint and
+ * credential. Two things can make a real dsh pick servable anyway — an engine
+ * that accepts an endpoint handover (`handoverEnv`, kimi today), and dsh being
+ * able to resolve that endpoint (`resolveModelHandover`). When both hold, the
+ * driver hands the endpoint over and no refusal is owed. When either fails, the
+ * engine is left holding a model id from a vocabulary it does not speak: MiniMax
+ * Code, for one, answers
+ *
+ *   Invalid params: Invalid model config value: MiniMax-M3.1-Flash
+ *
+ * which names neither the real problem (a model from another provider) nor the
+ * way out. The driver refuses BEFORE launching the child and says both.
+ * @param override - the real dsh model selection, or undefined when the pick is
+ *   not one (a hosted seat applies no model at all).
+ * @param engineLabel - the engine's display label, for the message.
+ * @returns the refusal message, or undefined when nothing needs refusing.
+ */
+export function unservableModelRefusal(
+  override: SessionModelOverride | undefined,
+  engineLabel: string,
+): string | undefined {
+  if (override === undefined) return undefined
+  return `this session runs ${engineLabel}, which serves only its own models,`
+    + ` but the selected model "${override.model}" belongs to dsh's "${override.provider}" provider route.`
+    + ` dsh could not hand that route's endpoint to this engine, so the pick cannot take effect.`
+    + ` Choose a model from ${engineLabel}'s own group in the model menu,`
+    + ` or switch this session's engine to in-process and use that model there.`
 }
 
 /**

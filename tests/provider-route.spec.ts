@@ -25,12 +25,16 @@ import {
 } from '../src/agent-preset-ids.ts'
 import {
   DEFAULT_ENGINE_CONTEXT_WINDOW,
+  HOSTED_SUBSCRIPTION_MARKER,
   HostedEngineRouteAdapter,
+  effortLabel,
+  engineGroupName,
+  engineReasoningLadder,
   hostedEngineOfRouteLabel,
   hostedRouteLabelOf,
   isHostedProviderRoute,
 } from '../src/provider-route.ts'
-import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
+import { ENGINE_REGISTRY, type EngineDescriptor } from '../src/engine-registry.ts'
 
 describe('HOSTED_ROUTE_LABEL', () => {
   it('is the ASCII wire label every hosted engine logs', () => {
@@ -241,5 +245,100 @@ describe('HostedEngineRouteAdapter group identity', () => {
     // loop drives was handed an engine label — a wiring bug, not a request.
     const adapter = new HostedEngineRouteAdapter(undefined, owner, ENGINE_REGISTRY[owner].models, ENGINE_REGISTRY[owner].label)
     expect(() => adapter.stream({} as never)).toThrow(new RegExp(`provider "${owner}" is a hosted loop engine route`))
+  })
+})
+
+describe('engineReasoningLadder', () => {
+  /** A real descriptor with one capability overridden, so the table stays valid. */
+  const withCapabilities = (capabilities: Record<string, unknown>): EngineDescriptor =>
+    ({
+      ...ENGINE_REGISTRY.grok,
+      capabilities: { ...ENGINE_REGISTRY.grok.capabilities, ...capabilities },
+    }) as unknown as EngineDescriptor
+
+  it('renders an engine effort value as the label the menu shows', () => {
+    // The engine's own menu spells these the same way; a per-value table would be
+    // one more place a vendor value loses its name.
+    expect(effortLabel('default')).toBe('Default')
+    expect(effortLabel('xhigh')).toBe('Xhigh')
+    expect(effortLabel('max')).toBe('Max')
+  })
+
+  it('declares MiniMax Code\'s six measured levels on its thinking variants only', () => {
+    const ladder = engineReasoningLadder(ENGINE_REGISTRY.minimaxcode)
+    expect(ladder).toBeDefined()
+    // A non-thinking variant is refused by the CLI itself, so it must not offer
+    // an effort the engine would reject.
+    expect(ladder!('m:minimax:MiniMax-M3.1-Flash:v:')).toBeUndefined()
+    expect(ladder!('m:minimax:MiniMax-M3.1-Flash:v:thinking')).toEqual({
+      efforts: [
+        { id: 'default', name: 'Default' },
+        { id: 'low', name: 'Low' },
+        { id: 'medium', name: 'Medium' },
+        { id: 'high', name: 'High' },
+        { id: 'xhigh', name: 'Xhigh' },
+        { id: 'max', name: 'Max' },
+      ],
+      defaultEffort: 'default',
+    })
+  })
+
+  it('answers no ladder for an engine that declares none', () => {
+    // Grok exposes no effort surface this plugin has measured: no ladder means no
+    // effort row, which is the pre-existing behavior.
+    expect(engineReasoningLadder(ENGINE_REGISTRY.grok)).toBeUndefined()
+  })
+
+  it('treats an empty ladder or a suffixless declaration as no ladder', () => {
+    expect(engineReasoningLadder(withCapabilities({ reasoningEfforts: [], reasoningModelSuffix: ':v:thinking' }))).toBeUndefined()
+    expect(engineReasoningLadder(withCapabilities({ reasoningEfforts: ['high'] }))).toBeUndefined()
+    expect(engineReasoningLadder(withCapabilities({ reasoningEfforts: ['high'], reasoningModelSuffix: '' }))).toBeUndefined()
+  })
+
+  it('omits the default effort when the ladder does not name one', () => {
+    // `default` is the engine's own "whatever I would do": without it, dsh must
+    // leave the field absent rather than invent a strength.
+    const ladder = engineReasoningLadder(withCapabilities({
+      reasoningEfforts: ['low', 'high'],
+      reasoningModelSuffix: ':v:thinking',
+    }))
+    expect(ladder!('x:v:thinking')).toEqual({ efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] })
+  })
+})
+
+describe('a hosted route that declares a reasoning ladder', () => {
+  it('resolves the ladder for a thinking model and nothing for the others', async () => {
+    const adapter = new HostedEngineRouteAdapter(
+      undefined,
+      'minimaxcode',
+      [],
+      'MiniMax Code',
+      engineReasoningLadder(ENGINE_REGISTRY.minimaxcode),
+    )
+    const thinking = await adapter.resolveModel('minimaxcode', 'm:minimax:MiniMax-M3:v:thinking')
+    expect(thinking.reasoning).toMatchObject({ defaultEffort: 'default' })
+    expect(thinking.reasoning!.efforts.map(effort => effort.id)).toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max'])
+    // The catalogue entry carries no reasoning field at all; the RESOLVED shape is
+    // the one the menu and `selectModel` validate against.
+    const plain = await adapter.resolveModel('minimaxcode', 'm:minimax:MiniMax-M3:v:')
+    expect(plain).not.toHaveProperty('reasoning')
+    // The shared `default` seat is never a model with an effort.
+    expect(await adapter.resolveModel('minimaxcode', 'default')).not.toHaveProperty('reasoning')
+  })
+
+  it('leaves the field absent for a route built without one', async () => {
+    const adapter = new HostedEngineRouteAdapter(undefined, 'minimaxcode', [], 'MiniMax Code')
+    expect(await adapter.resolveModel('minimaxcode', 'm:minimax:MiniMax-M3:v:thinking')).not.toHaveProperty('reasoning')
+  })
+})
+
+describe('engineGroupName', () => {
+  it('marks an engine group as the subscription it is', () => {
+    // Two groups can carry the same vendor name — a direct provider route and the
+    // CLI's own catalog — and they are not interchangeable.
+    expect(engineGroupName('MiniMax Code')).toBe(`MiniMax Code${HOSTED_SUBSCRIPTION_MARKER}`)
+    expect(engineGroupName('MiniMax Code')).toContain('订阅')
+    // The shared placeholder route keeps its bare name: it is not a subscription.
+    expect(engineGroupName('external')).not.toBe('external')
   })
 })

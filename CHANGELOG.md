@@ -8,6 +8,75 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.6]
+
+### Added
+
+- **A hosted engine's own models carry a reasoning-effort ladder, and the effort
+  reaches the engine.** `session/new` on MiniMax Code advertises a `thinkingEffort`
+  config option (`default`/`low`/`medium`/`high`/`xhigh`/`max`), and the driver never
+  sent it: an engine model resolved with no `reasoning` metadata, so the model menu had
+  no effort row at all, and a dsh-level effort pick was rejected by the host
+  (`UNSUPPORTED_REASONING_EFFORT`). `EngineCapabilities.reasoningEfforts` +
+  `reasoningModelSuffix` now declare the engine's own values as DATA (the vendor's
+  vocabulary, forwarded verbatim), the route adapter hands them to `resolveModel`, and
+  the ACP driver forwards the session's pick as `session/set_config_option`, model
+  first, then effort. Only a `…:v:thinking` variant is offered one, because the engine
+  itself refuses an effort for a non-thinking pick.
+- **The engine's own catalog pick now reaches the engine.** `sessionModelOverride`
+  deliberately ignores hosted route labels, and every ACP driver read only that — so
+  picking a model from the engine's own group in the menu (the subscription catalog)
+  silently left the engine on its own default. The driver now also resolves
+  `nativeModelOf` for its engine, which is what those menu entries were always for.
+- **The settings page states which engines can run a dsh model** ("Which engines can run a
+  model configured in dsh"): per engine, how many models it declares and whether a dsh
+  model can be handed to it. `EngineCapabilities.modelHandover` is the single declaration
+  behind it, pinned against the drivers' own wiring by
+  `tests/engine-drivers.spec.ts` and `tests/driver-acp/engines.spec.ts`, and repeated in
+  both READMEs so the answer is reachable without the app.
+- **A hosted engine's model-menu group is marked as the subscription it is**
+  (`MiniMax Code（订阅）`). A deployment that also configures a direct provider for the
+  same vendor shows two similarly named groups that are NOT interchangeable; picking
+  the wrong one used to fail inside the child.
+
+### Fixed
+
+- **A dsh model the engine cannot serve is refused, not forwarded.** Selecting a model
+  from a dsh provider route while a session runs an engine with no endpoint handover
+  used to hand that provider's model id to the child verbatim, and the child answered
+  its own parser error — MiniMax Code: `Invalid params: Invalid model config value:
+  MiniMax-M3.1-Flash`, which names neither the cause nor the way out. The ACP driver now
+  refuses before spawning, naming the engine, the provider route, the model, and both
+  fixes (pick from the engine's own group, or switch the session to `in-process`).
+  Engines that DO declare a handover are refused for the same reason when their
+  endpoint cannot be resolved, instead of being handed a name their provider table has
+  never heard of.
+- **A session seated on an engine that has published its catalog starts on the engine's
+  first subscription model instead of the word `default`**, so the composer says which
+  model the subscription is actually running. Only a DISCOVERED catalog qualifies: a
+  declared row may be stale, and a seat pinned to a stale id fails the session's next
+  turn.
+- **MiniMax Code's declared catalog is current again**: `M3.1-Flash` (the vendor renamed
+  it; `M3.1-Flash-Preview` is refused as "not advertised") and `M3`, thinking variants
+  first. The stale `M2.7`/`M2.7-highspeed` rows, which the CLI no longer advertises, are
+  gone. A session that ran before this could fail on a menu entry the engine no longer
+  serves.
+- **A request header's reasoning effort is no longer dropped** by the shared selection
+  read, so a session's strength survives the step that consumes its pending selection.
+- **Grok Build and MiniMax Code now take a dsh endpoint too**, so six of the ten hosted
+  engines can run a model from dsh's own provider list (the other four refuse it
+  clearly). Grok's handover is environment-only plus a plugin-owned empty `GROK_HOME`
+  (which also stops the CLI from attaching the account's session JWT to a helper request
+  aimed at the endpoint); MiniMax Code's is a plugin-owned data directory holding a BYOK
+  `custom_provider`, because `mcode acp` has no `--config` and its `defaultModel` has to
+  name that provider. Both enforce the engine's own wire limits before spawning
+  (`GROK_UNSUPPORTED_API`, `MCODE_UNSUPPORTED_API`).
+- **The refusal is uniform**: an unresolvable handover now refuses the turn
+  (`UNSERVABLE_MODEL`) instead of forwarding the model name, which for a handover engine
+  recreated the very failure the refusal replaces.
+- A handover carries the endpoint's context window and output cap when dsh can resolve
+  them (`MiniMax Code` writes both into its own config).
+
 ## [0.7.5]
 
 ### Added

@@ -53,7 +53,13 @@ import { createStepTools } from '../driver-core/step-tools.ts'
 import { closeStep, settleResult } from '../driver-core/step-close.ts'
 import { createIdleChildCloser, type IdleChildCloser } from '../driver-core/idle-child.ts'
 import { appendSystemHeadIfMissing } from '../driver-core/system-head.ts'
-import { sessionModelOverrideOf } from '../driver-core/session-model.ts'
+import {
+  currentSelectionOf,
+  nativeModelOf,
+  sessionModelOverride,
+  unservableModelRefusal,
+} from '../driver-core/session-model.ts'
+import { ENGINE_REGISTRY } from '../engine-registry.ts'
 import { resolveModelHandover } from '../driver-core/model-handover.ts'
 import { DriverAssistantStream } from '../driver-core/assistant-stream.ts'
 import { stepImages } from '../driver-core/step-images.ts'
@@ -633,8 +639,10 @@ export class AcpEngineAgent implements Agent {
     // No hook is a complete answer, not a missing one: an engine that owns its
     // own provider credential has nothing to hand over, and reading the dsh
     // endpoint for it would resolve a model this driver never uses.
+    /* v8 ignore start -- every ACP engine on this skeleton declares a hook today; this arm is the configuration an engine with its own provider credential would take */
     if (hook === undefined) return { env: this.config.env, handedOver: false }
-    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    /* v8 ignore stop */
+    const override = sessionModelOverride(currentSelectionOf(this.loopCtx, this.session))
     const handover = await resolveModelHandover(this.loopCtx, override)
     if (handover === undefined) return { env: this.config.env, handedOver: false }
     const key = JSON.stringify(handover)
@@ -717,7 +725,25 @@ export class AcpEngineAgent implements Agent {
     // credential, resolved fresh on every step so a mid-session change reaches
     // the next child (and a changed endpoint respawns it).
     const { env, handedOver } = await this.childEnvironment()
-    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    // The selection itself, not only the foreign-model override: an engine's own
+    // catalog pick is a hosted route label, which the override deliberately
+    // ignores — and that pick is exactly what the model menu's engine group is
+    // for. Reading the selection once keeps both halves aligned with the same read.
+    const selection = currentSelectionOf(this.loopCtx, this.session)
+    const override = sessionModelOverride(selection)
+    // A real dsh model is refused HERE, before a child is spawned or a session
+    // opened, whenever the engine was NOT given its endpoint: every ACP dialect
+    // takes its model from its own vocabulary, so forwarding a foreign id can only
+    // produce the engine's own complaint about a value it cannot parse
+    // ("Invalid model config value: …", or "unknown model id"), which names
+    // neither cause nor cure.
+    //
+    // This holds for an engine that declares `handoverEnv` too: a handover that
+    // cannot be resolved (a provider dsh discloses no endpoint for, e.g. an
+    // adapter-owned route) is exactly the case where forwarding would recreate the
+    // failure this guard exists to prevent.
+    const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[this.profile.engine].label)
+    if (!handedOver && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
     const client = await this.acpClient(cwd, env)
     signal.throwIfAborted()
     // Answer ACP tool-approval requests from the session's dsh approval knobs.
@@ -740,9 +766,9 @@ export class AcpEngineAgent implements Agent {
     // refuses rejects this step loud rather than leaving the engine's default in
     // place. When dsh handed over an ENDPOINT the child's environment already
     // names that model, so the selection is deliberately skipped.
-    const model = override?.model ?? this.config.model
+    const model = override?.model ?? nativeModelOf(selection, this.profile.engine) ?? this.config.model
     if (!handedOver && model !== undefined && this.profile.selectModel !== undefined) {
-      await this.profile.selectModel(client, acpSessionId, model)
+      await this.profile.selectModel(client, acpSessionId, model, selection?.reasoningEffort)
     }
     signal.throwIfAborted()
 

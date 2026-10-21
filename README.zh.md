@@ -126,6 +126,31 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 
 > **提示**：外部 CLI 引擎（`bundled: false`）直接调度本机已安装的工具，插件本身不捆绑、不替用户安装或登录外部 CLI。请确保对应命令行已在系统中安装就绪。
 
+### 哪些引擎能用 dsh 里配置的模型
+
+每家引擎都**能跑它自己的型号**。而"dsh 里配的模型"（DeepSeek、`llm-pi-ai` 里的第三方、你自己填的 API key）是另一回事：插件必须
+把那个模型的端点与凭据交给引擎，而每家引擎接受这件事的方式不同——有的根本不接受。
+
+| 引擎 | 能用 dsh 模型 | 交接方式 | 备注 |
+|---|---|---|---|
+| **Claude Code** | ✅ | 捆绑 SDK 的 `Options.env` | 端点随 SDK 环境变量走 |
+| **Codex** | ✅ | `codex app-server` 的 `-c` 覆盖项 | 协议必须是 OpenAI 兼容 |
+| **Pi** | ✅ | 插件自建 agent 目录（`PI_CODING_AGENT_DIR`）+ `--api-key` | 绝不写你的 `~/.pi`；该会话看不到 `~/.pi` 里的技能/登录态 |
+| **Kimi Code** | ✅ | `KIMI_MODEL_NAME` / `KIMI_MODEL_BASE_URL` / `KIMI_MODEL_API_KEY` | 纯环境变量，不落盘 |
+| **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + 插件自建空 `GROK_HOME` | **只支持 OpenAI 兼容端点。** 那个空 home 是安全措施：用你自己的 `~/.grok` 时，CLI 会把账号的会话 JWT 附在一个发往该端点的辅助请求上 |
+| **MiniMax Code** | ✅ | 插件自建 data 目录（`MINIMAX_DATA_DIR`）里的 BYOK `custom_provider` | 支持 `anthropic-messages`、`openai-completions`、`openai-responses`；密钥写进 `0700` 目录下的 `0600` 文件（该 CLI 没有环境变量入口），退出时删除 |
+| **Antigravity** | ❌ | — | 只跑自己登录账号里的型号 |
+| **ZCode** | ❌ | — | 只跑自己 GLM 套餐里的型号 |
+| **Qoder CN** | ❌ | — | 只跑自己登录账号里的型号 |
+| **Hermes Agent** | ❌ | — | 只跑自己配置的 provider |
+
+两条后果，选模型前先知道：
+
+- **标 ❌ 的引擎会明确拒绝，不会瞎猜。** 在这些引擎上选 dsh 模型，这一轮会以 `UNSERVABLE_MODEL` 失败，并说明两条出路（从该引擎自己的分组里选，或把会话切回进程内引擎）；它不会把引擎 provider 表里根本没有的型号名塞过去。
+- **标 ✅ 的引擎也可能拒绝某个具体端点。** 上限是引擎自己的协议支持：例如 Grok 的自定义端点只吃 OpenAI 兼容协议，provider 声明成别的就会被 `GROK_UNSUPPORTED_API` 拒绝。
+
+设置页里有一张同样的表（"各引擎能否使用 dsh 里配置的模型"），不翻这个文件也能看到答案。
+
 ---
 
 ---

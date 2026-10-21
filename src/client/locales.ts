@@ -84,6 +84,20 @@ interface LoopEngineFixedKey {
   closeLabel: string
   /** Notice shown while a hosted engine drives the session: the model seat is the engine's own business. */
   hostedEngineModelNotice: string
+  /** Capability table title: which engines can run a dsh model. */
+  matrixTitle: string
+  /** Capability table column: engine name. */
+  matrixEngine: string
+  /** Capability table column: how many models the engine itself advertises. */
+  matrixCatalog: string
+  /** Capability table column: whether a dsh model can be handed to it. */
+  matrixHandover: string
+  /** Capability table cell: yes. */
+  matrixYes: string
+  /** Capability table cell: no. */
+  matrixNo: string
+  /** Capability table footnote: what the answers mean for a session. */
+  matrixNote: string
 }
 
 /**
@@ -127,6 +141,13 @@ export const zh: Record<keyof LoopEngineKey, string> = {
   confirmAction: '切换',
   cancelAction: '取消',
   closeLabel: '关闭',
+  matrixTitle: '各引擎能否使用 dsh 里配置的模型',
+  matrixEngine: '引擎',
+  matrixCatalog: '自带型号',
+  matrixHandover: 'DSH 模型',
+  matrixYes: '可以',
+  matrixNo: '不支持',
+  matrixNote: '「可以」的引擎会把会话所选模型连同 dsh 配的端点与凭据一起接过去（各自的接线方式不影响结果）；「不支持」的引擎只跑自己登录的型号，选 dsh 模型会被明确拒绝，不会把看不懂的型号名塞给它。自带型号一列是启动时声明的数量，运行时发现到的型号会更多——以模型菜单里该引擎分组为准。',
   hostedEngineModelNotice: '本会话由外部引擎驱动：默认用哪个模型由该引擎自己决定。在模型菜单里选一个真实 dsh 模型，会把这个模型的端点与凭据一并交给该引擎使用，让它真的走 dsh 配置的那个端点对话。能不能用取决于该引擎是否支持那个协议，不支持就会由引擎报错。模型菜单里所有托管引擎共用一个 `external` 分组（模型目录是整个 Host 代际共享的，不按会话区分，所以各家引擎折叠成这一条），名下那条「default」表示交回引擎自己的默认，不是 dsh 能提供的模型。',
   sessionNotice: '本会话当前运行的引擎：有活 agent 时就是正在驱动它的那个引擎；没有活 agent 时才看插件的会话级记录，没有记录再回退到它自己的 agent preset。',
   legacySessionNotice: '这是本插件早期版本创建的会话：它当时跑的托管引擎没有被记录。选一个引擎即可在本会话里切换。',
@@ -179,6 +200,13 @@ export const en: Record<keyof LoopEngineKey, string> = {
   confirmAction: 'Switch',
   cancelAction: 'Cancel',
   closeLabel: 'Close',
+  matrixTitle: 'Which engines can run a model configured in dsh',
+  matrixEngine: 'Engine',
+  matrixCatalog: 'Own models',
+  matrixHandover: 'dsh model',
+  matrixYes: 'Yes',
+  matrixNo: 'Not supported',
+  matrixNote: 'A "Yes" engine is handed the session\'s model together with the endpoint and credential dsh configured for it, whichever way that engine takes them. A "Not supported" engine runs only models from its own sign-in: selecting a dsh model is refused with an explanation rather than given an id its provider table has never heard of. The own-models column counts what the build declares; a runtime discovery can advertise more, and the engine\'s group in the model menu is the answer that counts.',
   hostedEngineModelNotice: 'This session is driven by a hosted engine: by default that engine decides the model. Picking a real dsh model in the menu hands the engine that model\'s endpoint and credential too, so the engine really talks to the endpoint dsh configured. Whether it works depends on whether the engine supports that protocol, and one it does not support reports an error from the engine. Every hosted engine shares one provider group, "external", in the model menu (the model catalog is shared across the whole Host generation rather than per session, so the engines collapse into that one group), whose single entry, "default", means "hand the choice back to the engine\'s own default" — not a model dsh can serve.',
   sessionNotice: 'The engine this session runs right now: the agent driving it, when one is live, and otherwise the plugin\'s per-session record (falling back to the session\'s own agent preset when there is no record).',
   legacySessionNotice: 'This session was created by an earlier version of the plugin: the hosted engine it ran was never recorded. Pick any engine to switch it here.',

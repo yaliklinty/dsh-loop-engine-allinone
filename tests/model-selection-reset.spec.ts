@@ -44,7 +44,7 @@ import {
 } from '../src/agent-preset-ids.ts'
 import { ClaudeCodeAgent } from '../src/engine-claude/agent.ts'
 import { apply, type Config } from '../src/index.ts'
-import { ModelSelectionReset } from '../src/model-selection-reset.ts'
+import { ModelSelectionReset, hostedSeat } from '../src/model-selection-reset.ts'
 import { SOURCE_PRESET_ID, enginePresetId } from '../src/preset.ts'
 import { isHostedProviderRoute } from '../src/provider-route.ts'
 import { createLiveLoopConfig, installFakeSettings } from './helpers/fake-settings.ts'
@@ -975,5 +975,37 @@ describe('a deployment default that names an engine route', () => {
     ])
 
     await handle.dispose()
+  })
+})
+
+describe('hostedSeat', () => {
+  it('names the first model the engine published, so the composer shows a subscription model', () => {
+    // The seat is what the composer renders: `default` tells the user nothing about
+    // which model the subscription is running.
+    expect(hostedSeat('minimaxcode', [
+      { id: 'm:minimax:MiniMax-M3.1-Flash:v:thinking', label: 'M3.1-Flash · thinking' },
+      { id: 'm:minimax:MiniMax-M3:v:thinking', label: 'M3 · thinking' },
+    ])).toEqual({
+      provider: 'minimaxcode',
+      model: 'm:minimax:MiniMax-M3.1-Flash:v:thinking',
+    })
+  })
+
+  it('keeps the engine deciding until it has published anything', () => {
+    // A DECLARED row is a guess about a vendor's list; pinning a seat to a stale id
+    // would fail the session's next turn.
+    expect(hostedSeat('minimaxcode', undefined)).toEqual({
+      provider: 'minimaxcode',
+      model: HOSTED_DEFAULT_MODEL,
+    })
+    expect(hostedSeat('minimaxcode', [])).toEqual({
+      provider: 'minimaxcode',
+      model: HOSTED_DEFAULT_MODEL,
+    })
+  })
+
+  it('seats an engine with no catalog of its own on the shared route', () => {
+    // `hermes` declares no models, so its route is the shared placeholder label.
+    expect(hostedSeat('hermes', undefined).provider).toBe(HOSTED_ROUTE_LABEL)
   })
 })

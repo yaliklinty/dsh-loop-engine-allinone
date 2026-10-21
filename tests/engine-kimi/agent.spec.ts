@@ -1388,7 +1388,7 @@ describe('KimiAgent dsh endpoint handover', () => {
     }
   })
 
-  it('injects nothing and warns once when the endpoint cannot be resolved', async () => {
+  it('refuses the turn, once, when the endpoint cannot be resolved', async () => {
     mock.updates.mockReturnValue([text('ok')])
     const ctx = await harness()
     try {
@@ -1397,12 +1397,16 @@ describe('KimiAgent dsh endpoint handover', () => {
       agent.session.append('model/selection', { provider: DSH_ENDPOINT.provider, model: DSH_ENDPOINT.model })
       agent.followup(message('go'))
       await agent.whenIdle()
-      agent.followup(message('again'))
-      await agent.whenIdle()
 
-      expect('KIMI_MODEL_NAME' in specAt(0).env).toBe(false)
-      // With no endpoint, the model name is still asked for by name.
-      expect(mock.client.setModel).toHaveBeenCalledWith('sess_1', DSH_ENDPOINT.model)
+      // No child at all: a name kimi's own catalogue does not carry can only come
+      // back as "unknown model id", which names neither cause nor cure.
+      expect(mock.created).toHaveLength(0)
+      expect(mock.client.setModel).not.toHaveBeenCalled()
+      expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+        type: 'turn/end',
+        data: { reason: { kind: 'error', error: { code: 'UNSERVABLE_MODEL' } } },
+      })
+      // The unresolved-endpoint warning is still reported, once.
       expect(warnSpy).toHaveBeenCalledTimes(1)
     } finally {
       await ctx.fiber.dispose()
@@ -1438,19 +1442,23 @@ describe('KimiAgent dsh endpoint handover', () => {
 })
 
 describe('KimiAgent model selection', () => {
-  it('selects the session-selected dsh model on the ACP session, over the deployment pin', async () => {
+  it('hands the session-selected dsh ENDPOINT to the child, over the deployment pin', async () => {
     mock.updates.mockReturnValue([text('ok')])
     const ctx = await harness({ model: 'deployment-pinned' })
     try {
+      provideDshEndpoint(ctx)
       const { agent } = await ctx.agents.create({ sessionId: SessionId('model-sel-s'), meta: { cwd: process.cwd() } })
       // A harness `session.selectModel` appends a model/selection event.
       agent.session.append('model/selection', { provider: 'meicloud', model: 'deepseek-flash' })
       agent.followup(message('go'))
       await agent.whenIdle()
 
-      // Kimi selects per ACP session: `session/set_model { sessionId, modelId }`.
-      // Kimi takes a bare model id, so the session wins over the deployment pin.
-      expect(mock.client.setModel).toHaveBeenCalledWith('sess_1', 'deepseek-flash')
+      // A disclosed endpoint wins over BOTH the pin and `set_model`: kimi is
+      // pointed at dsh's provider, so the model is named by that environment.
+      const env = (mock.created[0]!.spec as { env: Record<string, string> }).env
+      expect(env.KIMI_MODEL_NAME).toBe('deepseek-flash')
+      expect(env.KIMI_MODEL_BASE_URL).toBe(DSH_ENDPOINT.baseURL)
+      expect(mock.client.setModel).not.toHaveBeenCalled()
     } finally {
       await ctx.fiber.dispose()
     }
@@ -1491,15 +1499,17 @@ describe('KimiAgent model selection', () => {
     const ctx = await harness()
     try {
       const { agent } = await ctx.agents.create({ sessionId: SessionId('model-sel-change-s'), meta: { cwd: process.cwd() } })
-      agent.session.append('model/selection', { provider: 'meicloud', model: 'model-a' })
+      // Kimi's own catalogue: a pick from the engine's group is a hosted route
+      // label, which the driver now resolves to the engine-native id per step.
+      agent.session.append('model/selection', { provider: 'kimi', model: 'k3' })
       agent.followup(message('go'))
       await agent.whenIdle()
-      expect(mock.client.setModel).toHaveBeenNthCalledWith(1, 'sess_1', 'model-a')
+      expect(mock.client.setModel).toHaveBeenNthCalledWith(1, 'sess_1', 'k3')
 
-      agent.session.append('model/selection', { provider: 'meicloud', model: 'model-b' })
+      agent.session.append('model/selection', { provider: 'kimi', model: 'k3-256k' })
       agent.followup(message('again'))
       await agent.whenIdle()
-      expect(mock.client.setModel).toHaveBeenNthCalledWith(2, 'sess_1', 'model-b')
+      expect(mock.client.setModel).toHaveBeenNthCalledWith(2, 'sess_1', 'k3-256k')
     } finally {
       await ctx.fiber.dispose()
     }

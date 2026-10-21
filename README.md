@@ -144,6 +144,41 @@ plugin there, delete that block (from `# -- dsh-loop-engine managed block --` th
 
 > **Note**: For external CLI engines (`bundled: false`), the plugin spawns your locally installed binaries; it does not download or authenticate them automatically. Please install and log in on your host machine beforehand.
 
+### Which engines can run a model configured in DSH
+
+Every hosted engine can run **its own** models. A model from DSH's own provider
+list (DeepSeek, a `llm-pi-ai` provider, an API key you configured in DSH) is a
+different question: the plugin must hand that model's endpoint and credential to
+the engine, and each engine accepts that in its own way — or not at all.
+
+| Engine | A DSH model can be used | How it is handed over | Notes |
+|---|---|---|---|
+| **Claude Code** | ✅ | `Options.env` on the bundled SDK | the endpoint rides the SDK's environment |
+| **Codex** | ✅ | `-c` config overrides on `codex app-server` | wire must be OpenAI-compatible |
+| **Pi** | ✅ | a plugin-owned agent directory (`PI_CODING_AGENT_DIR`) + `--api-key` | the engine's `~/.pi` is never written; that session does not see your `~/.pi` skills/auth |
+| **Kimi Code** | ✅ | `KIMI_MODEL_NAME` / `KIMI_MODEL_BASE_URL` / `KIMI_MODEL_API_KEY` | environment only, nothing written to disk |
+| **Grok Build** | ✅ | `GROK_MODELS_BASE_URL` + `XAI_API_KEY` + a plugin-owned empty `GROK_HOME` | **OpenAI-compatible endpoints only.** The owned home is load-bearing: with your real `~/.grok` the CLI attaches the account's session JWT to a helper request aimed at that endpoint |
+| **MiniMax Code** | ✅ | a plugin-owned data directory (`MINIMAX_DATA_DIR`) holding a BYOK `custom_provider` | supports `anthropic-messages`, `openai-completions`, and `openai-responses`; the key is written to a `0600` file inside a `0700` directory this plugin removes at exit, because this CLI has no environment indirection for it |
+| **Antigravity** | ❌ | — | runs only models from its own sign-in |
+| **ZCode** | ❌ | — | runs only models from its own GLM plan |
+| **Qoder CN** | ❌ | — | runs only models from its own sign-in |
+| **Hermes Agent** | ❌ | — | runs only models from its own configured provider |
+
+Two consequences worth knowing before you pick a model:
+
+- **A "❌" engine refuses rather than guesses.** Selecting a DSH model on one of
+  them fails the turn with `UNSERVABLE_MODEL` and a message naming both ways out
+  (pick a model from the engine's own group, or switch the session to the
+  in-process engine). It does not forward an id the engine's provider table has
+  never heard of.
+- **A "✅" engine can still decline a specific endpoint.** The engine's own
+  protocol support is the limit — Grok's custom-endpoint path is
+  OpenAI-compatible only, for example, and the handover is refused with
+  `GROK_UNSUPPORTED_API` when the provider declares anything else.
+
+The settings page repeats this matrix ("Which engines can run a model configured
+in dsh"), so the answer is reachable without reading this file.
+
 ---
 
 ---

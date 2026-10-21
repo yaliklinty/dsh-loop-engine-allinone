@@ -22,6 +22,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { AcpClient } from '../../src/driver-acp/client.ts'
 import { ENGINE_REGISTRY, regionOf } from '../../src/engine-registry.ts'
 import {
+  MCODE_DEFAULT_EFFORT,
+  MCODE_EFFORT_CONFIG_ID,
   MCODE_MODEL_CONFIG_ID,
   MCODE_PERMISSION_CONFIG_ID,
   mcodePermissionMode,
@@ -173,6 +175,35 @@ describe("MiniMax Code's ACP dialect", () => {
     expect(calls.setConfigOption).toEqual([['sess', MCODE_MODEL_CONFIG_ID, 'm:minimax:MiniMax-M3:v:thinking']])
   })
 
+  it('sets the reasoning effort AFTER the model, because the engine validates it against the pick', async () => {
+    const { client, calls } = fakeClient()
+    await minimaxcodeProfile('mcode').selectModel!(
+      client,
+      'sess',
+      'm:minimax:MiniMax-M3.1-Flash:v:thinking',
+      'xhigh',
+    )
+    // Order is the contract: a non-thinking variant answers "Thinking effort is not
+    // advertised for the selected model", so the model has to land first.
+    expect(calls.setConfigOption).toEqual([
+      ['sess', MCODE_MODEL_CONFIG_ID, 'm:minimax:MiniMax-M3.1-Flash:v:thinking'],
+      ['sess', MCODE_EFFORT_CONFIG_ID, 'xhigh'],
+    ])
+  })
+
+  it('leaves the engine\'s own effort alone for its default level', async () => {
+    const { client, calls } = fakeClient()
+    await minimaxcodeProfile('mcode').selectModel!(
+      client,
+      'sess',
+      'm:minimax:MiniMax-M3:v:thinking',
+      MCODE_DEFAULT_EFFORT,
+    )
+    // Sending `default` is not the same as sending nothing: it would overwrite a
+    // level the engine's session already adopted.
+    expect(calls.setConfigOption).toEqual([['sess', MCODE_MODEL_CONFIG_ID, 'm:minimax:MiniMax-M3:v:thinking']])
+  })
+
   it('maps the approval knob onto the engine\'s own permission mode', () => {
     expect(MCODE_PERMISSION_CONFIG_ID).toBe('permissionMode')
     expect(mcodePermissionMode(sessionWithPolicy('never'))).toBe('bypassPermissions')
@@ -208,5 +239,20 @@ describe("MiniMax Code's ACP dialect", () => {
     const profile = minimaxcodeProfile('mcode')
     expect(profile.approve?.(sessionWithPolicy('never'))).toBe(true)
     expect(profile.approve?.(sessionWithPolicy('ask'))).toBe(false)
+  })
+})
+
+describe('the handover hook', () => {
+  it('answers the data directory the engine was pointed at, and nothing else', () => {
+    const handover = {
+      provider: 'meicloud',
+      model: 'deepseek-flash',
+      baseURL: 'https://ai.example.com/litellm',
+      api: 'openai-completions',
+      apiKey: 'sk-secret',
+    }
+    expect(minimaxcodeProfile('mcode').handoverEnv!(handover)).toEqual({
+      MINIMAX_DATA_DIR: expect.stringContaining('dsh-loop-engine-allinone-mcode'),
+    })
   })
 })

@@ -70,6 +70,18 @@ export interface DshModelHandover {
   readonly api: string | undefined
   /** The resolved credential value; never logged, never evented. */
   readonly apiKey: string
+  /**
+   * The endpoint's context window, when dsh can resolve one.
+   *
+   * Carried because two engines WRITE it into their own configuration
+   * (`MiniMax Code`'s `limit.context`), and an engine that sizes its compaction
+   * from a guess either compacts too late (the request overflows) or too early.
+   * Absent is a normal answer: an adapter that declares no capacity leaves the
+   * engine's own default in place.
+   */
+  readonly contextWindow?: number
+  /** The endpoint's per-request output cap, when dsh declares one. */
+  readonly maxOutputTokens?: number
 }
 
 /**
@@ -117,6 +129,20 @@ export interface ConfigurableProviderAddress {
 export interface LlmDirectoryService {
   /** Every provider route an adapter can activate through configuration. */
   listConfigurableProviders?(): readonly ConfigurableProviderAddress[]
+}
+
+/**
+ * The registry slice that can also describe one exact route's capacity.
+ *
+ * Optional for the same reason as the directory: a minimal profile may serve the
+ * registry without it, and a missing read is "no capacity", not a failure.
+ */
+interface LlmDirectorWithResolve {
+  /** Resolve one exact route's metadata (context window, output cap). */
+  resolveModelInfo?(provider: string, model: string): Promise<{
+    readonly context?: { readonly contextWindow: number }
+    readonly defaultMaxTokens?: number
+  }>
 }
 
 /** The host settings service (`ctx.settings`), as this module uses it. */
@@ -260,12 +286,45 @@ export async function resolveModelHandover(
   if (apiKey === undefined) {
     return refuse(ctx, override, 'no credential resolves for its apiKeyEnv')
   }
+  const capacity = await readCapacity(ctx, override)
   return {
     provider: override.provider,
     model: override.model,
     baseURL: profile.baseURL,
     api: profile.api ?? SHIPPED_ROUTE_APIS[override.provider],
     apiKey,
+    ...capacity,
+  }
+}
+
+/**
+ * Read the endpoint's capacity facts, or answer nothing.
+ *
+ * A read that throws, an adapter that reports no context, and a registry without
+ * the method all mean the same thing to an engine: "use your own default". They
+ * are therefore one answer, and never a reason to refuse a handover that is
+ * otherwise usable — the model is the point, the window is an optimization.
+ * @param ctx - the driver's context, carrying the llm registry.
+ * @param override - the model whose capacity is wanted.
+ * @returns the optional capacity fields, empty when unavailable.
+ */
+async function readCapacity(
+  ctx: Context,
+  override: SessionModelOverride,
+): Promise<{ contextWindow?: number; maxOutputTokens?: number }> {
+  const llm = ctx.get('llm') as LlmDirectorWithResolve | undefined
+  const resolve = llm?.resolveModelInfo
+  if (resolve === undefined) return {}
+  try {
+    const info = await resolve.call(llm, override.provider, override.model)
+    const window = info.context?.contextWindow
+    const output = info.defaultMaxTokens
+    return {
+      ...window === undefined ? {} : { contextWindow: window },
+      ...output === undefined ? {} : { maxOutputTokens: output },
+    }
+  } catch {
+    return {}
   }
 }
 

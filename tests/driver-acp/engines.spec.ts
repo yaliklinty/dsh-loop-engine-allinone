@@ -23,6 +23,10 @@ import { GrokLoop, GROK_ENGINE_LABEL, resolveConfig as resolveGrokConfig } from 
 import { GROK_DISPOSE_GRACE_MS } from '../../src/engine-grok/process.ts'
 import { MINIMAXCODE_DISPOSE_GRACE_MS } from '../../src/engine-minimaxcode/process.ts'
 import { MinimaxcodeLoop, MINIMAXCODE_ENGINE_LABEL } from '../../src/engine-minimaxcode/loop.ts'
+import { grokProfile } from '../../src/engine-grok/profile.ts'
+import { kimiProfile } from '../../src/engine-kimi/profile.ts'
+import { minimaxcodeProfile } from '../../src/engine-minimaxcode/profile.ts'
+import { ENGINE_REGISTRY } from '../../src/engine-registry.ts'
 
 /** A subprocess handle shaped like the seam returns one. */
 function fakeHandle(): SubprocessHandle {
@@ -129,6 +133,25 @@ describe('MinimaxcodeLoop spawn plumbing', () => {
       expect(grok.config.bin).not.toBe(mcode.config.bin)
     } finally {
       await ctx.fiber.dispose()
+    }
+  })
+})
+
+describe('the handover each ACP engine declares', () => {
+  it('matches the capability its registry row publishes', () => {
+    // The settings page reads the registry, the driver reads the profile: a row
+    // that says "yes" while the profile declares no hook would advertise a
+    // handover that can never happen, and the reverse would refuse one that works.
+    const profiles = {
+      kimi: kimiProfile('kimi'),
+      grok: grokProfile('grok'),
+      minimaxcode: minimaxcodeProfile('mcode'),
+    } as const
+    for (const [engine, profile] of Object.entries(profiles)) {
+      const declared = ENGINE_REGISTRY[engine as keyof typeof profiles].capabilities.modelHandover
+      expect(declared).toBe(profile.handoverEnv !== undefined)
+      // Every ACP engine that declares one really does hand something over.
+      expect(declared).toBe(true)
     }
   })
 })

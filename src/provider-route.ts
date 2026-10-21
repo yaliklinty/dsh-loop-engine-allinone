@@ -41,15 +41,88 @@
 import type {
   GenerateOptions,
   LlmModelInfo,
+  LlmModelReasoningInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
   ModelModality,
+  ReasoningEffortId,
   StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
 import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
 import type { HostedEngineId } from './settings.ts'
+
+/**
+ * Marker appended to a hosted engine's model-menu group name.
+ *
+ * The menu carries TWO groups called close to the same thing whenever a
+ * deployment also configures a direct provider for the same vendor (this host:
+ * `dsh-our-free-model` serves a `minimax` group named "MiniMax Code" beside MiniMax
+ * Code's own CLI route). They are not interchangeable — the direct route speaks
+ * HTTP to the vendor, the engine route hands the id to a child process — and
+ * picking the wrong one used to fail deep inside the engine. Naming the engine's
+ * own group for what it is (the subscription the CLI is signed in to) is the
+ * cheap half of telling them apart; the model-menu label slot is the other.
+ */
+export const HOSTED_SUBSCRIPTION_MARKER = '（订阅）'
+
+/**
+ * The model-menu group name one engine's subscription catalog appears under.
+ * @param label - the engine's display label (`MiniMax Code`).
+ * @returns the group name the menu shows.
+ */
+export function engineGroupName(label: string): string {
+  return `${label}${HOSTED_SUBSCRIPTION_MARKER}`
+}
+
+/**
+ * Render one engine effort value as the menu's label: the value with its first
+ * letter capitalized.
+ *
+ * The mapping is deliberately mechanical rather than a per-value table: the
+ * engine's own menu spells these labels the same way (`default` → "Default",
+ * `xhigh` → "Xhigh"), and a table would be one more place a new vendor value
+ * silently loses its name.
+ * @param id - the engine's own effort value.
+ * @returns the label the model menu shows for it.
+ */
+export function effortLabel(id: string): string {
+  return id.charAt(0).toUpperCase() + id.slice(1)
+}
+
+/**
+ * The reasoning ladder one engine's thinking models advertise, or `undefined`
+ * when the engine declares none.
+ *
+ * Returned as a PREDICATE over a model id, not as a boolean on the entry: the
+ * catalog a route publishes is often discovered at runtime (`session/new`), and a
+ * discovered entry carries an id and a label only, so the variant has to be read
+ * off the id (see `EngineCapabilities.reasoningModelSuffix`).
+ *
+ * Both halves of the declaration are required, and an empty ladder is treated as
+ * "none": advertising `reasoning` with no efforts would make dsh reject every
+ * pick (`UNSUPPORTED_REASONING_EFFORT` in `packages/llm/llm/src/index.ts`
+ * `resolveCallWithInfo`, whose `efforts.some(...)` gate would never match).
+ * @param descriptor - the engine whose capabilities describe the ladder.
+ * @returns a model-id predicate for the ladder, or undefined when undeclared.
+ */
+export function engineReasoningLadder(
+  descriptor: EngineDescriptor,
+): ((modelId: string) => LlmModelReasoningInfo | undefined) | undefined {
+  const efforts = descriptor.capabilities.reasoningEfforts
+  const suffix = descriptor.capabilities.reasoningModelSuffix
+  if (efforts === undefined || efforts.length === 0) return undefined
+  if (suffix === undefined || suffix.length === 0) return undefined
+  const ladder: LlmModelReasoningInfo = {
+    efforts: efforts.map(id => ({ id: id as ReasoningEffortId, name: effortLabel(id) })),
+    // `default` is the engine's own "whatever I would do"; when the ladder names
+    // it, it is also what dsh materializes for a pick that chose no effort. When
+    // it does not, dsh must leave the field absent rather than invent a strength.
+    ...efforts.includes('default') ? { defaultEffort: 'default' as ReasoningEffortId } : {},
+  }
+  return modelId => modelId.endsWith(suffix) ? ladder : undefined
+}
 
 /**
  * Context window this plugin declares for the hosted route when a deployment
@@ -220,16 +293,28 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
   private readonly displayName: string
 
   /**
+   * The engine's reasoning ladder, as a predicate over a model id, when the
+   * engine declares one (see {@link engineReasoningLadder}).
+   *
+   * Held as a predicate rather than a map because the model list is a thunk: an
+   * ACP engine's catalog arrives at `session/new`, so a ladder captured over
+   * today's ids would go stale the moment the vendor ships a model.
+   */
+  private readonly reasoningFor: ((modelId: string) => LlmModelReasoningInfo | undefined) | undefined
+
+  /**
    * @param contextWindow - declared context capacity in tokens.
    * @param label - the provider label this adapter serves (a wire value).
    * @param models - the engine-native models to advertise beside `default`.
    * @param displayName - the group name shown in the model menu.
+   * @param reasoningFor - the engine's reasoning ladder, when it declares one.
    */
   constructor(
     contextWindow?: number,
     label: string = HOSTED_ROUTE_LABEL,
     models: readonly EngineModel[] | (() => readonly EngineModel[]) = [],
     displayName: string = HOSTED_ROUTE_NAME,
+    reasoningFor?: (modelId: string) => LlmModelReasoningInfo | undefined,
   ) {
     super()
     this.contextWindow = contextWindow !== undefined && Number.isInteger(contextWindow) && contextWindow > 0
@@ -239,6 +324,7 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
     // A fixed array is accepted and wrapped, so every existing caller keeps working.
     this.modelsOf = typeof models === 'function' ? models : () => models
     this.displayName = displayName
+    this.reasoningFor = reasoningFor
   }
 
   /**
@@ -329,12 +415,18 @@ export class HostedEngineRouteAdapter extends LlmAdapter {
    * @returns the route's entry with its declared context window.
    */
   override resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
+    const reasoning = this.reasoningFor?.(model)
     return Promise.resolve({
       provider,
       id: model,
       name: model,
       inputModalities: HOSTED_MODEL_MODALITIES,
       context: { contextWindow: this.contextWindow },
+      // The ladder rides the RESOLVED shape, not the catalog entry: `LlmModelInfo`
+      // (what `listModels` answers) has no reasoning field at all, while the model
+      // menu and `selectModel`'s validation both read `resolveModelInfo` — so this
+      // is the one place where a hosted engine's effort surface can exist.
+      ...reasoning === undefined ? {} : { reasoning },
     })
   }
 

@@ -70,7 +70,12 @@ import { bootCatalog, liveCatalog } from './model-registry.ts'
 import { enginePresetId, ensureEnginePresetRows, ensureEnginePresets } from './preset.ts'
 import type { SummarizerTarget } from './preset.ts'
 import { HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
-import { DEFAULT_ENGINE_CONTEXT_WINDOW, HostedEngineRouteAdapter } from './provider-route.ts'
+import {
+  DEFAULT_ENGINE_CONTEXT_WINDOW,
+  HostedEngineRouteAdapter,
+  engineGroupName,
+  engineReasoningLadder,
+} from './provider-route.ts'
 import { ROUTER_SERVICES, RouterLoop, type RouterEngine } from './router-loop.ts'
 import {
   resolveEngineRecordPath,
@@ -656,7 +661,12 @@ export function apply(ctx: Context, config: Config): void {
      * message arm stays for a registry that throws an uncoded one. That is a
      * warning, not a failure: the rest of the routes still register.
      */
-    const routes: Array<{ label: string; models: readonly EngineModel[] | (() => readonly EngineModel[]); displayName: string }> = [{
+    const routes: Array<{
+      label: string
+      models: readonly EngineModel[] | (() => readonly EngineModel[])
+      displayName: string
+      reasoningFor?: ReturnType<typeof engineReasoningLadder>
+    }> = [{
       label: HOSTED_ROUTE_LABEL,
       models: [],
       displayName: HOSTED_ROUTE_NAME,
@@ -671,13 +681,30 @@ export function apply(ctx: Context, config: Config): void {
       if (boot.models.length === 0) continue
       // The list is passed as a THUNK so a catalog discovered later (an ACP engine's
       // `session/new`) reaches the menu without re-registering the route.
-      routes.push({ label: engine, models: () => liveCatalog(engine), displayName: descriptor.label })
+      routes.push({
+        label: engine,
+        models: () => liveCatalog(engine),
+        // "MiniMax Code（订阅)" rather than a bare label: a same-named direct
+        // provider group is a different route, and the menu has to say which is
+        // the CLI's own subscription.
+        displayName: engineGroupName(descriptor.label),
+        // The engine's own reasoning ladder, when its registry row declares one.
+        // Handed to the route so the model menu shows an effort row for exactly
+        // the variants the engine accepts an effort for.
+        reasoningFor: engineReasoningLadder(descriptor),
+      })
     }
     for (const route of routes) {
       try {
         registered.push(llm.registerAdapter(
           [route.label],
-          new HostedEngineRouteAdapter(config.engineContextWindow, route.label, route.models, route.displayName),
+          new HostedEngineRouteAdapter(
+            config.engineContextWindow,
+            route.label,
+            route.models,
+            route.displayName,
+            route.reasoningFor,
+          ),
         ))
       } catch (error: unknown) {
         const duplicateAdapter = (error as { code?: unknown } | null)?.code === 'DUPLICATE_ADAPTER'

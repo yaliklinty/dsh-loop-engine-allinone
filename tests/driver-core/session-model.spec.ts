@@ -10,13 +10,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, canonicalHeader, type Session } from '@deepseek-ai/dsh-session'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import {
   currentSelection,
+  currentSelectionOf,
   foreignHostedModelRefusal,
   modelForStep,
   nativeModelOf,
   sessionModelOverride,
   sessionModelOverrideOf,
+  unservableModelRefusal,
 } from '../../src/driver-core/session-model.ts'
 import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
 import { hostedRouteLabelOf } from '../../src/provider-route.ts'
@@ -56,6 +59,14 @@ afterEach(async () => {
 function logHeader(session: Session, provider: string, model: string): void {
   session.append('request/header', {
     header: canonicalHeader({ config: { provider, model } }),
+    reason: 'initial',
+  })
+}
+
+/** Log a request header that also carries an effort, the shape a routed call has. */
+function logHeaderWithEffort(session: Session, provider: string, model: string, effort: string): void {
+  session.append('request/header', {
+    header: canonicalHeader({ config: { provider, model, reasoningEffort: ReasoningEffortId(effort) } }),
     reason: 'initial',
   })
 }
@@ -213,5 +224,58 @@ describe('foreignHostedModelRefusal: a pick from another engine’s catalog', ()
       if (ENGINE_REGISTRY[engine].models !== undefined) continue
       expect(foreignHostedModelRefusal({ provider: engine, model: 'x' }, 'agy', label)).toBeUndefined()
     }
+  })
+})
+
+describe('the reasoning effort beside a selection', () => {
+  it('is read back from the logged header, which is where a routed call leaves it', async () => {
+    const { session, projections } = await boot(true)
+    logHeaderWithEffort(session, 'minimaxcode', 'm:minimax:MiniMax-M3:v:thinking', 'high')
+    // Dropping it here would lose a session's strength the moment its pending
+    // selection is consumed — the read a driver makes on EVERY step.
+    expect(currentSelection(session, projections)).toEqual({
+      provider: 'minimaxcode',
+      model: 'm:minimax:MiniMax-M3:v:thinking',
+      reasoningEffort: 'high',
+    })
+  })
+
+  it('rides the override so a driver can forward it to the engine', async () => {
+    expect(sessionModelOverride({ provider: 'minimax', model: 'MiniMax-M3.1-Flash', reasoningEffort: 'low' }))
+      .toEqual({ provider: 'minimax', model: 'MiniMax-M3.1-Flash', reasoningEffort: 'low' })
+    // Absent stays absent: an engine's own default is not a strength to assert.
+    expect(sessionModelOverride({ provider: 'minimax', model: 'MiniMax-M3.1-Flash' }))
+      .toEqual({ provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
+  })
+
+  it('is readable through the context-bound helper the drivers call', async () => {
+    const { ctx, session } = await boot(true)
+    session.append('model/selection', {
+      provider: 'minimaxcode',
+      model: 'm:minimax:MiniMax-M3:v:thinking',
+      reasoningEffort: ReasoningEffortId('xhigh'),
+    })
+    expect(currentSelectionOf(ctx, session)).toMatchObject({ reasoningEffort: 'xhigh' })
+  })
+})
+
+describe('unservableModelRefusal', () => {
+  it('says nothing when the pick is not a dsh model at all', () => {
+    // A hosted seat applies no model, so there is nothing to refuse.
+    expect(unservableModelRefusal(undefined, 'MiniMax Code')).toBeUndefined()
+  })
+
+  it('names the engine, the provider route, the model, and both ways out', () => {
+    const message = unservableModelRefusal(
+      { provider: 'minimax', model: 'MiniMax-M3.1-Flash' },
+      'MiniMax Code',
+    )
+    // The engine's own complaint ("Invalid model config value: …") names neither
+    // cause nor cure; this one has to name both.
+    expect(message).toContain('MiniMax Code')
+    expect(message).toContain('"MiniMax-M3.1-Flash"')
+    expect(message).toContain('"minimax"')
+    expect(message).toContain("MiniMax Code's own group")
+    expect(message).toContain('in-process')
   })
 })

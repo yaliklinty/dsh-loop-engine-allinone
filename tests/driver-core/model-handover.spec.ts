@@ -259,3 +259,47 @@ describe('resolveModelHandover', () => {
     expect(message).toContain('no credential resolves')
   })
 })
+
+describe('the capacity a handover carries', () => {
+  /** Mount the seams plus a registry that can describe one route's capacity. */
+  function mountWithCapacity(resolveModelInfo: unknown): Context {
+    return mount({
+      providers: [address('meicloud', 'llm-pi-ai')],
+      section: { providers: { meicloud: profile() } },
+      credentials: { resolve: () => Promise.resolve({ value: 'sk-secret' }) },
+      directory: { listConfigurableProviders: () => [address('meicloud', 'llm-pi-ai')], resolveModelInfo },
+    })
+  }
+
+  it('carries the endpoint\'s window and output cap when the registry answers them', async () => {
+    // MiniMax Code writes both into its own config: without them the engine sizes
+    // its compaction from a guess.
+    const ctx = mountWithCapacity(() => Promise.resolve({
+      context: { contextWindow: 128000 },
+      defaultMaxTokens: 8192,
+    }))
+    const handover = await resolveModelHandover(ctx, OVERRIDE)
+    expect(handover).toMatchObject({ contextWindow: 128000, maxOutputTokens: 8192 })
+  })
+
+  it('carries only what the registry answered', async () => {
+    const windowOnly = await resolveModelHandover(mountWithCapacity(() => Promise.resolve({ context: { contextWindow: 64000 } })), OVERRIDE)
+    expect(windowOnly).toMatchObject({ contextWindow: 64000 })
+    expect(windowOnly).not.toHaveProperty('maxOutputTokens')
+    const empty = await resolveModelHandover(mountWithCapacity(() => Promise.resolve({})), OVERRIDE)
+    expect(empty).not.toHaveProperty('contextWindow')
+    expect(empty).not.toHaveProperty('maxOutputTokens')
+  })
+
+  it('leaves capacity absent when the registry cannot describe the route', async () => {
+    // Three ways to answer "I cannot": no method, a null context, and a throw. All
+    // three mean "the engine keeps its own default", never a refused handover.
+    const noMethod = await resolveModelHandover(mountWithCapacity(undefined), OVERRIDE)
+    expect(noMethod).not.toHaveProperty('contextWindow')
+    const nullContext = await resolveModelHandover(mountWithCapacity(() => Promise.resolve({ context: undefined })), OVERRIDE)
+    expect(nullContext).not.toHaveProperty('contextWindow')
+    const thrown = await resolveModelHandover(mountWithCapacity(() => Promise.reject(new Error('not routable'))), OVERRIDE)
+    expect(thrown).toMatchObject({ model: 'deepseek-flash' })
+    expect(thrown).not.toHaveProperty('contextWindow')
+  })
+})

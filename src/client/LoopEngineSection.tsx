@@ -27,6 +27,7 @@ import type { LoopEngineId } from '../agent-preset-ids.ts'
 import { isHostedEngine, LOOP_ENGINE_IDS } from '../agent-preset-ids.ts'
 import type { en } from './locales.ts'
 import { engineLabelKey } from './locales.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS } from '../engine-registry.ts'
 
 /** Injected dependencies of {@link LoopEngineSection} (slot `inject`). */
 export interface LoopEngineSectionInjected {
@@ -110,6 +111,38 @@ const notice: CSSProperties = {
   margin: 0,
   fontSize: 12,
   color: 'var(--dsw-alias-label-secondary)',
+}
+
+/** The capability table: a quiet block under the toggles, not a card of its own. */
+const matrixBlock: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  marginTop: 4,
+}
+
+const matrixTitle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  fontWeight: 600,
+  color: 'var(--dsw-alias-label-primary)',
+}
+
+const matrixTable: CSSProperties = {
+  borderCollapse: 'collapse',
+  fontSize: 12,
+  color: 'var(--dsw-alias-label-secondary)',
+}
+
+const matrixHead: CSSProperties = {
+  textAlign: 'start',
+  fontWeight: 500,
+  padding: '2px 16px 2px 0',
+  borderBottom: '1px solid var(--dsw-alias-border-l2)',
+}
+
+const matrixCell: CSSProperties = {
+  padding: '2px 16px 2px 0',
 }
 
 const error: CSSProperties = {
@@ -232,6 +265,35 @@ export function LoopEngineSection(props: LoopEngineSectionProps): JSX.Element {
         />
         {t('showEngineBadgeLabel')}
       </label>
+      <section aria-label={t('matrixTitle')} style={matrixBlock}>
+        <h4 style={matrixTitle}>{t('matrixTitle')}</h4>
+        <table style={matrixTable}>
+          <thead>
+            <tr>
+              <th style={matrixHead}>{t('matrixEngine')}</th>
+              <th style={matrixHead}>{t('matrixCatalog')}</th>
+              <th style={matrixHead}>{t('matrixHandover')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {HOSTED_ENGINE_IDS.map((id) => {
+              const row = ENGINE_REGISTRY[id]
+              const declared = 'models' in row ? row.models.length : 0
+              return (
+                <tr key={id} data-engine={id}>
+                  <td style={matrixCell}>{t(engineLabelKey(id))}</td>
+                  <td style={matrixCell}>{declared === 0 ? '—' : String(declared)}</td>
+                  <td style={matrixCell}>
+                    {row.capabilities.modelHandover ? t('matrixYes') : t('matrixNo')}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <p style={notice}>{t('matrixNote')}</p>
+      </section>
+
       <Modal
         open={pending !== null}
         onClose={cancelSwitch}

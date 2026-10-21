@@ -19,7 +19,14 @@ import {
   modelsFromAcpConfigOptions,
   parseKimiConfigModels,
 } from '../src/model-discovery.ts'
-import { bootCatalog, catalogReport, discoverKimiCatalog, liveCatalog, recordDiscoveredCatalog } from '../src/model-registry.ts'
+import {
+  bootCatalog,
+  catalogReport,
+  discoverKimiCatalog,
+  discoveredCatalog,
+  liveCatalog,
+  recordDiscoveredCatalog,
+} from '../src/model-registry.ts'
 import { ENGINE_REGISTRY } from '../src/engine-registry.ts'
 
 /** Run `body` with `KIMI_CODE_HOME` pointing at a fresh scratch directory. */
@@ -156,6 +163,19 @@ describe('the live registry', () => {
     const after = liveCatalog('minimaxcode')
     expect(after).toEqual([{ id: 'fresh-model', label: 'Fresh' }])
     expect(before).not.toEqual(after)
+  })
+
+  it('separates what the engine CONFIRMED from what this plugin declared', () => {
+    // The seat may only name a model the engine itself published: a declared row can
+    // be stale, and a stale seat fails the session's next turn.
+    recordDiscoveredCatalog('minimaxcode', [{ id: 'confirmed-model', label: 'Confirmed' }])
+    expect(discoveredCatalog('minimaxcode')).toEqual([{ id: 'confirmed-model', label: 'Confirmed' }])
+    // An engine that has published nothing answers nothing, even when it declares a
+    // catalog — `liveCatalog` is the read that falls back.
+    // Codex declares its ids from the bundled binary and no test here discovers it,
+    // so it is the clean "declared but not published" case.
+    expect(discoveredCatalog('codex')).toBeUndefined()
+    expect(liveCatalog('codex').length).toBeGreaterThan(0)
   })
 
   it('ignores an empty discovery, so a failed probe cannot blank the menu', () => {
