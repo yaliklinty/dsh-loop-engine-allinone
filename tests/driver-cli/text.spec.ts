@@ -45,6 +45,19 @@ describe('runText', () => {
     expect(result).toEqual({ stdout: '', stderr: '', exitCode: null })
   })
 
+  it('decodes a Buffer chunk as UTF-8', async () => {
+    const result = await runText({
+      transport: {
+        stdin: undefined,
+        stdout: Readable.from([Buffer.from('PONG', 'utf8')]),
+        stderr: Readable.from([]),
+        done: Promise.resolve({ exitCode: 0 }),
+        terminate: () => {},
+      },
+    })
+    expect(result.stdout).toBe('PONG')
+  })
+
   it('writes and closes stdin when a payload is given', async () => {
     let ended = false
     const written: string[] = []

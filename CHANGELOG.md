@@ -10,6 +10,20 @@ Nothing yet.
 
 ## [0.7.8]
 
+### Added
+
+- **ZCode and Hermes Agent now stream structured events, so their tool calls are
+  visible.** ZCode's `-p` has an undocumented `--output-format stream-json`
+  rendering (the one its desktop app consumes): text/reasoning deltas, a
+  `tool_call` event with the real input, `tool.updated` results and a terminal
+  `turn.completed` envelope. Hermes' `chat -q … --oneshot --format stream-json`
+  is the documented equivalent (`system`/`text`/`tool_use`/`tool_result`/`result`
+  in `hermes_cli/stream_json.py`). Both drivers now map those streams instead of
+  reading the final printed answer, so a tool-using turn produces the same
+  assistant/tool/result cards every other engine does. Measured live on ZCode
+  against a tool-calling mock: `tool/call` carried
+  `{"command":"echo TOOLPROBE",…}` and `tool/result` carried `TOOLPROBE`.
+
 ### Fixed
 
 - **CLI tool cards show their real arguments and output again.** MiniMax Code

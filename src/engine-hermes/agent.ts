@@ -23,16 +23,41 @@ import type { HostedEngineId } from '../engine-registry.ts'
 import { ENGINE_REGISTRY } from '../engine-registry.ts'
 import { CliHostedAgent, type CliAgentHost } from '../driver-cli/cli-agent.ts'
 import type { SinkPosition } from '../driver-cli/session-sink.ts'
-import { runText, textRunOutcome } from '../driver-cli/text.ts'
+import { runNdjson } from '../driver-cli/ndjson.ts'
+import type { CliFrame } from '../driver-cli/frames.ts'
 import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
 import { resolveModelHandover } from '../driver-core/model-handover.ts'
 import { sessionModelOverrideOf, unservableModelRefusal } from '../driver-core/session-model.ts'
+import { mapHermesDocument, newHermesRun } from './frames.ts'
 import type { HermesSpawnSpec } from './process.ts'
 import { hermesSpawnRequest } from './process.ts'
 import { hermesHandover } from './model-handover.ts'
 import { LlmError } from '@deepseek-ai/dsh-llm'
+
+
+/** Read a child's stderr to EOF; an absent stream is the empty string. */
+async function readStderr(stream: NodeJS.ReadableStream | undefined): Promise<string> {
+  /* v8 ignore start -- the subprocess seam always supplies stderr */
+  if (stream === undefined) return ''
+  /* v8 ignore stop */
+  let text = ''
+  for await (const chunk of stream) text += String(chunk)
+  return text
+}
+
+/** Await a child's exit without letting a rejected wait replace the engine's verdict. */
+async function exitCodeOf(done: Promise<unknown>): Promise<number | null | undefined> {
+  try {
+    const value = await done as { exitCode?: number | null } | undefined
+    return value?.exitCode
+  } catch {
+    /* v8 ignore start -- a killed child is reported by the step's own outcome */
+    return undefined
+    /* v8 ignore stop */
+  }
+}
 
 /** Deployment-resolved configuration for the Hermes engine. */
 export interface ResolvedHermesConfig {
@@ -104,18 +129,27 @@ export class HermesAgent extends CliHostedAgent {
       reasoning: this.config.reasoning,
       signal,
     }
-    const result = await runText({ transport: this.spawn(hermesSpawnRequest(spec)) })
-    const outcome = textRunOutcome(result)
-    if (outcome.kind === 'failed') {
-      // Thrown rather than committed as an empty answer: the turn's own ending
-      // must say the engine failed, and the message is the engine's own stderr.
-      throw new Error(outcome.message)
+    const transport = this.spawn(hermesSpawnRequest(spec))
+    const run = newHermesRun()
+    const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
+    const result = await runNdjson(
+      { transport, map: document => mapHermesDocument(document, accept, run) },
+      /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
+      () => {},
+      /* v8 ignore stop */
+    )
+    const [stderr, code] = await Promise.all([
+      readStderr(transport.stderr),
+      exitCodeOf(transport.done),
+    ])
+    if (result.parsed === 0) {
+      const detail = stderr.trim()
+      const message = code !== undefined && code !== 0
+        ? detail !== '' ? detail : `hermes exited with code ${code}`
+        : `hermes produced no stream-json on its protocol channel`
+          + `${result.lastUnparsed === undefined ? '' : `; last line: ${result.lastUnparsed.slice(0, 200)}`}`
+      this.sink.accept({ kind: 'error', message }, position)
     }
-    // A plain-text engine reports no separate reasoning block, so the whole
-    // answer is text. `commitWholeMessage` gives it the same durable shape a
-    // streaming engine's answer has — one assistant message with a timed (here
-    // empty) stream — so the transcript is indistinguishable to a later replay.
-    this.sink.commitWholeMessage(outcome.text, undefined, position)
     const finished = this.sink.finish(position)
     if (finished.kind === 'failed') throw new Error(finished.message)
     return { kind: 'completed' }

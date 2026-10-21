@@ -2,11 +2,11 @@
  * ZCode agent: one `zcode -p "prompt"` child per dsh step, with the durable
  * session log as the sole source of model context.
  *
- * Like the Hermes driver this reads stdout as a finished answer, and the reason
- * is the same shape of fact recorded in `./process.ts`: the structured
- * app-server surface exists but its request parameter shape could not be probed,
- * so the driver uses the surface that is verified to reach the model rather than
- * guessing a protocol.
+ * The driver reads ZCode's `--output-format stream-json` event stream
+ * (`./frames.ts`), so assistant text, reasoning, tool calls/results and usage
+ * all reach the durable log. The JSON-RPC app-server is still unused: its
+ * request shapes remain unprobed, while this one-shot stream is the same
+ * structured surface the desktop app consumes.
  *
  * ZCode additionally needs its provider catalog located: run outside the desktop
  * app the bundled CLI refuses to start a turn until
@@ -28,7 +28,8 @@ import type { HostedEngineId } from '../engine-registry.ts'
 import { ENGINE_REGISTRY } from '../engine-registry.ts'
 import { CliHostedAgent, type CliAgentHost } from '../driver-cli/cli-agent.ts'
 import type { SinkPosition } from '../driver-cli/session-sink.ts'
-import { runText, textRunOutcome } from '../driver-cli/text.ts'
+import { runNdjson } from '../driver-cli/ndjson.ts'
+import type { CliFrame } from '../driver-cli/frames.ts'
 import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import type { CliSpawnCapability } from '../driver-cli/transport.ts'
 import { engineSlashPrompt, serializeHistory } from '../driver-core/prompt.ts'
@@ -40,8 +41,32 @@ import {
   removeZcodePersonalProviderConfig,
   writeZcodePersonalProviderConfig,
 } from './model-handover.ts'
+import { mapZcodeDocument, newZcodeRun } from './frames.ts'
 import type { ZcodeSpawnSpec } from './process.ts'
 import { zcodeArgvPrefix, zcodeBuiltinProviderConfig, zcodeMode, zcodeSpawnRequest } from './process.ts'
+
+
+/** Read a child's stderr to EOF; an absent stream is the empty string. */
+async function readStderr(stream: NodeJS.ReadableStream | undefined): Promise<string> {
+  /* v8 ignore start -- the subprocess seam always supplies stderr */
+  if (stream === undefined) return ''
+  /* v8 ignore stop */
+  let text = ''
+  for await (const chunk of stream) text += String(chunk)
+  return text
+}
+
+/** Await a child's exit without letting a rejected wait replace the engine's verdict. */
+async function exitCodeOf(done: Promise<unknown>): Promise<number | null | undefined> {
+  try {
+    const value = await done as { exitCode?: number | null } | undefined
+    return value?.exitCode
+  } catch {
+    /* v8 ignore start -- a killed child is reported by the step's own outcome */
+    return undefined
+    /* v8 ignore stop */
+  }
+}
 
 /** Deployment-resolved configuration for the ZCode engine. */
 export interface ResolvedZcodeConfig {
@@ -120,10 +145,29 @@ export class ZcodeAgent extends CliHostedAgent {
         mode: zcodeMode(sessionSandboxMode(this.session.snapshotEvents()) === 'danger-full-access'),
         signal,
       }
-      const result = await runText({ transport: this.spawn(zcodeSpawnRequest(spec, this.config.providerConfig)) })
-      const outcome = textRunOutcome(result)
-      if (outcome.kind === 'failed') throw new Error(outcome.message)
-      this.sink.commitWholeMessage(outcome.text, undefined, position)
+      const transport = this.spawn(zcodeSpawnRequest(spec, this.config.providerConfig))
+      const run = newZcodeRun()
+      const accept = (frame: CliFrame): void => { this.sink.accept(frame, position) }
+      const result = await runNdjson(
+        { transport, map: document => mapZcodeDocument(document, accept, run) },
+        /* v8 ignore start -- the mapper pushes frames straight to `accept` rather than returning them, so this collector is never called; the run signature requires one */
+        () => {},
+        /* v8 ignore stop */
+      )
+      const [stderr, code] = await Promise.all([
+        readStderr(transport.stderr),
+        exitCodeOf(transport.done),
+      ])
+      if (result.parsed === 0) {
+        // A child that printed no event line either failed at startup (its
+        // stderr is the diagnostic) or spoke a rendering we do not understand.
+        const detail = stderr.trim()
+        const message = code !== undefined && code !== 0
+          ? detail !== '' ? detail : `zcode exited with code ${code}`
+          : `zcode produced no stream-json on its protocol channel`
+            + `${result.lastUnparsed === undefined ? '' : `; last line: ${result.lastUnparsed.slice(0, 200)}`}`
+        this.sink.accept({ kind: 'error', message }, position)
+      }
       const finished = this.sink.finish(position)
       if (finished.kind === 'failed') throw new Error(finished.message)
       return { kind: 'completed' }

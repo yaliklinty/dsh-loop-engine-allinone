@@ -91,13 +91,13 @@ describe('hermesOnPath', () => {
 })
 
 describe('hermesArgv', () => {
-  it('passes the prompt as the -z argument', () => {
-    expect(hermesArgv(spec())).toEqual(['hermes', HERMES_PROMPT_FLAG, 'say PONG'])
+  it('passes the prompt to `chat -q` with the stream-json format', () => {
+    expect(hermesArgv(spec())).toEqual(['hermes', 'chat', HERMES_PROMPT_FLAG, 'say PONG', '--oneshot', '--format', 'stream-json'])
   })
 
   it('appends the pinned model and reasoning level', () => {
     expect(hermesArgv(spec({ model: 'glm-4', reasoning: 'high' })))
-      .toEqual(['hermes', HERMES_PROMPT_FLAG, 'say PONG', '-m', 'glm-4', '--reasoning', 'high'])
+      .toEqual(['hermes', 'chat', HERMES_PROMPT_FLAG, 'say PONG', '--oneshot', '--format', 'stream-json', '-m', 'glm-4', '--reasoning', 'high'])
   })
 })
 
@@ -144,7 +144,7 @@ describe('the argv a handover adds', () => {
       bin: 'hermes', prompt: 'hi', cwd: '.', env: {}, model: 'deepseek-flash',
       provider: 'openai', reasoning: undefined, signal: new AbortController().signal,
     }
-    expect(hermesArgv(spec)).toEqual(['hermes', '-z', 'hi', '--provider', 'openai', '-m', 'deepseek-flash'])
+    expect(hermesArgv(spec)).toEqual(['hermes', 'chat', '-q', 'hi', '--oneshot', '--format', 'stream-json', '--provider', 'openai', '-m', 'deepseek-flash'])
   })
 
   it('leaves the flags out when nothing was handed over', () => {
@@ -152,6 +152,6 @@ describe('the argv a handover adds', () => {
       bin: 'hermes', prompt: 'hi', cwd: '.', env: {}, model: undefined,
       provider: undefined, reasoning: 'high', signal: new AbortController().signal,
     }
-    expect(hermesArgv(spec)).toEqual(['hermes', '-z', 'hi', '--reasoning', 'high'])
+    expect(hermesArgv(spec)).toEqual(['hermes', 'chat', '-q', 'hi', '--oneshot', '--format', 'stream-json', '--reasoning', 'high'])
   })
 })

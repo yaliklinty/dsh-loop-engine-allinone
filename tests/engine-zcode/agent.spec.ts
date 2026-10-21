@@ -123,6 +123,14 @@ function types(session: Session): string[] {
     .filter(type => !type.startsWith('agent/inbox/'))
 }
 
+/** The minimal structured stream: a text delta and the terminal envelope. */
+function zstream(text: string): string {
+  return [
+    JSON.stringify({ type: 'model.streaming', payload: { kind: 'text_delta', delta: text } }),
+    JSON.stringify({ type: 'turn.completed', payload: { response: text, resultType: 'success', usage: { inputTokens: 3, outputTokens: 2 } } }),
+  ].join('\n') + '\n'
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -130,7 +138,7 @@ beforeEach(() => {
 describe('one completed step', () => {
   it('spawns `zcode -p` with the prompt, the mode and the provider catalog', async () => {
     const { ctx, session, agent, spawned } = await agentWith(
-      { stdout: 'PONG\n' },
+      { stdout: zstream('PONG\n') },
       { cwd: '/work', config: { model: 'glm-5', providerConfig: '/app/zcode-builtin.json', env: { A: '1' } } },
     )
     try {
@@ -176,7 +184,7 @@ describe('one completed step', () => {
   })
 
   it('runs `yolo` when the session has full access', async () => {
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, spawned } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work' })
     try {
       // The mode is derived from the session's own permission knobs, not a flag.
       agent.session.append('sandbox/mode', { mode: 'danger-full-access' } as never)
@@ -191,7 +199,7 @@ describe('one completed step', () => {
   it('never forwards a pinned model, which this CLI cannot accept', async () => {
     // Measured against 0.16.9: the flag is rejected outright. Keeping it out of
     // argv is what makes a deployment-level `model` label harmless.
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work', config: { model: 'glm-5' } })
+    const { ctx, agent, spawned } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work', config: { model: 'glm-5' } })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -205,7 +213,7 @@ describe('one completed step', () => {
     // The whole point of `-p <prompt>`: a prompt with spaces and newlines must
     // not be re-split by a shell. Nothing here goes through a shell, and this
     // pins that.
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, spawned } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work' })
     try {
       agent.followup(userMessage('line one\nline two  with  spaces'))
       await agent.whenIdle()
@@ -223,7 +231,7 @@ describe('what the driver refuses rather than degrades', () => {
   it('refuses a step that carries images, naming the engine and the action', async () => {
     // ZCode declares `images: false`. Dropping the picture and sending the text
     // would look to the user like the engine read it.
-    const { ctx, agent, spawned, session } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, spawned, session } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work' })
     try {
       const withImage = createUserMessage({
         content: [
@@ -247,7 +255,7 @@ describe('what the driver refuses rather than degrades', () => {
   })
 
   it('refuses a step with no working directory', async () => {
-    const { ctx, agent, spawned, session } = await agentWith({ stdout: 'ok' }, { cwd: undefined })
+    const { ctx, agent, spawned, session } = await agentWith({ stdout: zstream('ok') }, { cwd: undefined })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -292,14 +300,14 @@ describe('what the driver refuses rather than degrades', () => {
     }
   })
 
-  it('reports a clean exit with no output as "produced no output"', async () => {
+  it('reports a clean exit with no protocol output as a protocol failure', async () => {
     const { ctx, agent, session } = await agentWith({ stdout: '   \n', exitCode: 0 }, { cwd: '/work' })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
       const end = session.snapshotEvents().find(event => event.type === 'turn/end')
       expect(end?.data).toMatchObject({
-        reason: { kind: 'error', error: { message: 'the engine produced no output' } },
+        reason: { kind: 'error', error: { message: expect.stringMatching(/produced no stream-json/) } },
       })
     } finally {
       await ctx.fiber.dispose()
@@ -330,7 +338,7 @@ describe('a dsh model handed to ZCode', () => {
     let observedDocument: string | undefined
     const { ctx, session, agent, spawned } = await agentWith(
       {
-        stdout: 'PONG\n',
+        stdout: zstream('PONG\n'),
         // Read while the child is alive: the document is single-use and removed
         // when the step ends.
         onSpawn: request => {
@@ -376,7 +384,7 @@ describe('a dsh model handed to ZCode', () => {
   })
 
   it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
-    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'PONG\n' }, { cwd: '/work' })
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: zstream('PONG\n') }, { cwd: '/work' })
     try {
       ctx.provide('sessionProjections', modelSelectionProjections(ctx))
       session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
@@ -442,7 +450,7 @@ describe('the empty-transcript and empty-answer arms', () => {
     // the log is read before they land. Driving `runStep` directly with an empty
     // history is the only way to reach the guard, and the guard exists so a
     // driver bug shows up as a clear error rather than as an empty argv.
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, spawned } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work' })
     try {
       vi.spyOn(agent as never, 'history' as never).mockReturnValue([] as never)
       await expect(
@@ -462,7 +470,7 @@ describe('the empty-transcript and empty-answer arms', () => {
     // sink is mocked at that one method because the condition it reports on
     // (an answer that never landed) is otherwise only reachable through a log
     // write failure, which would fail the test for the wrong reason.
-    const { ctx, agent, session } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, session } = await agentWith({ stdout: zstream('ok') }, { cwd: '/work' })
     try {
       const sink = (agent as unknown as { sink: { finish: (p: unknown) => unknown } }).sink
       vi.spyOn(sink, 'finish').mockReturnValue({ kind: 'failed', message: 'the engine ended the run without producing a reply' })

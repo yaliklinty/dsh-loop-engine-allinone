@@ -116,9 +116,9 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 | **Pi** | 捆绑 / `jsonrpc` | `~/.pi/agent/auth.json`，或提供方的 API-key 环境变量 |
 | **Kimi Code** | 外部 CLI / `acp` | 安装 `kimi` CLI 并登录（`kimi login`） |
 | **Antigravity** | 外部 CLI / `ndjson` | 安装 `agy` CLI 并完成 Google 账号登录 |
-| **ZCode** | 外部 CLI / `jsonrpc` | 安装 `zcode` CLI；跑它自己的型号需要有效的 GLM Coding Plan，跑 dsh 模型则走交接 |
+| **ZCode** | 外部 CLI / `ndjson` | 安装 `zcode` CLI；跑它自己的型号需要有效的 GLM Coding Plan，跑 dsh 模型则走交接 |
 | **Qoder CN** | 外部 CLI / `ndjson` | 安装 `qoderclicn` CLI 并登录；跑 dsh 模型还要求启动时权益检查能访问 Qoder API（`allow_byok >= 2`） |
-| **Hermes Agent** | 外部 CLI / `text` | 安装 `hermes` CLI 并完成配置（`hermes setup`） |
+| **Hermes Agent** | 外部 CLI / `ndjson` | 安装 `hermes` CLI 并完成配置（`hermes setup`） |
 | **Grok Build** | 外部 CLI / `acp` | 安装 `grok` CLI 并登录过一次（`grok login`） |
 | **MiniMax Code** | 外部 CLI / `acp` | `npm i -g @minimax-ai/code`，然后 `mcode login --region cn\|global`，再 `mcode provider use token-plan` |
 
@@ -171,7 +171,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
 > 裸 `zcode`、没有 catalog，交接跑不起来。
 
 设置页里有一张同样的表（"各引擎能否使用 dsh 里配置的模型"），不翻这个文件也能看到答案。
-> **工具卡片**：协议里带工具事件的引擎（Claude Code、Codex、Pi、Kimi、Grok、MiniMax、Antigravity、Qoder CN）都会把 `tool/call` 与 `tool/result` 连同引擎自己的参数和输出写入日志。**Hermes Agent 与 ZCode 是纯文本引擎**：`-z` / `-p` 只打印最终答案，它们内部的工具调用不会出现在对话里——这是所用接口的限制，不是映射 bug。
+> **工具卡片**：十家托管引擎现在都会把 `tool/call` 与 `tool/result` 连同引擎自己的参数和输出写入日志。Hermes Agent 与 ZCode 走的是它们自己文档化的 JSONL 事件流（`hermes chat -q … --format stream-json` / `zcode -p … --output-format stream-json`），也就是桌面版消费的同一套结构化接口——旧的 `-z` / 纯 `-p` 只打印最终答案。
 
 
 ---

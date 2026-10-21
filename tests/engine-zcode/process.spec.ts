@@ -134,7 +134,7 @@ describe('zcodeMode', () => {
 
 describe('zcodeArgv', () => {
   it('appends the print flag, the mode and no-color to the resolved prefix', () => {
-    expect(zcodeArgv(spec())).toEqual(['zcode', '-p', 'say PONG', '--mode', 'build', '--no-color'])
+    expect(zcodeArgv(spec())).toEqual(['zcode', '-p', 'say PONG', '--mode', 'build', '--no-color', '--output-format', 'stream-json'])
   })
 
   it('never passes a model flag, which CLI 0.16.9 rejects', () => {

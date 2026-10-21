@@ -20,10 +20,10 @@
  *   "usage": { "inputTokens": 10, "outputTokens": 2, … }, "eventCount": 11 }
  * ```
  *
- * (measured on CLI 0.16.9 against a local Anthropic-compatible mock). The driver
- * still treats stdout as the answer rather than parsing that envelope: the
- * documented print mode prints the answer, and a text read is what every
- * `--json`-less run produces.
+ * (measured on CLI 0.16.9 against a local Anthropic-compatible mock). With
+ * `--output-format stream-json` the same run emits a line-delimited event stream
+ * that also carries assistant text deltas, reasoning, tool calls/results and
+ * usage — the form `./frames.ts` maps.
  *
  * ## Where the provider selection actually lives
  *
@@ -194,6 +194,9 @@ export function zcodeArgv(spec: ZcodeSpawnSpec): string[] {
     '-p', spec.prompt,
     '--mode', spec.mode,
     '--no-color',
+    // The structured rendering: text deltas, tool events and usage. The CLI
+    // accepts this flag although `--help` does not list it (measured 0.16.9).
+    '--output-format', 'stream-json',
   ]
 }
 

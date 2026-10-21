@@ -1,11 +1,12 @@
 /**
  * Hermes Agent CLI process projection.
  *
- * Hermes is a Python CLI whose non-interactive surface is a single flag:
- * `hermes -z "prompt"` runs one prompt and prints the answer. There is no
- * structured output mode to speak of — the probe recorded in
- * `docs/probes/hermes.md` found plain text on stdout and nothing else — so this
- * driver reads the whole of stdout as one reply (`src/driver-cli/text.ts`).
+ * Hermes is a Python CLI whose non-interactive surface is `hermes chat -q
+ * "prompt" --oneshot`. With `--format stream-json` that run emits a documented
+ * JSONL event stream (`hermes_cli/stream_json.py`: `system/init`, `text`,
+ * `tool_use`, `tool_result`, `result`) instead of plain prose, which is what
+ * `./frames.ts` maps. The old `-z` shortcut printed only the final answer, so it
+ * could never show the engine's tool calls.
  *
  * ## The environment, which is the interesting part
  *
@@ -33,8 +34,8 @@ import type { CliSpawnRequest } from '../driver-cli/transport.ts'
 /** Grace in milliseconds for Hermes process-tree termination. */
 export const HERMES_DISPOSE_GRACE_MS = 3000
 
-/** The flag that runs one prompt non-interactively. */
-export const HERMES_PROMPT_FLAG = '-z'
+/** The single-query flag of Hermes' `chat` subcommand. */
+export const HERMES_PROMPT_FLAG = '-q'
 
 /** The environment variable holding Hermes' entire state directory. */
 export const HERMES_HOME_ENV = 'HERMES_HOME'
@@ -135,7 +136,10 @@ export interface HermesSpawnSpec {
 export function hermesArgv(spec: HermesSpawnSpec): string[] {
   return [
     spec.bin,
+    'chat',
     HERMES_PROMPT_FLAG, spec.prompt,
+    '--oneshot',
+    '--format', 'stream-json',
     ...spec.provider === undefined ? [] : ['--provider', spec.provider],
     ...spec.model === undefined ? [] : ['-m', spec.model],
     ...spec.reasoning === undefined ? [] : ['--reasoning', spec.reasoning],

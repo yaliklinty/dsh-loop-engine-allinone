@@ -134,9 +134,9 @@ plugin there, delete that block (from `# -- dsh-loop-engine managed block --` th
 | **Pi** | Bundled / `jsonrpc` | `~/.pi/agent/auth.json`, or the provider's API-key variable |
 | **Kimi Code** | External CLI / `acp` | `kimi` CLI installed and authenticated (`kimi login`) |
 | **Antigravity** | External CLI / `ndjson` | `agy` CLI installed and signed in to Google |
-| **ZCode** | External CLI / `jsonrpc` | `zcode` CLI installed; a live GLM Coding Plan for ZCode's own models, or any DSH model through the handover |
+| **ZCode** | External CLI / `ndjson` | `zcode` CLI installed; a live GLM Coding Plan for ZCode's own models, or any DSH model through the handover |
 | **Qoder CN** | External CLI / `ndjson` | `qoderclicn` CLI installed and authenticated; a DSH model additionally needs the startup entitlement check to reach Qoder's API (`allow_byok >= 2`) |
-| **Hermes Agent** | External CLI / `text` | `hermes` CLI installed and configured (`hermes setup`) |
+| **Hermes Agent** | External CLI / `ndjson` | `hermes` CLI installed and configured (`hermes setup`) |
 | **Grok Build** | External CLI / `acp` | `grok` CLI installed and signed in once (`grok login`) |
 | **MiniMax Code** | External CLI / `acp` | `npm i -g @minimax-ai/code`, `mcode login --region cn\|global`, then `mcode provider use token-plan` |
 
@@ -206,12 +206,12 @@ These belong to the CLI, not to the plugin; the handover cannot remove either.
 
 The settings page repeats this matrix ("Which engines can run a model configured
 in dsh"), so the answer is reachable without reading this file.
-> **Tool cards.** Every engine whose protocol carries tool events (Claude Code,
-> Codex, Pi, Kimi, Grok, MiniMax, Antigravity, Qoder CN) streams `tool/call` and
-> `tool/result` with the engine's own arguments and output. **Hermes Agent and
-> ZCode are text engines**: `-z` / `-p` print only the finished answer, so their
-> internal tool calls are not part of the transcript — a limitation of the
-> surface this driver uses, not a mapping bug.
+> **Tool cards.** All ten hosted engines stream `tool/call` and `tool/result`
+> with the engine's own arguments and output. Hermes Agent and ZCode reach this
+> through their documented JSONL event streams (`hermes chat -q … --format
+> stream-json` / `zcode -p … --output-format stream-json`), which are the same
+> structured surfaces their desktop apps consume — the old `-z` / plain `-p`
+> renderings printed only the final answer.
 
 
 ---

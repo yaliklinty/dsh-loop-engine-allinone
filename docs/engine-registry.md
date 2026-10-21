@@ -277,7 +277,7 @@ export type LoopEngineKey = LoopEngineFixedKey & { [K in EngineLocaleKey]: strin
 |---|---|---|---|
 | 行分隔 JSON | `ndjson.ts` | 分帧（行切分、跨 chunk 重组、**保留无换行的末行**、跳过空行） | 所有 ndjson 家族 |
 | Claude `stream-json` 方言 | `stream-json.ts` | `system/init`·`assistant`·`user(tool_result)`·`result` → 帧 | **qoderclicn**（Claude Code 本体及同族 fork 通用） |
-| 纯文本 | `text.ts` | 整段 stdout 即回答；**退出码算答案的一部分** | **hermes**、**zcode** |
+| 纯文本 | `text.ts` | 整段 stdout 即回答；**退出码算答案的一部分** | 已无引擎使用（hermes/zcode 改走 NDJSON 事件流） |
 | JSON-RPC | — （见 §6 TODO） | codex 的 app-server（zcode 已改用 `-p`，见 §5.11） | 待补公共骨架 |
 | `event` 信封 | `engine-agy/frames.ts` | `event` + `step_update`（`step_type`/`state`）+ `result` | **agy**（样板：init 取会话 id、`text_delta` 流式、`step_type:"tool"` 工具） |
 
@@ -487,8 +487,8 @@ provided"`，而 `initialize` 里 `authMethods:[{id:'grok.com'}]` 已经给了�
 
 `api.type` 实测支持 `anthropic-messages` 与 `openai-chat-completions`；
 `llm-pi-ai` 的 `openai-completions` 映射到后者。`-p --json` 的返回形如
-`{sessionId, traceId, turnId, response, usage, …}`，而驱动仍按纯文本读 stdout
-（`--json` 只是用来确认成功形状的）。
+`{sessionId, traceId, turnId, response, usage, …}`；驱动现在用
+`--output-format stream-json` 读事件流（文本增量、工具调用/结果、usage），不再只读 stdout 的最终答案。
 
 **教训**：下"做不到"的结论前，先把 CLI 真正读取的那个文件找出来——名字相近的
 两个配置文件（`config.json` vs `provider_config.json`）足以让一轮实验得出相反答案。

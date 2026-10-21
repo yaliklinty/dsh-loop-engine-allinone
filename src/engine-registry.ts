@@ -503,8 +503,10 @@ export const ENGINE_REGISTRY = {
     authPaths: ['.zcode/v2', '.zcode/cli'],
     localeKey: 'engineZcode',
     capabilities: {
+      // `-p --output-format stream-json` emits one event document per line:
+      // text/reasoning deltas, tool calls/results and a terminal turn envelope.
       streaming: true,
-      protocol: 'jsonrpc',
+      protocol: 'ndjson',
       sessionResume: true,
       permissionModes: ['build', 'edit', 'plan', 'yolo'],
       images: false,
@@ -556,10 +558,10 @@ export const ENGINE_REGISTRY = {
     authPaths: ['auth.json'],
     localeKey: 'engineHermes',
     capabilities: {
-      // `-z PROMPT` prints the finished answer; a probe found no structured
-      // stream, so the driver reads the whole of stdout as one reply.
-      streaming: false,
-      protocol: 'text',
+      // `chat -q PROMPT --oneshot --format stream-json` emits text deltas,
+      // tool_use/tool_result events and a terminal result envelope.
+      streaming: true,
+      protocol: 'ndjson',
       sessionResume: true,
       permissionModes: ['safe-mode', 'yolo'],
       images: false,

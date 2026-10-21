@@ -56,6 +56,14 @@ function fakeSpawn(options: { stdout?: string; stderr?: string; exitCode?: numbe
   return { spawn: spawn as never, spawned }
 }
 
+/** A minimal Hermes stream-json run: one text event plus the terminal result. */
+function hstream(text: string): string {
+  return [
+    JSON.stringify({ type: 'text', text }),
+    JSON.stringify({ type: 'result', exit_code: 0, text, tokens: { input: 3, output: 2 } }),
+  ].join('\n') + '\n'
+}
+
 /** A resolved config with the knobs a deployment may pin. */
 function config(overrides: Partial<ResolvedHermesConfig> = {}): ResolvedHermesConfig {
   return { bin: 'hermes', env: {}, model: undefined, reasoning: undefined, ...overrides }
@@ -92,9 +100,9 @@ async function agentWith(
 }
 
 describe('one completed step', () => {
-  it('spawns `hermes -z` with the serialized prompt and lands the answer', async () => {
+  it('spawns `hermes chat -q` with the serialized prompt and lands the answer', async () => {
     const { ctx, session, agent, spawned } = await agentWith(
-      { stdout: 'PONG\n' },
+      { stdout: hstream('PONG\n') },
       { cwd: '/work', config: { model: 'hermes-4', reasoning: 'high', env: { HERMES_HOME: '/alt' } } },
     )
     try {
@@ -102,10 +110,10 @@ describe('one completed step', () => {
       await agent.whenIdle()
 
       const call = spawned[0]!
-      expect(call.argv.slice(0, 2)).toEqual(['hermes', '-z'])
+      expect(call.argv.slice(0, 2)).toEqual(['hermes', 'chat'])
       // The prompt is the SERIALIZED transcript, not the raw message text.
-      expect(call.argv[2]).toContain('say PONG')
-      expect(call.argv[2]).toContain('<user>')
+      expect(call.argv[3]).toContain('say PONG')
+      expect(call.argv[3]).toContain('<user>')
       expect(call.argv[call.argv.indexOf('-m') + 1]).toBe('hermes-4')
       expect(call.argv[call.argv.indexOf('--reasoning') + 1]).toBe('high')
       expect(call.cwd).toBe('/work')
@@ -131,8 +139,45 @@ describe('one completed step', () => {
     }
   })
 
+  it('lands a tool call and its result from the structured stream', async () => {
+    const stdout = [
+      JSON.stringify({ type: 'tool_use', name: 'bash', tool_call_id: 'call_1', input: { command: 'echo TOOLPROBE' } }),
+      JSON.stringify({ type: 'tool_result', name: 'bash', tool_call_id: 'call_1', output: 'TOOLPROBE', is_error: false }),
+      JSON.stringify({ type: 'result', exit_code: 0, text: 'DONE', tokens: { input: 3, output: 2 } }),
+    ].join(String.fromCharCode(10)) + String.fromCharCode(10)
+    const { ctx, agent } = await agentWith({ stdout }, { cwd: '/work' })
+    try {
+      agent.followup(userMessage('run it'))
+      await agent.whenIdle()
+      const call = agent.session.snapshotEvents().find(event => event.type === 'tool/call')
+      expect(call?.data).toMatchObject({
+        name: 'bash',
+        arguments: JSON.stringify({ command: 'echo TOOLPROBE' }),
+      })
+      const result = agent.session.snapshotEvents().find(event => event.type === 'tool/result')
+      const text = (result?.data as { message: { content: Array<{ text: string }> } }).message.content[0]!.text
+      expect(text).toBe('TOOLPROBE')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reports the last unparsed line when nothing parsed', async () => {
+    const { ctx, agent } = await agentWith({ stdout: 'not json\n', exitCode: 0 }, { cwd: '/work' })
+    try {
+      agent.followup(userMessage('hi'))
+      await agent.whenIdle()
+      const end = agent.session.snapshotEvents().find(event => event.type === 'turn/end')
+      expect(end?.data).toMatchObject({
+        reason: { kind: 'error', error: { message: expect.stringContaining('last line: not json') } },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('omits -m and --reasoning when the deployment pinned neither', async () => {
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, spawned } = await agentWith({ stdout: hstream('ok') }, { cwd: '/work' })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -144,7 +189,7 @@ describe('one completed step', () => {
   })
 
   it('passes the bare name when the deployment pinned no executable', async () => {
-    const { ctx, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work', config: { bin: undefined } })
+    const { ctx, agent, spawned } = await agentWith({ stdout: hstream('ok') }, { cwd: '/work', config: { bin: undefined } })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -157,7 +202,7 @@ describe('one completed step', () => {
   it('keeps the child’s own trailing whitespace in the answer', async () => {
     // The adapter hands stdout back verbatim; trimming would silently rewrite
     // what the engine produced.
-    const { ctx, session, agent } = await agentWith({ stdout: '  spaced  \n' }, { cwd: '/work' })
+    const { ctx, session, agent } = await agentWith({ stdout: hstream('  spaced  \n') }, { cwd: '/work' })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -172,7 +217,7 @@ describe('one completed step', () => {
 
 describe('what the driver refuses rather than degrades', () => {
   it('refuses a step that carries images', async () => {
-    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: hstream('ok') }, { cwd: '/work' })
     try {
       agent.followup(createUserMessage({
         content: [
@@ -193,7 +238,7 @@ describe('what the driver refuses rather than degrades', () => {
   })
 
   it('refuses a step with no working directory', async () => {
-    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'ok' }, { cwd: undefined })
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: hstream('ok') }, { cwd: undefined })
     try {
       agent.followup(userMessage('hi'))
       await agent.whenIdle()
@@ -208,7 +253,7 @@ describe('what the driver refuses rather than degrades', () => {
   })
 
   it('refuses a step whose transcript yields no prompt', async () => {
-    const { ctx, agent } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent } = await agentWith({ stdout: hstream('ok') }, { cwd: '/work' })
     try {
       vi.spyOn(agent as never, 'history' as never).mockReturnValue([] as never)
       await expect(
@@ -254,7 +299,7 @@ describe('what the driver refuses rather than degrades', () => {
     }
   })
 
-  it('reports a clean exit with no output as "produced no output"', async () => {
+  it('reports a clean exit with no protocol output as a protocol failure', async () => {
     // The silent-success bug this plugin exists not to ship: an exit 0 with an
     // empty stdout is a failure, not an empty but fine answer.
     const { ctx, session, agent } = await agentWith({ stdout: '  \n', exitCode: 0 }, { cwd: '/work' })
@@ -263,7 +308,7 @@ describe('what the driver refuses rather than degrades', () => {
       await agent.whenIdle()
       const end = session.snapshotEvents().find(event => event.type === 'turn/end')
       expect(end?.data).toMatchObject({
-        reason: { kind: 'error', error: { message: 'the engine produced no output' } },
+        reason: { kind: 'error', error: { message: expect.stringMatching(/produced no stream-json/) } },
       })
     } finally {
       await ctx.fiber.dispose()
@@ -316,7 +361,7 @@ describe('the sink’s own verdict', () => {
     // `commitWholeMessage` can still leave the run failed. Returning
     // `{kind:'completed'}` after a reported failure is exactly the silent-success
     // bug this plugin exists not to ship, so the driver surfaces the verdict.
-    const { ctx, agent, session } = await agentWith({ stdout: 'ok' }, { cwd: '/work' })
+    const { ctx, agent, session } = await agentWith({ stdout: hstream('ok') }, { cwd: '/work' })
     try {
       // The transcript is the session's, not the argument list, so the log has
       // to hold a message before the prompt can be derived.
@@ -340,7 +385,7 @@ describe('the sink’s own verdict', () => {
 describe('a dsh model handed to Hermes', () => {
   it('rides the child environment and the argv, keeping the user home in force', async () => {
     const { ctx, session, agent, spawned } = await agentWith(
-      { stdout: 'PONG\n' },
+      { stdout: hstream('PONG\n') },
       { cwd: '/work', config: { env: { HERMES_HOME: 'D:/HermesData/hermes-home' } } },
     )
     try {
@@ -369,7 +414,7 @@ describe('a dsh model handed to Hermes', () => {
   })
 
   it('refuses a dsh model whose endpoint dsh cannot disclose, before spawning', async () => {
-    const { ctx, session, agent, spawned } = await agentWith({ stdout: 'PONG\n' }, { cwd: '/work' })
+    const { ctx, session, agent, spawned } = await agentWith({ stdout: hstream('PONG\n') }, { cwd: '/work' })
     try {
       ctx.provide('sessionProjections', modelSelectionProjections(ctx))
       session.append('model/selection', { provider: 'minimax', model: 'MiniMax-M3.1-Flash' })
