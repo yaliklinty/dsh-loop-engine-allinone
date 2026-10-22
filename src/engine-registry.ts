@@ -528,6 +528,25 @@ export const ENGINE_REGISTRY = {
     loginHint: 'run `qoderclicn login` to sign in to Qoder CN',
     authPaths: ['.qoder-cn/.auth/user'],
     localeKey: 'engineQoderclicn',
+    // Read from `qoderclicn --list-models` on a signed-in CN account (CLI
+    // 1.1.56, 2026-10-22): the stock subscription models. Account-specific
+    // "custom" models are deliberately not declared — their ids are per-user and
+    // a stale one would be advertised to every account. Selecting one of these
+    // is handed to the CLI as `-m <id>`, which is the spelling its help names for
+    // a default/new model.
+    models: [
+      { id: 'Auto', label: 'Auto' },
+      { id: 'Qwen3.8-Max', label: 'Qwen3.8-Max' },
+      { id: 'Qwen3.8-Flash', label: 'Qwen3.8-Flash' },
+      { id: 'Qwen3.7-Plus', label: 'Qwen3.7-Plus' },
+      { id: 'DeepSeek-V4-Pro', label: 'DeepSeek-V4-Pro' },
+      { id: 'DeepSeek-Flash', label: 'DeepSeek-Flash' },
+      { id: 'GLM-5.3', label: 'GLM-5.3' },
+      { id: 'GLM-5.3-Flash', label: 'GLM-5.3-Flash' },
+      { id: 'Kimi-K3', label: 'Kimi-K3' },
+      { id: 'Kimi-K2.8-Preview', label: 'Kimi-K2.8-Preview' },
+      { id: 'MiniMax-M3.1-Flash', label: 'MiniMax-M3.1-Flash' },
+    ],
     capabilities: {
       streaming: true,
       // `-p --output-format stream-json` emits Claude Code's stream-json frames,

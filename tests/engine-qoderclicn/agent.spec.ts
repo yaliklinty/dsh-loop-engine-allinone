@@ -411,6 +411,31 @@ describe('the two default arms', () => {
   })
 })
 
+describe("a Qoder CN's own catalog model", () => {
+  it('hands the engine-native id to -m and opens no handover config root', async () => {
+    const { ctx, session, agent, spawned } = await agentWith(
+      [assistant({ type: 'text', text: 'PONG' }), result()],
+      { cwd: '/work' },
+    )
+    try {
+      ctx.provide('sessionProjections', modelSelectionProjections(ctx))
+      // The provider is Qoder's own route label now that its row declares a
+      // catalog; the id is the engine's vocabulary, not a dsh `provider/model`.
+      session.append('model/selection', { provider: 'qoderclicn', model: 'Auto' })
+      agent.followup(userMessage('say PONG'))
+      await agent.whenIdle()
+
+      const argv = spawned[0]!.argv
+      expect(argv).toContain('-m')
+      expect(argv[argv.indexOf('-m') + 1]).toBe('Auto')
+      // A native model needs neither dsh's endpoint nor a private root.
+      expect(argv).not.toContain('--config-dir')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+})
+
 describe('a dsh model handed to Qoder CN', () => {
   /** Scratch login roots and the environment variable this suite borrows. */
   const roots: string[] = []

@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.12]
+
+### Added
+
+- **Qoder CN's own subscription models are in the menu, and selecting one is
+  handed to the CLI as `-m <id>`.** `qoderclicn --list-models` on a signed-in CN
+  account (CLI 1.1.56) returns the stock catalog; the registry now declares
+  those 11 entries as its fallback, so the engine gets its own provider group
+  instead of sharing `external`. The driver reads the session's selection and,
+  when it names this engine's own route (`qoderclicn/<id>`), passes that id to
+  `-m`; a real dsh model still goes through the endpoint handover as before, and
+  a native model opens no private config root. Account-specific "custom" models
+  (the UUIDs in `--list-models`) are deliberately not declared: their ids are
+  per-user and would be advertised to every account.
+
+### Fixed
+
+- **The Qoder handover failure spec no longer races the happy-path spec.** Both
+  compared a global `tmpdir()` prefix listing while the other created and
+  removed `dsh-qoder-handover-*` roots; the failure spec now points `tmpdir()`
+  at a private root.
+
 ## [0.7.11]
 
 ### Fixed

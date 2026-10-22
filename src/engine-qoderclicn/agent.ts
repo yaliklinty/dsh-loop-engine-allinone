@@ -36,7 +36,9 @@ import { unsupportedImagesRefusal } from '../driver-cli/capability.ts'
 import { ENGINE_REGISTRY } from '../engine-registry.ts'
 import { sessionApprovalPolicy, sessionSandboxMode } from '../driver-core/permission-knobs.ts'
 import { resolveModelHandover } from '../driver-core/model-handover.ts'
-import { sessionModelOverrideOf, unservableModelRefusal } from '../driver-core/session-model.ts'
+import {
+  currentSelectionOf, nativeModelOf, sessionModelOverride, unservableModelRefusal,
+} from '../driver-core/session-model.ts'
 import { prepareQoderclicnHandover, removeQoderclicnHandover } from './model-handover.ts'
 import type { QoderclicnSpawnSpec } from './process.ts'
 import type { QoderclicnPermissionMode } from './process.ts'
@@ -111,7 +113,13 @@ export class QoderclicnAgent extends CliHostedAgent {
     // endpoint and credential. A real dsh model Qoder cannot be handed is refused
     // HERE, before a child is spawned: forwarding the name to Qoder's own catalog
     // is the cryptic failure this replaces.
-    const override = sessionModelOverrideOf(this.loopCtx, this.session)
+    //
+    // A selection from Qoder's OWN catalog (`qoderclicn/<id>`) is neither: its id
+    // is already in the engine's vocabulary, so it goes to `-m` verbatim and no
+    // endpoint/credential handover applies.
+    const selection = currentSelectionOf(this.loopCtx, this.session)
+    const override = sessionModelOverride(selection)
+    const native = nativeModelOf(selection, QODERCLICN_ENGINE)
     const resolved = await resolveModelHandover(this.loopCtx, override)
     const unservable = unservableModelRefusal(override, ENGINE_REGISTRY[QODERCLICN_ENGINE].label)
     if (resolved === undefined && unservable !== undefined) throw new LlmError(unservable, 'UNSERVABLE_MODEL')
@@ -128,7 +136,7 @@ export class QoderclicnAgent extends CliHostedAgent {
         prompt,
         cwd,
         env: this.config.env,
-        model: handover?.modelKey ?? this.config.model,
+        model: handover?.modelKey ?? native ?? this.config.model,
         ...handover === undefined ? {} : { configDir: handover.configDir },
         permissionMode: this.permissionMode(),
         signal,

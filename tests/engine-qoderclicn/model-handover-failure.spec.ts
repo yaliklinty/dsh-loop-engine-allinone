@@ -8,12 +8,30 @@
  * @module tests/engine-qoderclicn/model-handover-failure
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DshModelHandover } from '../../src/driver-core/model-handover.ts'
+
+// The happy-path spec creates and removes `dsh-qoder-handover-*` roots in the
+// SAME OS temp dir. Comparing a before/after listing of the shared dir is then
+// racy by construction, so this file points `tmpdir()` at a private root.
+const privateTmp = mkdtempSync(join(tmpdir(), 'dsh-qoder-failure-tmp-'))
+const savedTemp = { TMP: process.env.TMP, TEMP: process.env.TEMP, TMPDIR: process.env.TMPDIR }
+process.env.TMP = privateTmp
+process.env.TEMP = privateTmp
+process.env.TMPDIR = privateTmp
+
+afterAll(() => {
+  for (const key of ['TMP', 'TEMP', 'TMPDIR'] as const) {
+    const value = savedTemp[key]
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+  rmSync(privateTmp, { recursive: true, force: true })
+})
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
