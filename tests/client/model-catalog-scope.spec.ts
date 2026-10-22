@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionEngineReport } from '../../src/agent-preset-ids.ts'
+import { HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
 import {
   installModelCatalogScope,
   modelMenuScope,
@@ -100,6 +101,18 @@ describe('scopeModelDirectoryState', () => {
     const scoped = scopeModelDirectoryState(raw, 'minimaxcode')
     expect(scoped.groups.map(group => group.id)).toEqual(['external', 'minimaxcode', 'deepseek-account'])
     expect(scoped.failures.map(failure => failure.id)).toEqual(['deepseek-account'])
+  })
+
+  it('covers every hosted engine, not a hardcoded subset', () => {
+    const raw = state(['external', ...HOSTED_ENGINE_IDS, 'deepseek-account'])
+    for (const engine of HOSTED_ENGINE_IDS) {
+      const scoped = scopeModelDirectoryState(raw, engine)
+      expect(scoped.groups.map(group => group.id))
+        .toEqual(['external', engine, 'deepseek-account'])
+    }
+    // Guard the roster itself: adding an engine must flow through this filter
+    // without editing it.
+    expect(HOSTED_ENGINE_IDS).toHaveLength(10)
   })
 
   it('drops every engine group AND the placeholder route for an in-process session', () => {
