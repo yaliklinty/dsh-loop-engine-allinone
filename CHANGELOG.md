@@ -8,6 +8,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.11]
+
+### Fixed
+
+- **The model menu is scoped to the session's engine again — without losing the
+  seat.** The host builds ONE model catalog per Host generation, so every
+  engine's subscription group appeared in every session. 0.7.8/0.7.9 filtered
+  each session's directory view but called `directoryFor` through Cordis's
+  traceable service proxy; that rebinds `this.ctx` to the calling plugin, which
+  does not inject `remote.session`, so the call threw
+  `cannot get property "remote.session" without inject` and the composer's model
+  seat disappeared. The wrapper now binds the **raw** service
+  (`Symbol.for('cordis.original')`), exactly the context the unwrapped method
+  always ran in, and leaves the menu global on a host that offers no raw object
+  rather than throwing on every render.
+
+  The view now also treats `in-process` as a real scope: a session on the
+  harness loop keeps **only non-engine providers** (DeepSeek, `llm-pi-ai`, …)
+  and is shown no CLI catalog at all. A hosted session keeps its own engine's
+  group, the shared `external` placeholder, and every non-engine provider. A
+  filter that would empty the menu still falls back to the raw catalog so a
+  deployment with no native provider keeps a usable seat. The engine watch is
+  released with the session directory, and provider routes stay registered (a
+  background session of another engine keeps working; `modelAvailable` is
+  untouched).
+
+### Verified
+
+- Real DSH Web (0.2.1-rc.2) + headless Edge, `loopcheck` profile:
+  `in-process` → `DeepSeek 账号` only; `MiniMax Code CLI` → `external`,
+  `DeepSeek 账号`, `MiniMax Code（订阅）`; `Antigravity CLI` → `external`,
+  `DeepSeek 账号`, `Antigravity（订阅）`; no console error in any case, and the
+  composer's model seat stayed visible throughout.
+
 ## [0.7.10]
 
 ### Fixed

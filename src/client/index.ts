@@ -26,6 +26,7 @@ import { LoopEngineComposerSelect } from './LoopEngineComposerSelect.tsx'
 import type { LoopEngineComposerSelectInjected } from './LoopEngineComposerSelect.tsx'
 import { decodeLoopEngine, LoopEngineStore, type LoopEngineSettingsSnapshot, type LoopEngineSettingsTransport } from './store.ts'
 import { createSessionEngineCache, sessionEngineSwitcher } from './session-engine.ts'
+import { installModelCatalogScope } from './model-catalog-scope.ts'
 import { installReloadReturn } from './reload.ts'
 import { installTurnStatusStyles } from './turn-status.ts'
 import { en, zh, type LoopEngineKey } from './locales.ts'
@@ -96,6 +97,13 @@ export function apply(ctx: ClientContext): void {
   // NOT read anywhere any more: it is a partial cache and it lags the durable log
   // on exactly the sessions (engine switched while blank) users noticed it on.
   const sessionEngines = createSessionEngineCache(ctx)
+
+  // The Host builds ONE model catalog per generation, so every engine route is
+  // visible in every session's menu. Scope each session's directory view to the
+  // engine that session actually runs (`./model-catalog-scope.ts`): a hosted
+  // session sees only its own CLI subscription, and an in-process session sees
+  // only the native providers — never any CLI's catalog.
+  installModelCatalogScope(ctx, sessionEngines)
 
   // Switch a session's engine onto the harness loop and the host releases that
   // session's agent, which leaves THIS page holding a session the controller
