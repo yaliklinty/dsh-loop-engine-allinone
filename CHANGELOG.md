@@ -41,11 +41,14 @@ Nothing yet.
 
 ### Notes
 
-- Routes whose endpoint dsh does not disclose cannot be handed over. That is the
-  case for adapters that register their own `LlmAdapter` and declare no
-  `baseURL` in a settings section (Our Free Model is the one on this machine):
-  the engine refuses with `UNSERVABLE_MODEL` instead of silently dialling its
-  own endpoint with a foreign model id.
+- **A hosted CLI can only run models dsh reaches through an API.** The handover
+  is a `baseURL` + an API key resolved from `apiKeyEnv`; it is not a login
+  handoff. `llm-pi-ai` routes and `deepseek-official` qualify. `deepseek-account`
+  has no `baseURL` (it needs dsh's own account session), and adapters that
+  register their own `LlmAdapter` and declare no `baseURL` in settings (Our Free
+  Model on this machine) keep their endpoint private: those routes are refused
+  with `UNSERVABLE_MODEL` instead of silently dialling the engine's own endpoint
+  with a foreign model id.
 - The handed-over wire still has to be one the engine implements. With dsh's
   usual `openai-completions` routes, MiniMax Code / Grok / Antigravity / Hermes /
   ZCode / Qoder CN / Kimi / Pi can run them; Claude Code speaks Anthropic
