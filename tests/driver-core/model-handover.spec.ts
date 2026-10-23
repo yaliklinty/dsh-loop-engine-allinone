@@ -11,6 +11,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import SettingsForms from '@deepseek-ai/dsh-settings'
+import z from '@deepseek-ai/schemastery'
 import { resolveModelHandover } from '../../src/driver-core/model-handover.ts'
 import type { SessionModelOverride } from '../../src/driver-core/session-model.ts'
 
@@ -37,6 +39,8 @@ function profile(overrides: Record<string, unknown> = {}): Record<string, unknow
 function mount(options: {
   providers?: readonly ReturnType<typeof address>[]
   section?: unknown
+  /** Namespace the fake settings service answers for (defaults to `llm-pi-ai`). */
+  settingsNs?: string
   /** `null` composes no settings service at all. */
   settings?: unknown
   credentials?: unknown
@@ -44,7 +48,17 @@ function mount(options: {
 } = {}): Context {
   const ctx = new Context()
   ctx.provide('llm', options.directory ?? { listConfigurableProviders: () => options.providers ?? [] })
-  if (options.settings !== null) ctx.provide('settings', options.settings ?? { get: () => options.section })
+  if (options.settings !== null) {
+    ctx.provide('settings', options.settings ?? {
+      // The real service's read: one descriptor per registered namespace, each
+      // carrying that namespace's resolved value. The fake answers for ONE
+      // namespace, which is all a resolver test needs.
+      describe: () => [{
+        ns: options.settingsNs ?? 'llm-pi-ai',
+        value: options.section,
+      }],
+    })
+  }
   if (options.credentials !== undefined) ctx.provide('credentials', options.credentials)
   vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
   return ctx
@@ -52,11 +66,82 @@ function mount(options: {
 
 const OVERRIDE: SessionModelOverride = { provider: 'meicloud', model: 'deepseek-flash' }
 
+/**
+ * Mount the REAL profile-backed settings service (`@deepseek-ai/dsh-settings`)
+ * around one `llm-pi-ai` entry, so the read path is exercised against the host's
+ * own descriptor projection rather than a hand-shaped object.
+ *
+ * This is the regression guard for a resolver that read `settings.get(ns)` — a
+ * method the profile-backed service never had. Every fake in this file agreed
+ * with that call, so the unit suite was green while a real deployment resolved
+ * nothing and refused every real dsh model on every hosted engine.
+ * @returns a context whose `ctx.settings` is the host's own implementation.
+ */
+async function mountWithRealSettings(): Promise<Context> {
+  const schema = z.object({
+    providers: z.dict(z.object({
+      baseURL: z.string(),
+      api: z.string(),
+      apiKeyEnv: z.string(),
+    })).default({}).volatile(),
+  })
+  const entry = {
+    id: 'llm-pi-ai',
+    options: { id: 'llm-pi-ai', config: {} },
+    fiber: {
+      uid: 'u-real-settings',
+      state: 2,
+      runtime: { Config: schema },
+      config: {
+        providers: {
+          meicloud: {
+            baseURL: 'https://ai.example.com/litellm',
+            api: 'anthropic-messages',
+            apiKeyEnv: 'MEICLOUD_API_KEY',
+          },
+        },
+      },
+      ctx: {},
+    },
+  }
+  const ctx = new Context()
+  ctx.provide('configEditor', {
+    documentPath: '/tmp/dsh-real-settings-document.yml',
+    configuration: () => [{ entry, inherited: {}, override: {} }],
+    entries: () => [entry],
+  } as never)
+  ctx.provide('profileContext', { home: '/tmp/dsh-real-settings-home', name: 'test' } as never)
+  // The service's constructor awaits the Loader before importing the legacy
+  // settings document; a bare test Context has no Loader, so stub that one call.
+  Object.defineProperty(ctx.root, 'loader', {
+    value: { await: () => Promise.resolve() },
+    configurable: true,
+  })
+  await ctx.plugin(SettingsForms)
+  ctx.provide('llm', {
+    listConfigurableProviders: () => [address('meicloud', 'llm-pi-ai')],
+  } as never)
+  ctx.provide('credentials', { resolve: () => Promise.resolve({ value: 'sk-secret' }) } as never)
+  vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+  return ctx
+}
+
 describe('resolveModelHandover', () => {
   it('injects nothing when the session selected no real dsh model', async () => {
     const ctx = mount()
     await expect(resolveModelHandover(ctx, undefined)).resolves.toBeUndefined()
     expect(ctx.logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('reads the endpoint through the host\'s real SettingsForms service', async () => {
+    const ctx = await mountWithRealSettings()
+    await expect(resolveModelHandover(ctx, OVERRIDE)).resolves.toEqual({
+      provider: 'meicloud',
+      model: 'deepseek-flash',
+      baseURL: 'https://ai.example.com/litellm',
+      api: 'anthropic-messages',
+      apiKey: 'sk-secret',
+    })
   })
 
   it('resolves endpoint, protocol, and credential through the host seams', async () => {
@@ -78,6 +163,7 @@ describe('resolveModelHandover', () => {
   it('reads a section that IS the profile when the registry path is empty', async () => {
     const ctx = mount({
       providers: [address('deepseek-official', 'llm-deepseek', [])],
+      settingsNs: 'llm-deepseek',
       section: profile({ provider: 'deepseek-official' }),
       credentials: { resolve: () => Promise.resolve({ value: 'sk-official' }) },
     })
@@ -145,6 +231,50 @@ describe('resolveModelHandover', () => {
     expect(ctx.logger.warn).toHaveBeenCalledTimes(1)
   })
 
+  it('resolves through describe() when the settings service lists no such namespace', async () => {
+    const ctx = mount({
+      providers: [address('meicloud', 'llm-pi-ai')],
+      settings: { describe: () => [{ ns: 'another-entry', value: { providers: { meicloud: profile() } } }] },
+    })
+    await expect(resolveModelHandover(ctx, OVERRIDE)).resolves.toBeUndefined()
+    expect(ctx.logger.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('contains a describe() that throws instead of failing the step', async () => {
+    const ctx = mount({
+      providers: [address('meicloud', 'llm-pi-ai')],
+      settings: { describe: () => { throw new Error('profile still importing') } },
+    })
+    await expect(resolveModelHandover(ctx, OVERRIDE)).resolves.toBeUndefined()
+    expect(ctx.logger.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to a legacy get(ns) read when describe() is absent', async () => {
+    const ctx = mount({
+      providers: [address('meicloud', 'llm-pi-ai')],
+      settings: {
+        get: (ns: string) => ns === 'llm-pi-ai'
+          ? { providers: { meicloud: profile() } }
+          : undefined,
+      },
+      credentials: { resolve: () => Promise.resolve({ value: 'sk-secret' }) },
+    })
+    await expect(resolveModelHandover(ctx, OVERRIDE)).resolves.toMatchObject({
+      baseURL: 'https://ai.example.com/litellm',
+      apiKey: 'sk-secret',
+    })
+    expect(ctx.logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('contains a legacy get(ns) that throws', async () => {
+    const ctx = mount({
+      providers: [address('meicloud', 'llm-pi-ai')],
+      settings: { get: () => { throw new TypeError('bad namespace') } },
+    })
+    await expect(resolveModelHandover(ctx, OVERRIDE)).resolves.toBeUndefined()
+    expect(ctx.logger.warn).toHaveBeenCalledTimes(1)
+  })
+
   it('injects nothing when the registry path does not reach an object', async () => {
     const ctx = mount({
       providers: [address('meicloud', 'llm-pi-ai')],
@@ -184,6 +314,7 @@ describe('resolveModelHandover', () => {
   it('supplies the wire for a shipped route whose adapter owns it', async () => {
     const ctx = mount({
       providers: [address('deepseek-official', 'llm-deepseek', [])],
+      settingsNs: 'llm-deepseek',
       // The harness's own deepseek adapter has no `api` field to read; its
       // settings section carries the endpoint and the credential reference
       // (`apiKeyEnv` comes from that schema's default) and nothing else.
@@ -204,6 +335,7 @@ describe('resolveModelHandover', () => {
   it('prefers a declared protocol over the shipped-route table', async () => {
     const ctx = mount({
       providers: [address('deepseek-official', 'llm-deepseek', [])],
+      settingsNs: 'llm-deepseek',
       section: {
         baseURL: 'https://api.deepseek.com',
         apiKeyEnv: 'DEEPSEEK_API_KEY',

@@ -10,7 +10,7 @@
  * `baseURL`, wire protocol, and credential does the session's selection name in
  * dsh's own settings — so each driver can point its engine at dsh's endpoint.
  *
- * The two reads are the host's own seams, deliberately:
+ * The reads are the host's own seams, deliberately:
  *
  *  - the provider → settings address mapping comes from the llm registry's
  *    configurable-provider directory (`LlmRuntime.listConfigurableProviders`,
@@ -20,6 +20,15 @@
  *    `llm-pi-ai`, `llm-deepseek` maps its one route to the whole `llm-deepseek`
  *    section. Reading the directory rather than hardcoding namespaces is what
  *    keeps this plugin from inventing a mapping the deployment did not make.
+ *  - that section's endpoint fields are read through the settings service's
+ *    `describe()` — the ONE read the profile-backed service exposes
+ *    (`SettingsForms.describe()`: one descriptor per namespace, carrying its
+ *    resolved `value`, exactly what every configuration surface reads). The
+ *    service has never had a `get(ns)`; an earlier version of this module called
+ *    one anyway, so on a real deployment EVERY handover resolved to `undefined`
+ *    and every real dsh model was refused, while the fakes in the unit suite
+ *    answered it and stayed green. The regression test now mounts the host's
+ *    real implementation.
  *  - the credential is resolved through the credentials seam, because the
  *    profile stores an `apiKeyEnv` NAME and its value lives in the harness's
  *    credential store, never in the process environment
@@ -145,10 +154,29 @@ interface LlmDirectorWithResolve {
   }>
 }
 
-/** The host settings service (`ctx.settings`), as this module uses it. */
+/**
+ * The host settings service (`ctx.settings`), as this module uses it.
+ *
+ * Every harness generation this plugin supports answers `describe()`: one
+ * descriptor per registered namespace, carrying that namespace's resolved
+ * `value` (the same read every configuration surface makes). `get(ns)` is kept
+ * as the fallback for a minimal or older host — and NOT as the primary read:
+ * the profile-backed service never exposed `get`, so a resolver that only knew
+ * `get` resolved nothing on a real deployment.
+ */
 export interface SettingsReader {
-  /** Read one registered namespace's resolved value. */
+  /** Every registered namespace's resolved value, as configuration surfaces read it. */
+  describe?(): readonly SettingsSection[]
+  /** Read one registered namespace's resolved value (older or minimal hosts). */
   get?(ns: string): unknown
+}
+
+/** One settings descriptor, narrowed to the two fields this module reads. */
+interface SettingsSection {
+  /** Profile entry id the section belongs to. */
+  readonly ns: string
+  /** That entry's resolved value. */
+  readonly value: unknown
 }
 
 /** The host credentials seam (`ctx.credentials`), as this module uses it. */
@@ -199,6 +227,37 @@ function settingsAddress(
 }
 
 /**
+ * Read one namespace's resolved section from the settings seam.
+ *
+ * `describe()` is the host's own read, and the ONLY one the profile-backed
+ * settings service has ever exposed to a plugin. A read that throws — a
+ * namespace the host does not register, a profile whose settings provider is
+ * still importing, an implementation that rejects the call — is the same answer
+ * as a missing namespace: `undefined`, which the caller reports once and falls
+ * back on. `get(ns)` is the legacy/minimal fallback, kept behind the same
+ * containment for the same reason.
+ * @param ctx - the driver's context, carrying the settings seam.
+ * @param ns - the profile entry id whose section is wanted.
+ * @returns the namespace's resolved value, or undefined when unreadable.
+ */
+function readSettingsSection(ctx: Context, ns: string): unknown {
+  const settings = ctx.get('settings') as SettingsReader | undefined
+  if (settings === undefined) return undefined
+  if (typeof settings.describe === 'function') {
+    try {
+      return settings.describe().find(section => section.ns === ns)?.value
+    } catch {
+      return undefined
+    }
+  }
+  try {
+    return settings.get?.(ns)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Read one provider's endpoint fields from its dsh settings section, walking the
  * registry's own path and validating every shape. `undefined` means "not a
  * shape this module can hand over", which the caller reports and falls back on.
@@ -212,8 +271,7 @@ function readProviderProfile(
   ctx: Context,
   address: ConfigurableProviderAddress,
 ): ProviderProfile | undefined {
-  const settings = ctx.get('settings') as SettingsReader | undefined
-  let node: unknown = settings?.get?.(address.settingsNs)
+  let node: unknown = readSettingsSection(ctx, address.settingsNs)
   for (const segment of address.settingsPath) {
     if (node === null || typeof node !== 'object') return undefined
     node = (node as Record<string, unknown>)[segment]

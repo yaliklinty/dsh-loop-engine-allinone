@@ -8,6 +8,50 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.13]
+
+### Fixed
+
+- **A model from dsh's own pool now reaches every hosted engine.** The endpoint
+  handover read its facts through `ctx.settings.get(ns)`; the profile-backed
+  settings service has never had a `get` — it exposes `describe()`, one
+  descriptor per namespace carrying that namespace's resolved `value`. Every
+  lookup therefore returned `undefined`, the resolver fell through to
+  `UNSERVABLE_MODEL`, and a session on **any** hosted engine (MiniMax Code was
+  just the one being tried) died before its first turn the moment it selected a
+  real dsh model — `packyapi/deepseek-flash`, `our-free-model/…`,
+  `deepseek-official/…`, all of them. The read now uses the host's own
+  `describe()` (with `get(ns)` kept only as the legacy/minimal fallback), and a
+  read that throws is answered as "no such section" instead of failing the step.
+
+  The old wiring passed its tests because every fake settings object in the unit
+  suite answered `get`. The resolver spec now mounts the host's REAL
+  `@deepseek-ai/dsh-settings` service, and the failure is reproducible by
+  restoring the old read.
+
+### Verified
+
+- A live `loopcheck` host (real settings service, real credentials store)
+  resolves `packyapi`, `longcat`, `atria` and `volcanark` to their `baseURL`,
+  declared wire and a non-empty credential.
+- A real `mcode acp` child (MiniMax Code 0.6.12) opened a session against the
+  generated handover document and answered `PONG` from a local mock OpenAI
+  endpoint; the wire log shows `POST /v1/chat/completions` carrying
+  `model: mock-model` and `Authorization: Bearer sk-mock`.
+
+### Notes
+
+- Routes whose endpoint dsh does not disclose cannot be handed over. That is the
+  case for adapters that register their own `LlmAdapter` and declare no
+  `baseURL` in a settings section (Our Free Model is the one on this machine):
+  the engine refuses with `UNSERVABLE_MODEL` instead of silently dialling its
+  own endpoint with a foreign model id.
+- The handed-over wire still has to be one the engine implements. With dsh's
+  usual `openai-completions` routes, MiniMax Code / Grok / Antigravity / Hermes /
+  ZCode / Qoder CN / Kimi / Pi can run them; Claude Code speaks Anthropic
+  Messages (`ANTHROPIC_BASE_URL`) and Codex 0.149.1 speaks OpenAI Responses, so
+  those two need a route of that wire.
+
 ## [0.7.12]
 
 ### Added

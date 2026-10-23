@@ -230,6 +230,7 @@ dsh plugin --profile web add ./dsh-loop-engine-allinone
   - **Pi** 与 **ZCode** 故意没有声明型号表。Pi 的型号表是**运行时刷新**的（`pi update --models` 从各 provider 拉取），写死必然过期；ZCode 没有声明型号表：它自己的型号列表需要有效的 GLM Coding Plan，过期账号列不出自己能用什么——但 dsh 模型仍可通过上面的交接跑起来。
   - 其余托管引擎统一归类至 `external` 分组，组内只有一条 `default`，含义是「交给引擎自己决定」。**这不是功能限制**：它只是菜单把「本版本还没实测过型号的引擎」折叠在一起；在注册表里加一行 `models`，该引擎立刻就有自己的分组。
   - 也可以选一个**真实的 dsh 模型**：插件会把该模型的端点与凭据一并交给引擎。引擎能不能用是引擎的事，被拒会如实报错而不是悄悄吞掉。
+  - **交接需要什么。** provider 路由必须能映射到一个 settings 段，段里声明了 `baseURL`、并且能解析到 `apiKeyEnv` 指向的凭据；`llm-pi-ai` 的每条路由和 `deepseek-official` 都满足。自己注册 `LlmAdapter` 却不在 settings 里声明端点的路由（本机是 Our Free Model）交不出去，驱动会明确拒绝，而不是把外来型号发给引擎自己的端点。声明的协议也得是引擎会说的：dsh 常见的 `openai-completions` 路由在 MiniMax Code / Grok / Antigravity / Hermes / ZCode / Qoder CN / Kimi / Pi 上都能跑；Claude Code 只说 Anthropic Messages、Codex 0.149.1 只说 OpenAI Responses，这两家需要对应协议的 provider。
   - 原生命令（`/export`、`/feedback`、`/permission`）及自动压缩机制完全可用。
 
 ---
