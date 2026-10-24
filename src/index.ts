@@ -56,7 +56,7 @@ import type { AgentPresetsService, LlmRegistry, SettingsMutator } from './driver
 import { engineOfSession } from './engine-of-session.ts'
 import { LoopEngineRemote } from './engine-remote.ts'
 import { CODEX_APPROVAL_POLICIES } from './engine-codex/loop.ts'
-import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
+import { ENGINE_REGISTRY, engineRouteLabel, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
 import { buildEngineDriver } from './engine-drivers.ts'
 import type { EngineDriverConfig } from './engine-drivers.ts'
 import type { CodexApprovalPolicy, CodexSandboxMode } from './engine-codex/types.ts'
@@ -682,7 +682,7 @@ export function apply(ctx: Context, config: Config): void {
       // The list is passed as a THUNK so a catalog discovered later (an ACP engine's
       // `session/new`) reaches the menu without re-registering the route.
       routes.push({
-        label: engine,
+        label: engineRouteLabel(engine),
         models: () => liveCatalog(engine),
         // "MiniMax Code（订阅)" rather than a bare label: a same-named direct
         // provider group is a different route, and the menu has to say which is

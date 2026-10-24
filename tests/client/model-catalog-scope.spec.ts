@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionEngineReport } from '../../src/agent-preset-ids.ts'
-import { HOSTED_ENGINE_IDS } from '../../src/engine-registry.ts'
+import { HOSTED_ENGINE_IDS, HOSTED_ENGINE_ROUTE_LABELS, engineRouteLabel } from '../../src/engine-registry.ts'
 import {
   installModelCatalogScope,
   modelMenuScope,
@@ -96,23 +96,37 @@ describe('modelMenuScope', () => {
 })
 
 describe('scopeModelDirectoryState', () => {
-  it('keeps the session engine’s group plus every non-engine provider', () => {
+  it('keeps only the session engine’s own group and the placeholder', () => {
+    // A hosted session's step runs inside the CLI, so an HTTP provider group
+    // cannot serve it: offering one only produced an in-engine failure.
     const raw = state(['external', 'agy', 'minimaxcode', 'deepseek-account'], ['agy', 'deepseek-account'])
     const scoped = scopeModelDirectoryState(raw, 'minimaxcode')
-    expect(scoped.groups.map(group => group.id)).toEqual(['external', 'minimaxcode', 'deepseek-account'])
-    expect(scoped.failures.map(failure => failure.id)).toEqual(['deepseek-account'])
+    expect(scoped.groups.map(group => group.id)).toEqual(['external', 'minimaxcode'])
+    expect(scoped.failures.map(failure => failure.id)).toEqual([])
   })
 
-  it('covers every hosted engine, not a hardcoded subset', () => {
-    const raw = state(['external', ...HOSTED_ENGINE_IDS, 'deepseek-account'])
+  it('covers every hosted engine, keyed by its route label', () => {
+    const raw = state(['external', ...HOSTED_ENGINE_IDS, 'zcode-cli', 'zcode', 'deepseek-account'])
     for (const engine of HOSTED_ENGINE_IDS) {
       const scoped = scopeModelDirectoryState(raw, engine)
       expect(scoped.groups.map(group => group.id))
-        .toEqual(['external', engine, 'deepseek-account'])
+        .toEqual(['external', engineRouteLabel(engine)])
     }
     // Guard the roster itself: adding an engine must flow through this filter
     // without editing it.
     expect(HOSTED_ENGINE_IDS).toHaveLength(10)
+    expect(HOSTED_ENGINE_ROUTE_LABELS).toHaveLength(HOSTED_ENGINE_IDS.length)
+  })
+
+  it('separates the ZCode CLI subscription from the ZCode（智谱）HTTP channel', () => {
+    // `dsh-our-free-model` serves the ZCode account as provider `zcode`; the CLI's
+    // own group is `zcode-cli`. Treating the channel as an engine group hid it
+    // from every in-process session and mis-routed a pick made under the CLI.
+    const raw = state(['external', 'zcode', 'zcode-cli', 'deepseek-account'])
+    expect(scopeModelDirectoryState(raw, 'in-process').groups.map(group => group.id))
+      .toEqual(['zcode', 'deepseek-account'])
+    expect(scopeModelDirectoryState(raw, 'zcode').groups.map(group => group.id))
+      .toEqual(['external', 'zcode-cli'])
   })
 
   it('drops every engine group AND the placeholder route for an in-process session', () => {
@@ -126,7 +140,7 @@ describe('scopeModelDirectoryState', () => {
   })
 
   it('returns the SAME object when nothing needs dropping, and while the engine is unknown', () => {
-    const raw = state(['external', 'deepseek-account'])
+    const raw = state(['external', 'minimaxcode'])
     expect(scopeModelDirectoryState(raw, 'minimaxcode')).toBe(raw)
     const unknown = state(['external', 'agy'])
     expect(scopeModelDirectoryState(unknown, undefined)).toBe(unknown)

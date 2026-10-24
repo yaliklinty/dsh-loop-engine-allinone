@@ -306,6 +306,28 @@ export const HOSTED_ENGINE_IDS = [
 export type HostedEngineId = (typeof HOSTED_ENGINE_IDS)[number]
 
 /**
+ * The provider-route label an engine's own subscription catalog is published
+ * under in the model menu.
+ *
+ * Almost always the engine id itself. `zcode` is the exception: in this host
+ * `dsh-our-free-model` already serves the ZCode（智谱）account as provider
+ * `zcode`. Reusing that id for the CLI's own group made the client's per-session
+ * scope filter treat the HTTP channel as a CLI subscription (it disappeared from
+ * every in-process session and only reappeared under the ZCode CLI), and made
+ * `isHostedProviderRoute` rewrite a channel selection as a hosted seat. The
+ * engine's subscription is published as `zcode-cli`; the HTTP channel keeps
+ * `zcode`.
+ * @param engine - hosted engine whose menu group label is needed.
+ * @returns the provider label the engine's subscription route registers.
+ */
+export function engineRouteLabel(engine: HostedEngineId): string {
+  return engine === 'zcode' ? 'zcode-cli' : engine
+}
+
+/** Every per-engine subscription route label (see {@link engineRouteLabel}). */
+export const HOSTED_ENGINE_ROUTE_LABELS: readonly string[] = HOSTED_ENGINE_IDS.map(engineRouteLabel)
+
+/**
  * Every selectable engine, the harness's own loop first.
  *
  * `in-process` is not a descriptor: it is the harness's loop, not something this

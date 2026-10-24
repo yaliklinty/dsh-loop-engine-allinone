@@ -21,9 +21,9 @@
  * This module wraps `ctx.modelDirectories.directoryFor` and scopes the store's
  * snapshot to the session's own engine:
  *
- *  - a session running a hosted engine keeps that engine's group (plus the
- *    shared placeholder route and every non-engine provider group: DeepSeek,
- *    `llm-pi-ai`, …);
+ *  - a session running a hosted engine keeps that engine's subscription group
+ *    (its route label) plus the shared placeholder route; HTTP provider groups
+ *    are hidden because the CLI executes the step, not the harness loop;
  *  - the harness loop (`in-process`) keeps only the non-engine groups — it has no
  *    engine subscription of its own, so none of the CLI catalogs may appear;
  *  - an unknown engine (the read has not answered yet) is left unscoped rather
@@ -58,7 +58,7 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { HOSTED_ENGINE_IDS } from '../engine-registry.ts'
+import { HOSTED_ENGINE_IDS, HOSTED_ENGINE_ROUTE_LABELS, engineRouteLabel } from '../engine-registry.ts'
 import { HOSTED_ROUTE_LABEL, type SessionEngineReport } from '../agent-preset-ids.ts'
 import type { SessionEngineCache } from './session-engine.ts'
 
@@ -133,15 +133,21 @@ export function scopeModelDirectoryState<T extends ModelDirectoryStateLike>(
   scope: ModelMenuScope,
 ): T {
   if (scope === undefined) return state
-  const engines = new Set<string>(HOSTED_ENGINE_IDS)
+  // Engine groups are keyed by their ROUTE label, not by the bare engine id: a
+  // vendor channel may own the id (`zcode` = the ZCode（智谱）account), and
+  // hiding it here is what made the channel vanish from every in-process menu.
+  const engines = new Set<string>(HOSTED_ENGINE_ROUTE_LABELS)
   const keep = (id: string): boolean => {
-    if (!engines.has(id)) {
-      // The shared placeholder only makes sense for a hosted session. An
-      // in-process session must not be offered a model whose adapter fails loud.
-      if (id === HOSTED_ROUTE_LABEL) return scope !== 'in-process'
-      return true
+    if (scope === 'in-process') {
+      // The harness loop has no engine subscription of its own, and the shared
+      // placeholder's adapter fails loud: show neither.
+      return !engines.has(id) && id !== HOSTED_ROUTE_LABEL
     }
-    return id === scope
+    const own = engineRouteLabel(scope)
+    // A hosted session's step is executed by the CLI, so an HTTP provider group
+    // cannot serve it (picking one used to fail inside the engine). Keep only the
+    // engine's own subscription plus the placeholder.
+    return id === own || id === HOSTED_ROUTE_LABEL
   }
   const groups = state.groups.filter(group => keep(group.id))
   const failures = state.failures.filter(failure => keep(failure.id))

@@ -8,6 +8,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
+## [0.7.14]
+
+### Fixed
+
+- **The ZCode CLI's subscription no longer answers for the ZCode（智谱）HTTP
+  channel.** Both were provider id `zcode`: this plugin names an engine's
+  subscription route after the engine id, and `dsh-our-free-model` serves the
+  ZCode account under that same id. Two things broke at once. The client's
+  per-session scope filter treated the channel as an engine group, so the group
+  disappeared from every `in-process` session's model menu and came back only
+  under the ZCode CLI — where the step is executed by the CLI, so the pick could
+  never run. And `isHostedProviderRoute('zcode')` was true, so a channel
+  selection could be rewritten as a hosted seat.
+
+  An engine's subscription route now publishes under `engineRouteLabel(engine)`:
+  the engine id, except `zcode`, which is `zcode-cli`. The route registration,
+  `HOSTED_PROVIDER_LABELS` and the client scope filter all read that one
+  function, so a vendor channel can never be mistaken for a subscription again.
+  Old bare engine labels stay recognised by the reset guard, except `zcode` —
+  that id is a real provider now and rewriting its selections would break it.
+
+- **A hosted-engine session no longer offers HTTP provider groups.** The CLI
+  executes the step, so picking an HTTP model there could only fail inside the
+  engine (`zcode produced no stream-json on its protocol channel`). A hosted
+  session's menu keeps the shared `external` placeholder plus its own engine
+  subscription; `in-process` keeps every non-engine provider and hides engine
+  subscriptions.
+
+### Verified
+
+- `vitest run` over the whole package: 1956 of 1958 cases green. The two
+  failures are this machine's environment (a real `GROK_HOME` pointing at
+  `D:\Programs\grok-home` makes the grok resolver return an installed exe),
+  and they fail on the previous tag too.
+- `tsc -p tsconfig.build.json --noEmit` and `node build.mjs` are clean.
+- On the real desktop host the channel group `ZCode（智谱）` is selectable from an
+  `in-process` session again, and the ZCode CLI session's menu no longer offers
+  it.
+
 ## [0.7.13]
 
 ### Fixed

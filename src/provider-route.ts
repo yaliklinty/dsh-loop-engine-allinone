@@ -50,7 +50,7 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 import { HOSTED_DEFAULT_MODEL, HOSTED_ROUTE_LABEL, HOSTED_ROUTE_NAME } from './agent-preset-ids.ts'
-import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
+import { ENGINE_REGISTRY, HOSTED_ENGINE_IDS, HOSTED_ENGINE_ROUTE_LABELS, type EngineDescriptor, type EngineModel } from './engine-registry.ts'
 import type { HostedEngineId } from './settings.ts'
 
 /**
@@ -213,7 +213,15 @@ export function hostedEngineOfRouteLabel(provider: string): HostedEngineId | und
  * such a session's seat before the host would refuse its turn with
  * `model-unavailable` (see {@link isHostedProviderRoute}).
  */
-const HOSTED_PROVIDER_LABELS: readonly string[] = [HOSTED_ROUTE_LABEL, ...HOSTED_ENGINE_IDS]
+const HOSTED_PROVIDER_LABELS: readonly string[] = [
+  HOSTED_ROUTE_LABEL,
+  ...HOSTED_ENGINE_ROUTE_LABELS,
+  // Older builds logged the bare engine id as the route label. Keep those
+  // recognised so a pre-existing session's seat is rewritten instead of
+  // refused — except `zcode`, which is now a real vendor channel
+  // (`dsh-our-free-model`); rewriting its selections would break the channel.
+  ...HOSTED_ENGINE_IDS.filter(engine => engine !== 'zcode'),
+]
 
 /**
  * Whether a provider is one of this plugin's hosted engine route labels — a
